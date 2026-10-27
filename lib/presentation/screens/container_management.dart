@@ -23,11 +23,11 @@ class ContainerManagementScreen extends StatelessWidget {
         appBar: AppBar(
           title: AppText(user.role == 'group_supervisor' ? 'حاويات مجموعتي' : 'إدارة الحاويات'),
           actions: [
-            if (user.role == 'jsc_coordinator') IconButton(onPressed: () => _openEditor(context), icon: const Icon(Icons.add_box_rounded)),
+            if (user.role == 'jsc_coordinator' || user.role == 'group_supervisor') IconButton(onPressed: () => _openEditor(context), icon: const Icon(Icons.add_box_rounded)),
           ],
         ),
         body: user.role == 'group_supervisor' ? const _SupervisorContainersBody() : const _ContainerBody(),
-        floatingActionButton: user.role == 'jsc_coordinator'
+        floatingActionButton: user.role == 'jsc_coordinator' || user.role == 'group_supervisor'
             ? FloatingActionButton.extended(onPressed: () => _openEditor(context), icon: const Icon(Icons.add_rounded), label: const AppText('إضافة حاوية'))
             : null,
       ),
@@ -98,6 +98,7 @@ class _SupervisorContainersBodyState extends State<_SupervisorContainersBody> {
                   AppText('الحالة: ${item.status == 'full' ? 'ممتلئة' : item.status == 'partial' ? 'نصف ممتلئة' : 'فارغة'} • ${item.issueStatus == 'reported' ? 'مشكلة مسجلة' : item.issueStatus == 'resolving' ? 'قيد المعالجة' : 'لا توجد مشكلة'}'),
                   if (item.updatedAt.isNotEmpty) AppText('آخر تحديث: ${item.updatedAt}', style: const TextStyle(fontSize: 11, color: cleanOpsMuted)),
                   const SizedBox(height: 8),
+                  OutlinedButton.icon(onPressed: () => ContainerManagementScreen._openEditor(context, item), icon: const Icon(Icons.edit_location_alt_outlined), label: const AppText('تعديل موقع الحاوية')),
                   Row(children: [
                     Expanded(child: FilledButton.icon(
                       onPressed: () => showModalBottomSheet<void>(context: context, isScrollControlled: true, builder: (_) => _SupervisorContainerActions(item: item, issueOnly: false)),
@@ -304,8 +305,8 @@ class _ContainerEditor extends StatefulWidget {
 }
 class _ContainerEditorState extends State<_ContainerEditor> {
   late final TextEditingController location = TextEditingController(text: widget.item?.locationName ?? '');
-  late final TextEditingController municipality = TextEditingController(text: widget.item?.municipalityId ?? '');
-  late final TextEditingController group = TextEditingController(text: widget.item?.groupId ?? '');
+  late final TextEditingController municipality = TextEditingController(text: widget.item?.municipalityId ?? (context.read<AuthService>().currentUser?.role == 'group_supervisor' ? context.read<AuthService>().currentUser?.municipalityCoordinatorId ?? '' : ''));
+  late final TextEditingController group = TextEditingController(text: widget.item?.groupId ?? (context.read<AuthService>().currentUser?.role == 'group_supervisor' ? context.read<AuthService>().currentUser?.groupId ?? '' : ''));
   LatLng? point; bool busy = false; double? accuracy;
   @override void initState(){super.initState(); point=widget.item == null ? null : LatLng(widget.item!.latitude, widget.item!.longitude); if(widget.item==null) _loadCurrent();}
   @override void dispose(){location.dispose();municipality.dispose();group.dispose();super.dispose();}
@@ -320,6 +321,6 @@ class _ContainerEditorState extends State<_ContainerEditor> {
     LocationField(value:point,onChanged:(v)=>setState(()=>point=v)),
     if(accuracy!=null)Padding(padding:const EdgeInsets.only(top:4),child:Text('دقة GPS: ${accuracy!.round()} م${accuracy!>50?' — يفضّل تحسين الدقة':''}',style:TextStyle(fontSize:11,color:accuracy!>50?Colors.orange:Colors.green))),
     const SizedBox(height:5),OutlinedButton.icon(onPressed:_loadCurrent,icon:const Icon(Icons.my_location),label:const AppText('تحديث موقعي الآن')),
-    const SizedBox(height:9),TextField(controller:municipality,decoration:InputDecoration(labelText:tr('معرّف البلدية / منسق البلدية'))),const SizedBox(height:9),TextField(controller:group,decoration:InputDecoration(labelText:tr('معرّف المجموعة (اختياري)'))),const SizedBox(height:14),FilledButton.icon(onPressed:busy?null:_save,icon:const Icon(Icons.save_rounded),label:AppText(busy?'جارٍ الحفظ...':'حفظ الحاوية'))
+    const SizedBox(height:9),TextField(controller:municipality,readOnly:context.read<AuthService>().currentUser?.role == 'group_supervisor',decoration:InputDecoration(labelText:tr('معرّف البلدية / منسق البلدية'))),const SizedBox(height:9),TextField(controller:group,readOnly:context.read<AuthService>().currentUser?.role == 'group_supervisor',decoration:InputDecoration(labelText:tr('معرّف المجموعة (اختياري)'))),const SizedBox(height:14),FilledButton.icon(onPressed:busy?null:_save,icon:const Icon(Icons.save_rounded),label:AppText(busy?'جارٍ الحفظ...':'حفظ الحاوية'))
   ])));
 }
