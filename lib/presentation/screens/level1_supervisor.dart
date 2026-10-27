@@ -434,10 +434,19 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
       'sourceId': id,
       'createdAt': DateTime.now().toIso8601String(),
     });
+    String? unicefRecipientId;
+    try {
+      final settings = await FirebaseFirestore.instance.collection('config').doc('global').get();
+      unicefRecipientId = settings.data()?['unicefSosRecipientUid']?.toString();
+    } catch (_) {
+      // The emergency is still recorded when recipient configuration is offline.
+    }
     await d.enqueue('notification', 'urgent', {
       'id': '${id}_UNICEF',
       'targetLayer': 'UNICEF',
       'targetRole': 'donor_manager',
+      'targetUserId': unicefRecipientId,
+      'routingStatus': unicefRecipientId == null || unicefRecipientId.isEmpty ? 'unresolved' : 'targeted',
       'sourceEntity': 'emergency',
       'title': 'بلاغ SOS عاجل',
       'body': 'بلاغ $id من مشرف المجموعة — الموقع: ${street.text.trim()}',
