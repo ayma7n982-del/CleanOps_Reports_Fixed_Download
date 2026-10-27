@@ -1,3 +1,4 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../core/localization.dart';
 import 'dart:async';
 import 'dart:io';
@@ -410,10 +411,23 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
       'sourceId': id,
       'createdAt': DateTime.now().toIso8601String(),
     });
+    // Council routing uses the assigned council coordinator when configured.
+    String? councilCoordinatorId;
+    if (u.municipalityCoordinatorId != null && u.municipalityCoordinatorId!.isNotEmpty) {
+      try {
+        final coordinator = await FirebaseFirestore.instance
+            .collection('users').doc(u.municipalityCoordinatorId).get();
+        councilCoordinatorId = coordinator.data()?['jscCoordinatorId']?.toString();
+      } catch (_) {
+        // Keep SOS usable offline; unresolved routing is not reported as delivered.
+      }
+    }
     await d.enqueue('notification', 'urgent', {
       'id': '${id}_L3',
       'targetLayer': 'L3',
       'targetRole': 'jsc_coordinator',
+      'targetUserId': councilCoordinatorId,
+      'routingStatus': councilCoordinatorId == null || councilCoordinatorId.isEmpty ? 'unresolved' : 'targeted',
       'sourceEntity': 'emergency',
       'title': 'بلاغ مخلفات حربية عاجل',
       'body': 'بلاغ $id صادر من المشرف الميداني.',
