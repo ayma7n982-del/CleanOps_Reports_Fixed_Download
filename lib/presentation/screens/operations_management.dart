@@ -546,10 +546,8 @@ class _DumpsitesTabState extends State<_DumpsitesTab> {
           Positioned(
             left: 16,
             right: 16,
-            // Keep the save action above the keyboard while entering site data.
-            bottom: MediaQuery.viewInsetsOf(context).bottom > 0
-                ? MediaQuery.viewInsetsOf(context).bottom + 12
-                : 12,
+            // Scaffold already resizes for the keyboard; do not apply the inset twice.
+            bottom: 12,
             child: SafeArea(
               top: false,
               child: FilledButton.icon(
