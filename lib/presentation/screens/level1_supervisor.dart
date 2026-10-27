@@ -215,8 +215,8 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
     try {
       await d.enqueue('trip', 'create', {
         'id': id,
-        'groupId': u.id,
-        'groupName': 'مجموعة المشرف',
+        'groupId': u.groupId,
+        'groupName': u.groupId,
         'municipality': u.scope == 'all' ? '' : u.scope,
         'supervisorId': u.id,
         'cartType': alternative ? 'alternative' : 'primary',
