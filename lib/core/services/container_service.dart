@@ -115,6 +115,7 @@ class ContainerService extends ChangeNotifier {
     await _subscription?.cancel();
     _subscription = null;
     _user = user;
+    error = null;
     containers = store.cachedContainers().map(ContainerItem.fromMap).toList();
     _filterLocal();
     notifyListeners();
@@ -130,7 +131,7 @@ class ContainerService extends ChangeNotifier {
       }
       _subscription = query.snapshots(includeMetadataChanges: true).listen((snap) {
         final remote = snap.docs.map((d) => ContainerItem.fromMap({'id': d.id, ...d.data()})).toList();
-        _mergeRemote(remote);
+        _mergeRemote(remote, fromCache: snap.metadata.isFromCache);
       }, onError: (e) {
         error = '$e';
         loading = false;
@@ -154,10 +155,16 @@ class ContainerService extends ChangeNotifier {
     }
   }
 
-  void _mergeRemote(List<ContainerItem> remote) {
-    final map = <String, ContainerItem>{for (final c in containers) c.id: c};
+  void _mergeRemote(List<ContainerItem> remote, {required bool fromCache}) {
+    // An authoritative server snapshot replaces stale cached records. Offline
+    // snapshots retain local records until Firebase can confirm the current set.
+    final map = <String, ContainerItem>{
+      if (fromCache) for (final c in containers) c.id: c,
+    };
     for (final c in remote) map[c.id] = c;
     containers = map.values.toList()..sort((a, b) => a.locationName.compareTo(b.locationName));
+    _filterLocal();
+    error = null;
     unawaited(store.saveCachedContainers(containers.map((e) => e.toMap()).toList()));
     loading = false;
     notifyListeners();
