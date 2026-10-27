@@ -143,7 +143,7 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
     final config = context.read<ConfigService>();
     if (emergencyLock || tripPhotoPaths.length >= 3) return;
     try {
-      final paths = await imageService.pickTripPhotos(targetKb: config.imageTargetKb, remainingSlots: 3 - tripPhotoPaths.length, context: context);
+      final paths = await imageService.pickTripPhotos(targetKb: 500, remainingSlots: 3 - tripPhotoPaths.length, context: context);
       if (paths.isEmpty || !mounted) return;
       setState(() => tripPhotoPaths.addAll(paths));
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: AppText('تمت إضافة صورة للنقلة.')));
