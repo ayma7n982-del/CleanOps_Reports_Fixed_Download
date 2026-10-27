@@ -87,16 +87,18 @@ class _AttendanceReportsHomeScreenState extends State<AttendanceReportsHomeScree
     records.sort((a,b) => '${a['workerName'] ?? ''}'.compareTo('${b['workerName'] ?? ''}'));
     final present = records.where((e) => e['status'] == 'present' || e['status'] == 'حضور').length;
     final absent = records.where((e) => ['absent','غياب','excused_absence','unexcused_absence'].contains(e['status'])).length;
+    final late = records.where((e) => ['late', 'متأخر'].contains(e['status'])).length;
+    final leave = records.where((e) => ['leave', 'on_leave', 'إجازة'].contains(e['status'])).length;
     return Directionality(textDirection: arabic ? TextDirection.rtl : TextDirection.ltr, child: Scaffold(
       appBar: AppBar(title: const AppText('تقارير الحضور'), actions: [IconButton(tooltip: 'التقرير الشهري التقويمي', onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const MonthlyAttendanceReportScreen())), icon: const Icon(Icons.calendar_month))]),
       body: ListView(padding: const EdgeInsets.all(14), children: [
         Card(child: Padding(padding: const EdgeInsets.all(12), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const AppText('التقرير اليومي للبلدية', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
+          const AppText('تقرير الحضور والغياب التفصيلي / Detailed Attendance Report', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: Color(0xFF07589B))),
           const SizedBox(height: 8),
           Row(children: [Expanded(child: Text(DateFormat('yyyy-MM-dd').format(selectedDate))), TextButton.icon(onPressed: () async { final d = await showDatePicker(context: context, initialDate: selectedDate, firstDate: DateTime(2020), lastDate: DateTime(2100)); if (d != null && mounted) setState(() => selectedDate = d); }, icon: const Icon(Icons.calendar_today), label: const AppText('اختيار التاريخ'))]),
           Row(children: [const Text('لغة التصدير:'), const SizedBox(width: 8), DropdownButton<String>(value: exportLanguage, items: const [DropdownMenuItem(value: 'ar', child: Text('العربية')), DropdownMenuItem(value: 'en', child: Text('English'))], onChanged: (v) { if (v != null) setState(() => exportLanguage = v); }), const Spacer(), IconButton(tooltip: 'معاينة وطباعة', onPressed: busy || records.isEmpty ? null : () => _preview(records), icon: const Icon(Icons.preview_outlined)), IconButton(tooltip: 'تصدير PDF', onPressed: busy || records.isEmpty ? null : () => _export(records), icon: const Icon(Icons.picture_as_pdf_outlined))]),
         ]))),
-        Wrap(spacing: 8, runSpacing: 8, children: [_kpi('السجلات', records.length), _kpi('الحضور', present), _kpi('الغياب', absent)]),
+        Wrap(spacing: 8, runSpacing: 8, children: [_kpi('السجلات', records.length), _kpi('الحضور', present), _kpi('الغياب', absent), _kpi('التأخير', late), _kpi('الإجازات', leave)]),
         const SizedBox(height: 12),
         if (records.isEmpty) const Card(child: Padding(padding: EdgeInsets.all(18), child: AppText('لا توجد سجلات حضور فعلية لهذا التاريخ في البيانات المتاحة. لا يتم إنشاء أسماء أو حالات افتراضية.')))
         else Card(child: SingleChildScrollView(scrollDirection: Axis.horizontal, child: DataTable(columns: [const DataColumn(label: Text('العامل / المشرف')), const DataColumn(label: Text('الصفة')), const DataColumn(label: Text('الحالة')), const DataColumn(label: Text('وقت الحضور')), const DataColumn(label: Text('وقت الانصراف')), const DataColumn(label: Text('معدات الوقاية')), const DataColumn(label: Text('إجراء'))], rows: [for (final r in records) DataRow(cells: [DataCell(Text('${r['workerName'] ?? r['workerId'] ?? 'غير محدد'}')), DataCell(Text(_role('${r['workerRole'] ?? 'worker'}'))), DataCell(Text(_status('${r['status'] ?? ''}'))), DataCell(Text(_timeLabel(r['checkInAt'] ?? r['checkInTime']))), DataCell(Text(_timeLabel(r['checkOutAt'] ?? r['checkOutTime']))), DataCell(Text(r['ppeComplete'] == true ? 'مكتملة' : '—')), DataCell((currentUser?.role == 'group_supervisor' && !r.containsKey('isRosterOnly') && (r['status'] == 'present' || r['status'] == 'حضور') && '${r['checkOutAt'] ?? r['checkOutTime'] ?? ''}'.isEmpty) ? IconButton(tooltip: 'تسجيل الانصراف الآن', onPressed: busy ? null : () => _checkOut(r), icon: const Icon(Icons.logout)) : const SizedBox.shrink())])]))),
@@ -178,8 +180,20 @@ class _AttendanceReportsHomeScreenState extends State<AttendanceReportsHomeScree
     doc.addPage(pw.MultiPage(pageFormat: PdfPageFormat.a4.landscape, margin: const pw.EdgeInsets.all(28), theme: pw.ThemeData.withFont(base: regular, bold: bold), build: (_) => [
       pw.Row(children: [if (municipalityLogo != null) pw.Container(width: 36,height:36,child:pw.Image(municipalityLogo)), if (councilLogo != null) pw.Padding(padding: const pw.EdgeInsets.only(left:4),child:pw.Container(width:36,height:36,child:pw.Image(councilLogo))), if (unicefLogo != null) pw.Padding(padding: const pw.EdgeInsets.only(left:4),child:pw.Container(width:36,height:36,child:pw.Image(unicefLogo))), pw.SizedBox(width:8), pw.Expanded(child:pw.Column(crossAxisAlignment:pw.CrossAxisAlignment.start,children:[if(municipalityName.isNotEmpty) pw.Text(municipalityName,style:pw.TextStyle(font:bold,fontSize:10)),if(councilName.isNotEmpty) pw.Text(councilName,style:pw.TextStyle(font:bold,fontSize:10)),if(projectName.isNotEmpty) pw.Text('$projectLabel: $projectName',style:pw.TextStyle(font:regular,fontSize:8)),pw.Text(en ? 'UNICEF' : 'اليونيسف (UNICEF)',style:pw.TextStyle(font:bold,fontSize:9))]))]),
       pw.SizedBox(height: 8),
-      pw.Text(en ? 'Municipality Daily Attendance Report' : 'تقرير الحضور اليومي للبلدية', style: pw.TextStyle(font: bold, fontSize: 16)),
+      pw.Text(en ? 'Detailed Attendance and Absence Report' : 'تقرير الحضور والغياب التفصيلي', style: pw.TextStyle(font: bold, fontSize: 16)),
       pw.SizedBox(height: 5), pw.Text('${en ? 'Date' : 'التاريخ'}: ${DateFormat('yyyy-MM-dd').format(selectedDate)}', style: pw.TextStyle(font: regular, fontSize: 9)),
+      pw.Container(
+        padding: const pw.EdgeInsets.symmetric(vertical: 8, horizontal: 10),
+        decoration: pw.BoxDecoration(color: PdfColors.blue50, borderRadius: pw.BorderRadius.circular(6)),
+        child: pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [
+          for (final item in <String>[
+            '${en ? 'Workers' : 'العاملون'}: ${records.length}',
+            '${en ? 'Present' : 'حاضر'}: ${records.where((e) => e['status'] == 'present' || e['status'] == 'حضور').length}',
+            '${en ? 'Absent' : 'غائب'}: ${records.where((e) => ['absent','غياب','excused_absence','unexcused_absence'].contains(e['status'])).length}',
+            '${en ? 'Late' : 'متأخر'}: ${records.where((e) => ['late','متأخر'].contains(e['status'])).length}',
+          ]) pw.Text(item, style: pw.TextStyle(font: bold, fontSize: 8, color: PdfColors.blue900)),
+        ]),
+      ),
       pw.SizedBox(height: 12),
       pw.Directionality(textDirection: en ? pw.TextDirection.ltr : pw.TextDirection.rtl, child: pw.Table(border: pw.TableBorder.all(color: PdfColors.grey400, width: .5), columnWidths: {for (var i = 0; i < (showGroups ? 5 : 4); i++) i: const pw.FlexColumnWidth()}, children: rows)),
       pw.SizedBox(height: 8), pw.Text('${en ? 'Records' : 'عدد السجلات'}: ${records.length} • ${en ? 'Present' : 'حضور'}: ${records.where((e) => e['status'] == 'present' || e['status'] == 'حضور').length} • ${en ? 'Absent' : 'غياب'}: ${records.where((e) => ['absent','غياب','excused_absence','unexcused_absence'].contains(e['status'])).length}', style: pw.TextStyle(font: regular, fontSize: 8)),
