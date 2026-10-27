@@ -15,6 +15,7 @@ import '../../core/localization.dart';
 import '../../core/services/data_service.dart';
 import '../../core/services/pdf_file_saver.dart';
 import '../widgets/app_design.dart';
+import 'cycle_manual_attendance_screen.dart';
 
 /// Calendar-style attendance matrix. Rows are people; columns are calendar days.
 /// It uses real attendance operations already stored in the offline-first cache.
@@ -137,6 +138,15 @@ class _MonthlyAttendanceReportScreenState extends State<MonthlyAttendanceReportS
               _summaryTile('نسبة الحضور / Attendance', '${attendanceRate.toStringAsFixed(1)}%', Colors.teal),
             ]),
           ),
+          Padding(padding: const EdgeInsets.symmetric(horizontal: 12), child: Align(
+            alignment: Alignment.centerRight,
+            child: FilledButton.icon(
+              onPressed: () => Navigator.push(context, MaterialPageRoute(
+                builder: (_) => CycleManualAttendanceScreen(people: roster))),
+              icon: const Icon(Icons.edit_calendar),
+              label: const Text('إدخال يدوي لدورة تتجاوز 60 يومًا'),
+            ),
+          )),
           Padding(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4), child: Wrap(spacing: 10, crossAxisAlignment: WrapCrossAlignment.center, children: [
             const Text('نوع التقرير / Report period'),
             DropdownButton<String>(
