@@ -843,7 +843,12 @@ class ActivityPage extends StatelessWidget {
         trailing: AppText(timestamp == null ? '—' : DateFormat('dd/MM HH:mm').format(timestamp)),
       )));
     }
+    final cloudActivityIds = auditDocs
+        .where((doc) => doc.data()['_entity'] == 'activity')
+        .map((doc) => doc.id)
+        .toSet();
     for (final a in d.activities) {
+      if (cloudActivityIds.contains(a.id)) continue;
       entries.add(Card(child: ListTile(
         leading: StatusDot(level: a.level),
         title: AppText(a.title, style: const TextStyle(fontWeight: FontWeight.w800)),
