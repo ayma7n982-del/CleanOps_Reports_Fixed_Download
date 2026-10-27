@@ -63,7 +63,7 @@ class _ReportBrandingSettingsScreenState extends State<ReportBrandingSettingsScr
   Widget build(BuildContext context) {
     final user = context.watch<AuthService>().currentUser;
     if (user == null || (user.role != 'donor_manager' && user.role != 'jsc_coordinator')) {
-      return const Scaffold(appBar: AppBar(title: AppText('هوية التقارير والدورة')), body: Center(child: AppText('لا تملك صلاحية تعديل هوية التقارير.')));
+      return Scaffold(appBar: AppBar(title: const AppText('هوية التقارير والدورة')), body: const Center(child: AppText('لا تملك صلاحية تعديل هوية التقارير.')));
     }
     return Scaffold(
     appBar: AppBar(title: const AppText('هوية التقارير والدورة')),
