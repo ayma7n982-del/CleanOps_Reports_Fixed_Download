@@ -1,3 +1,4 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../core/localization.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -93,6 +94,27 @@ class _Level3JscState extends State<Level3JscScreen> {
   }
 
   double get _capacityPercent => capacity.clamp(0.0, 1.0).toDouble();
+
+  Future<void> _acknowledgeEmergency(String id) async {
+    final user = context.read<AuthService>().currentUser;
+    if (user == null || user.role != 'jsc_coordinator') return;
+    try {
+      final now = DateTime.now().toIso8601String();
+      await FirebaseFirestore.instance.collection('operations').doc(id).update({
+        'acknowledged': true,
+        'acknowledgedBy': user.id,
+        'acknowledgedAt': now,
+        'status': 'acknowledged',
+        'updatedAt': now,
+      });
+      await _loadOperationsState();
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: AppText('تم تأكيد الاستلام.')));
+    } catch (error) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('تعذر تأكيد الاستلام: $error')));
+    }
+  }
 
   Future<void> _referEmergency(String id) async {
     final u = context.read<AuthService>().currentUser;
