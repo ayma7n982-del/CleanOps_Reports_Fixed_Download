@@ -541,7 +541,7 @@ class _WorkforceTabState extends State<_WorkforceTab> {
   final name = TextEditingController();
   final username = TextEditingController();
   final phone = TextEditingController();
-  final group = TextEditingController();
+  String selectedGroupId = '';
   String role = 'worker';
   String cycleId = '';
   bool busy = false;
@@ -551,12 +551,14 @@ class _WorkforceTabState extends State<_WorkforceTab> {
     name.dispose();
     username.dispose();
     phone.dispose();
-    group.dispose();
     super.dispose();
   }
 
   Future<void> provision() async {
-    if (cycleId.isEmpty) return;
+    if (cycleId.isEmpty || selectedGroupId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: AppText('اختر دورة عمل ومجموعة تابعة لبلديتك أولًا.')));
+      return;
+    }
     setState(() => busy = true);
     try {
       final result = await context.read<OperationsAdminService>().provisionUser(
@@ -564,7 +566,7 @@ class _WorkforceTabState extends State<_WorkforceTab> {
         username: username.text,
         role: role,
         cycleId: cycleId,
-        groupId: group.text,
+        groupId: selectedGroupId,
         phone: phone.text,
       );
       if (mounted) {
@@ -634,7 +636,35 @@ class _WorkforceTabState extends State<_WorkforceTab> {
                     children: [
                       Expanded(child: TextField(controller: phone, decoration: InputDecoration(labelText: tr('الجوال')))),
                       const SizedBox(width: 8),
-                      Expanded(child: TextField(controller: group, decoration: InputDecoration(labelText: tr('المجموعة')))),
+                      Expanded(
+                        child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                          stream: FirebaseFirestore.instance.collection('operations')
+                              .where('_entity', isEqualTo: 'group')
+                              .where('municipalityCoordinatorId', isEqualTo: u.id)
+                              .snapshots(),
+                          builder: (context, groupsSnap) {
+                            if (groupsSnap.hasError) {
+                              return const AppText('تعذر تحميل مجموعات البلدية');
+                            }
+                            final groups = (groupsSnap.data?.docs ?? [])
+                                .where((doc) => doc.data()['isDeleted'] != true)
+                                .toList();
+                            final current = groups.any((doc) => doc.id == selectedGroupId)
+                                ? selectedGroupId : null;
+                            return DropdownButtonFormField<String>(
+                              value: current,
+                              isExpanded: true,
+                              decoration: InputDecoration(labelText: tr('المجموعة')),
+                              hint: const AppText('اختر مجموعة من بلديتك'),
+                              items: groups.map((doc) => DropdownMenuItem<String>(
+                                value: doc.id,
+                                child: Text('${doc.data()['name'] ?? doc.data()['groupName'] ?? doc.data()['number'] ?? doc.id}', overflow: TextOverflow.ellipsis),
+                              )).toList(),
+                              onChanged: groups.isEmpty ? null : (value) => setState(() => selectedGroupId = value ?? ''),
+                            );
+                          },
+                        ),
+                      ),
                     ],
                   ),
                   const SizedBox(height: 12),
