@@ -398,9 +398,13 @@ class OperationsAdminService {
       throw StateError('لا يمكن حذف الحساب الحالي.');
     }
     try {
-      await FirebaseFunctions.instance
+      final result = await FirebaseFunctions.instanceFor(region: 'us-central1')
           .httpsCallable('deleteManagedUser')
           .call(<String, dynamic>{'userId': uid});
+      final payload = result.data;
+      if (payload is! Map || payload['ok'] != true || payload['userId'] != uid) {
+        throw StateError('لم يؤكد الخادم حذف الحساب. يرجى إعادة المحاولة.');
+      }
     } on FirebaseFunctionsException catch (e) {
       throw StateError(e.message ?? 'تعذر حذف المستخدم نهائيًا.');
     }
