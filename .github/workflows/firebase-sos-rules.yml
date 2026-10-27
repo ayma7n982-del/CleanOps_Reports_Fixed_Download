@@ -1,0 +1,58 @@
+name: Firebase SOS rules validation and controlled deployment
+on:
+  push:
+    paths:
+      - 'firebase/firestore.rules'
+      - '.github/workflows/firebase-sos-rules.yml'
+  workflow_dispatch:
+    inputs:
+      deploy:
+        description: 'Deploy rules to nrc-aid after validation'
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: firebase-sos-rules
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install Firebase CLI
+        run: npm install --global firebase-tools
+      - name: Validate Firestore rules syntax with emulator
+        run: |
+          firebase emulators:exec --project demo-cleanops --only firestore "echo Firestore rules loaded" --non-interactive
+
+  deploy:
+    needs: validate
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.deploy == true }}
+    runs-on: ubuntu-latest
+    environment: firebase-production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --global firebase-tools
+      - name: Deploy Firestore rules only
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/firebase-service-account.json
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          if [ -z "$FIREBASE_SERVICE_ACCOUNT" ]; then
+            echo "Missing FIREBASE_SERVICE_ACCOUNT secret" >&2
+            exit 1
+          fi
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$GOOGLE_APPLICATION_CREDENTIALS"
+          chmod 600 "$GOOGLE_APPLICATION_CREDENTIALS"
+          firebase deploy --project nrc-aid --only firestore:rules --non-interactive
