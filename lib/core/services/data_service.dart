@@ -5,6 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
@@ -67,6 +68,31 @@ class DataService extends ChangeNotifier {
     activities = [a, ...activities].take(100).toList();
     await store.saveActivities(activities);
     notifyListeners();
+
+    // Persist actual activity events to the shared audit feed. The local history
+    // remains usable offline; Firestore's offline persistence sends pending writes
+    // when connectivity returns. Never block the user interface on a network write.
+    if (Firebase.apps.isNotEmpty) {
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid != null && uid.isNotEmpty) {
+        unawaited(
+          FirebaseFirestore.instance.collection('audit').doc(a.id).set({
+            'id': a.id,
+            'actorId': uid,
+            'operation': a.title,
+            'targetId': 'activity:${a.id}',
+            'detail': a.detail,
+            'level': a.level,
+            'createdAt': a.createdAt,
+            'timestamp': FieldValue.serverTimestamp(),
+            'immutable': true,
+            '_entity': 'activity',
+          }).catchError((Object error) {
+            debugPrint('تعذر حفظ النشاط في Firebase: $error');
+          }),
+        );
+      }
+    }
   }
 
   Future<void> writeAudit({
