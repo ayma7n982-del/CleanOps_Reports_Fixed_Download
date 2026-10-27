@@ -5,6 +5,7 @@ import '../../core/constants/app_constants.dart';
 import '../../core/services/auth_service.dart';
 import '../../core/services/data_service.dart';
 import '../../core/services/container_service.dart';
+import '../../core/services/messaging_service.dart';
 import 'reports_center.dart';
 import 'operations_management.dart';
 import '../widgets/app_design.dart';
@@ -118,6 +119,18 @@ class _Level2MunicipalityScreenState extends State<Level2MunicipalityScreen> {
           title: const AppText('المستوى 2 — منسق البلدية'),
           actions: [
             IconButton(tooltip: tr('البحث الذكي'), onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const GlobalSearchPage())), icon: const Icon(Icons.search_rounded)),
+            Builder(builder: (context) {
+              final unread = context.watch<MessagingService>().unreadCount;
+              return IconButton(
+                tooltip: unread > 0 ? 'الرسائل والإشعارات غير المقروءة: $unread' : 'الرسائل والإشعارات',
+                onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const MessagesCenterScreen())),
+                icon: Badge(
+                  isLabelVisible: unread > 0,
+                  label: Text(unread > 99 ? '99+' : '$unread'),
+                  child: const Icon(Icons.notifications_outlined),
+                ),
+              );
+            }),
             IconButton(onPressed: _loadStagnation, icon: const Icon(Icons.refresh)),
             IconButton(onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ReportsCenterScreen())), icon: const Icon(Icons.analytics_outlined)),
             IconButton(onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const OperationsManagementScreen(initialTab: 1))), icon: const Icon(Icons.hub_outlined)),
@@ -184,6 +197,7 @@ class _Level2MunicipalityScreenState extends State<Level2MunicipalityScreen> {
         CreativeShortcut(title: 'إدخال الحاويات', subtitle: 'الحالة والمشكلات اليومية', feature: 'containers', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ContainerManagementScreen()))),
         CreativeShortcut(title: 'المكبات', subtitle: 'السعة والامتلاء والمواقع', feature: 'dumpsite', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const OperationsManagementScreen(initialTab: 1)))),
         CreativeShortcut(title: 'التقارير', subtitle: 'تشغيل البلدية ومؤشراتها', feature: 'reports', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ReportsCenterScreen()))),
+        CreativeShortcut(title: 'الرسائل والإشعارات', subtitle: 'الوارد والتنبيهات غير المقروءة', feature: 'emergency', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const MessagesCenterScreen()))),
       ]),
       const SizedBox(height: 14),
       AiSectionCard(title: 'إدارة العمال', subtitle: 'استيراد كشف العمال بذكاء من Excel أو CSV.', feature: 'workers', child: SmartExcelImportCard(onImport: _saveImportedRows)),
