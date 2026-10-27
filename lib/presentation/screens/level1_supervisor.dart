@@ -396,6 +396,7 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
       'deliveryStatus': 'pending_sync',
       'acknowledged': false,
       'groupId': u.groupId,
+      'municipalityCoordinatorId': u.municipalityCoordinatorId,
       'recipientLayers': ['L2', 'L3', 'UNICEF'],
       'statusLevel': 'critical',
       'isDeleted': false,
