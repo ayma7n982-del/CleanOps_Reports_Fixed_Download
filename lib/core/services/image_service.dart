@@ -76,6 +76,29 @@ class ImageService {
     );
   }
 
+  Future<List<String>> pickTripPhotos({
+    required int targetKb,
+    required int remainingSlots,
+    required BuildContext context,
+  }) async {
+    if (remainingSlots <= 0) return [];
+    final source = await _chooseSource(context);
+    if (source == null) return [];
+    final picker = ImagePicker();
+    final photos = source == ImageSource.gallery
+        ? await picker.pickMultiImage(imageQuality: 100)
+        : <XFile>[
+            if (await picker.pickImage(source: ImageSource.camera, imageQuality: 100)
+                case final XFile photo)
+              photo,
+          ];
+    final paths = <String>[];
+    for (final photo in photos.take(remainingSlots)) {
+      paths.add(await compressToLocal(photo, targetKb: targetKb));
+    }
+    return paths;
+  }
+
   Future<String?> pickCompressLocal({required int targetKb, BuildContext? context}) async {
     final picker = ImagePicker();
     final source = context == null ? ImageSource.camera : await _chooseSource(context);
