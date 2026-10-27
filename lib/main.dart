@@ -794,7 +794,12 @@ class ActivityPage extends StatelessWidget {
     final d = context.watch<DataService>();
     return Scaffold(
       appBar: AppBar(title: const AppText('آخر النشاط')),
-      body: ListView.builder(
+      body: d.activities.isEmpty
+          ? const Center(child: Padding(
+              padding: EdgeInsets.all(24),
+              child: AppText('لا توجد أنشطة محفوظة على هذا الجهاز بعد. تُعرض الأنشطة المحلية بعد تنفيذ العمليات أو المزامنة.'),
+            ))
+          : ListView.builder(
         padding: const EdgeInsets.all(12),
         itemCount: d.activities.length,
         itemBuilder: (_, i) {
@@ -941,7 +946,7 @@ class _PermissionsState extends State<PermissionsPage> {
     return Directionality(
       textDirection: context.watch<LocaleController>().isArabic ? ui.TextDirection.rtl : ui.TextDirection.ltr,
       child: Scaffold(
-        appBar: AppBar(title: const AppText('مصفوفة الصلاحيات الديناميكية')),
+        appBar: AppBar(title: const AppText('إدارة صلاحيات الأدوار')),
         body: ListView(
           padding: const EdgeInsets.all(16),
           children: [
@@ -949,20 +954,20 @@ class _PermissionsState extends State<PermissionsPage> {
               value: selected,
               items: roles.map((r) => DropdownMenuItem(value: r, child: AppText(roleNames[r]!))).toList(),
               onChanged: (v) { if (v != null) setState(() => selected = v); },
-              decoration: InputDecoration(labelText: tr('الطبقة')),
+              decoration: InputDecoration(labelText: tr('اختر الدور الوظيفي')),
             ),
+            const SizedBox(height: 12),
+            const AppText('اختر الدور، ثم افتح القسم المطلوب لتعديل صلاحياته. التغييرات تحفظ على الخادم.'),
             const SizedBox(height: 12),
             ...allFeatures.entries.map((entry) {
               final policy = config.policies[entry.key] ?? defaultPolicy(selected, entry.key);
               return Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(children: [FeatureIcon(entry.key), const SizedBox(width: 10), Expanded(child: AppText(entry.value, style: const TextStyle(fontWeight: FontWeight.w800)))]),
-                      const SizedBox(height: 6),
-                      Wrap(
+                child: ExpansionTile(
+                  leading: FeatureIcon(entry.key),
+                  title: AppText(entry.value, style: const TextStyle(fontWeight: FontWeight.w800)),
+                  subtitle: AppText(policy.enabled && policy.visible ? 'القسم متاح' : 'القسم غير متاح'),
+                  children: [
+                      Padding(padding: const EdgeInsets.all(12), child: Wrap(
                         spacing: 4,
                         runSpacing: 4,
                         children: [
@@ -978,9 +983,8 @@ class _PermissionsState extends State<PermissionsPage> {
                           _permissionSwitch('إظهار', policy.visible, (v) => _set(entry.key, policy.copyWith(visible: v))),
                           _permissionSwitch('تفعيل', policy.enabled, (v) => _set(entry.key, policy.copyWith(enabled: v))),
                         ],
-                      ),
+                      )),
                     ],
-                  ),
                 ),
               );
             }),
