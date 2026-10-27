@@ -146,7 +146,8 @@ class DataService extends ChangeNotifier {
         final item = document.data();
         if (item['sourceEntity'] != 'emergency' || item['targetRole'] != role) continue;
         final recipient = item['targetUserId']?.toString();
-        if (recipient != null && recipient.isNotEmpty && recipient != current.uid) continue;
+        if (role == 'municipality_coordinator' && (recipient == null || recipient.isEmpty || recipient != current.uid)) continue;
+        if (role != 'municipality_coordinator' && recipient != null && recipient.isNotEmpty && recipient != current.uid) continue;
         if (notifications.any((n) => n.id == document.id)) continue;
         notifications = [NotificationItem(
           id: document.id, title: '${item['title'] ?? 'SOS'}',
