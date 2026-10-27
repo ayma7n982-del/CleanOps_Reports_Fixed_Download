@@ -21,12 +21,12 @@ class ContainerManagementScreen extends StatelessWidget {
       textDirection: context.watch<LocaleController>().isArabic ? TextDirection.rtl : TextDirection.ltr,
       child: Scaffold(
         appBar: AppBar(
-          title: const AppText('إدارة الحاويات'),
+          title: AppText(user.role == 'group_supervisor' ? 'حاويات مجموعتي' : 'إدارة الحاويات'),
           actions: [
             if (user.role == 'jsc_coordinator') IconButton(onPressed: () => _openEditor(context), icon: const Icon(Icons.add_box_rounded)),
           ],
         ),
-        body: const _ContainerBody(),
+        body: user.role == 'group_supervisor' ? const _SupervisorContainersBody() : const _ContainerBody(),
         floatingActionButton: user.role == 'jsc_coordinator'
             ? FloatingActionButton.extended(onPressed: () => _openEditor(context), icon: const Icon(Icons.add_rounded), label: const AppText('إضافة حاوية'))
             : null,
@@ -40,6 +40,80 @@ class ContainerManagementScreen extends StatelessWidget {
       isScrollControlled: true,
       backgroundColor: cleanOpsSurface,
       builder: (_) => _ContainerEditor(item: item),
+    );
+  }
+}
+
+class _SupervisorContainersBody extends StatefulWidget {
+  const _SupervisorContainersBody();
+  @override
+  State<_SupervisorContainersBody> createState() => _SupervisorContainersBodyState();
+}
+
+class _SupervisorContainersBodyState extends State<_SupervisorContainersBody> {
+  String search = '';
+  String filter = 'all';
+
+  @override
+  Widget build(BuildContext context) {
+    final user = context.watch<AuthService>().currentUser!;
+    final service = context.watch<ContainerService>();
+    final own = service.containers.where((c) => c.groupId.isNotEmpty && c.groupId == (user.groupId ?? '')).toList();
+    final shown = own.where((c) {
+      final matchesText = search.isEmpty || c.locationName.toLowerCase().contains(search.toLowerCase()) || c.id.toLowerCase().contains(search.toLowerCase());
+      return matchesText && (filter == 'all' || c.status == filter);
+    }).toList();
+    return RefreshIndicator(
+      onRefresh: () => service.attachUser(user),
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(14, 14, 14, 110),
+        children: [
+          const AppText('تحديث الحالة اليومية والإبلاغ عن المشكلات لحاويات مجموعتك فقط.', style: TextStyle(color: cleanOpsMuted)),
+          const SizedBox(height: 12),
+          Wrap(spacing: 8, runSpacing: 8, children: [
+            _CountChip('فارغة', own.where((c) => c.status == 'empty').length, green),
+            _CountChip('نصف ممتلئة', own.where((c) => c.status == 'partial').length, orange),
+            _CountChip('ممتلئة', own.where((c) => c.status == 'full').length, red),
+          ]),
+          const SizedBox(height: 12),
+          TextField(
+            onChanged: (value) => setState(() => search = value.trim()),
+            decoration: const InputDecoration(prefixIcon: Icon(Icons.search), labelText: 'ابحث باسم الموقع أو رقم الحاوية'),
+          ),
+          const SizedBox(height: 8),
+          Wrap(spacing: 6, children: [
+            for (final entry in const {'all': 'الكل', 'empty': 'فارغة', 'partial': 'نصف ممتلئة', 'full': 'ممتلئة'}.entries)
+              ChoiceChip(label: AppText(entry.value), selected: filter == entry.key, onSelected: (_) => setState(() => filter = entry.key)),
+          ]),
+          if (service.loading) const LinearProgressIndicator(),
+          if (service.error != null) AppText('تعذر تحميل الحاويات: ${service.error}', style: const TextStyle(color: red)),
+          if (shown.isEmpty)
+            const Padding(padding: EdgeInsets.all(24), child: Center(child: AppText('لا توجد حاويات مطابقة ضمن مجموعتك.'))),
+          for (final item in shown)
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                  AppText(item.locationName.isEmpty ? 'حاوية بدون اسم موقع' : item.locationName, style: const TextStyle(fontWeight: FontWeight.bold)),
+                  AppText('الحالة: ${item.status == 'full' ? 'ممتلئة' : item.status == 'partial' ? 'نصف ممتلئة' : 'فارغة'} • ${item.issueStatus == 'reported' ? 'مشكلة مسجلة' : item.issueStatus == 'resolving' ? 'قيد المعالجة' : 'لا توجد مشكلة'}'),
+                  if (item.updatedAt.isNotEmpty) AppText('آخر تحديث: ${item.updatedAt}', style: const TextStyle(fontSize: 11, color: cleanOpsMuted)),
+                  const SizedBox(height: 8),
+                  Row(children: [
+                    Expanded(child: FilledButton.icon(
+                      onPressed: () => showModalBottomSheet<void>(context: context, isScrollControlled: true, builder: (_) => _SupervisorContainerActions(item: item, issueOnly: false)),
+                      icon: const Icon(Icons.refresh), label: const AppText('تحديث الحالة'),
+                    )),
+                    const SizedBox(width: 8),
+                    Expanded(child: OutlinedButton.icon(
+                      onPressed: () => showModalBottomSheet<void>(context: context, isScrollControlled: true, builder: (_) => _SupervisorContainerActions(item: item, issueOnly: true)),
+                      icon: const Icon(Icons.warning_amber), label: const AppText('إبلاغ مشكلة'),
+                    )),
+                  ]),
+                ]),
+              ),
+            ),
+        ],
+      ),
     );
   }
 }
@@ -153,7 +227,8 @@ class _StatusPill extends StatelessWidget {
 
 class _SupervisorContainerActions extends StatefulWidget {
   final ContainerItem item;
-  const _SupervisorContainerActions({required this.item});
+  final bool issueOnly;
+  const _SupervisorContainerActions({required this.item, this.issueOnly = false});
   @override State<_SupervisorContainerActions> createState() => _SupervisorContainerActionsState();
 }
 class _SupervisorContainerActionsState extends State<_SupervisorContainerActions> {
@@ -165,8 +240,12 @@ class _SupervisorContainerActionsState extends State<_SupervisorContainerActions
     setState(() => busy = true);
     try {
       final service = context.read<ContainerService>();
-      await service.updateDailyStatus(widget.item, status);
-      if (notes.text.trim().isNotEmpty) await service.reportIssue(service.byId(widget.item.id) ?? widget.item, notes.text);
+      if (widget.issueOnly) {
+        if (notes.text.trim().isEmpty) throw StateError('يرجى وصف المشكلة أولًا.');
+        await service.reportIssue(widget.item, notes.text.trim());
+      } else {
+        await service.updateDailyStatus(widget.item, status);
+      }
       if (mounted) Navigator.pop(context);
     } catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: AppText('$e'))); } finally { if (mounted) setState(() => busy = false); }
   }
@@ -175,12 +254,12 @@ class _SupervisorContainerActionsState extends State<_SupervisorContainerActions
     child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       AppText(widget.item.locationName, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
       const SizedBox(height: 12),
-      DropdownButtonFormField<String>(value: status, items: const [DropdownMenuItem(value: 'empty', child: AppText('فارغة')), DropdownMenuItem(value: 'partial', child: AppText('نصف ممتلئة')), DropdownMenuItem(value: 'full', child: AppText('ممتلئة'))], onChanged: busy ? null : (v) => setState(() => status = v ?? status), decoration: InputDecoration(labelText: tr('الحالة اليومية'))),
+      if (!widget.issueOnly) DropdownButtonFormField<String>(value: status, items: const [DropdownMenuItem(value: 'empty', child: AppText('فارغة')), DropdownMenuItem(value: 'partial', child: AppText('نصف ممتلئة')), DropdownMenuItem(value: 'full', child: AppText('ممتلئة'))], onChanged: busy ? null : (v) => setState(() => status = v ?? status), decoration: InputDecoration(labelText: tr('الحالة اليومية'))),
       const SizedBox(height: 10),
-      TextField(controller: notes, minLines: 2, maxLines: 4, decoration: InputDecoration(labelText: tr('ملاحظة مشكلة / عطل / عدم إمكانية الوصول'), hintText: tr('اتركه فارغًا إذا لا توجد مشكلة'))),
+      if (widget.issueOnly) TextField(controller: notes, minLines: 2, maxLines: 4, decoration: InputDecoration(labelText: tr('وصف المشكلة / العطل / عدم إمكانية الوصول'))),
       const SizedBox(height: 12),
-      FilledButton.icon(onPressed: busy ? null : _save, icon: const Icon(Icons.save_rounded), label: AppText(busy ? 'جارٍ الحفظ...' : 'حفظ الحالة')),
-      if (widget.item.issueStatus == 'resolving') ...[
+      FilledButton.icon(onPressed: busy ? null : _save, icon: const Icon(Icons.save_rounded), label: AppText(busy ? 'جارٍ الحفظ...' : widget.issueOnly ? 'إرسال البلاغ' : 'حفظ الحالة')),
+      if (!widget.issueOnly && widget.item.issueStatus == 'resolving') ...[
         const SizedBox(height: 8),
         OutlinedButton.icon(onPressed: busy ? null : () async { try { await context.read<ContainerService>().confirmResolved(widget.item, notes.text); if (context.mounted) Navigator.pop(context); } catch (e) { if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: AppText('$e'))); } }, icon: const Icon(Icons.verified_rounded, color: green), label: const AppText('توكيد حل المشكلة')),
       ],
