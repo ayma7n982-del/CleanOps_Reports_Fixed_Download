@@ -238,8 +238,27 @@ service cloud.firestore {
         && request.resource.data.issueStatus == 'none';
       allow update: if isL3()
         || (isL2() && resource.data.municipalityId == request.auth.uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['issueStatus','feedbackNotes','updatedAt','updatedBy']))
-        || ((role() == 'group_supervisor' || role() == 'worker') && resource.data.groupId == userDoc().groupId
-            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status','issueStatus','feedbackNotes','updatedAt','updatedBy']));
+        || ((role() == 'group_supervisor' || role() == 'worker')
+            && userDoc().isActive != false
+            && userDoc().groupId is string && userDoc().groupId.size() > 0
+            && resource.data.groupId == userDoc().groupId
+            && request.resource.data.groupId == resource.data.groupId
+            && request.resource.data.municipalityId == resource.data.municipalityId
+            && request.resource.data.updatedBy == request.auth.uid
+            && request.resource.data.status in ['empty','partial','full']
+            && request.resource.data.issueStatus in ['none','reported','resolving','verified_resolved']
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status','issueStatus','feedbackNotes','updatedAt','updatedBy'])
+            && (
+              (request.resource.data.issueStatus == resource.data.issueStatus
+                && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status','updatedAt','updatedBy']))
+              || (request.resource.data.issueStatus == 'reported'
+                && request.resource.data.feedbackNotes is string
+                && request.resource.data.feedbackNotes.size() > 0
+                && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['issueStatus','feedbackNotes','updatedAt','updatedBy']))
+              || (resource.data.issueStatus == 'resolving'
+                && request.resource.data.issueStatus == 'verified_resolved'
+                && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['issueStatus','feedbackNotes','updatedAt','updatedBy']))
+            ));
       allow delete: if false;
     }
 
