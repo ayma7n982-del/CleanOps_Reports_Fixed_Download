@@ -211,7 +211,7 @@ class _Level2MunicipalityScreenState extends State<Level2MunicipalityScreen> {
         'fromGroup': recordName(groups.firstWhere((g) => recordId(g) == fromId)),
         'toGroup': recordName(groups.firstWhere((g) => recordId(g) == toId)),
         'cart': recordName(carts.firstWhere((c) => recordId(c) == cartId)),
-        'requestedBy': u.id, 'createdAt': DateTime.now().toIso8601String(),
+        'requestedBy': u.id, 'status': 'pending', 'createdAt': DateTime.now().toIso8601String(),
       };
       await data.enqueue('cart_redirect', 'create', payload);
       await data.writeAudit(actorId: u.id, operation: 'REDIRECT_CART', targetId: id, after: payload);
@@ -378,9 +378,9 @@ class _Level2MunicipalityScreenState extends State<Level2MunicipalityScreen> {
       const SizedBox(height: 14),
       AiSectionCard(title: 'إدارة العمال', subtitle: 'استيراد كشف العمال بذكاء من Excel أو CSV.', feature: 'workers', child: SmartExcelImportCard(onImport: _saveImportedRows)),
       const SizedBox(height: 12),
-      CardSection2(title: 'إعادة توجيه الكارات', icon: const Icon(Icons.swap_horiz), child: Column(children: [
+      CardSection2(title: 'طلبات إعادة توجيه الكارات', icon: const Icon(Icons.swap_horiz), child: Column(children: [
         const ListTile(title: AppText('اختيار الكارة والمجموعتين'), subtitle: AppText('من سجلات البلدية الفعلية، دون بيانات ثابتة')),
-        FilledButton.icon(onPressed: _redirect, icon: const Icon(Icons.double_arrow), label: const AppText('تنفيذ إعادة التوجيه')),
+        FilledButton.icon(onPressed: _redirect, icon: const Icon(Icons.double_arrow), label: const AppText('تسجيل طلب إعادة التوجيه')),
       ])),
     ]),
     2 => _reportsBody(),
