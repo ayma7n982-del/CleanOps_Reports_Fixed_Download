@@ -790,31 +790,75 @@ class NotificationsPage extends StatelessWidget {
 
 class ActivityPage extends StatelessWidget {
   const ActivityPage({super.key});
-  @override Widget build(BuildContext context) {
+
+  @override
+  Widget build(BuildContext context) {
     final d = context.watch<DataService>();
+    final actor = context.watch<AuthService>().currentUser;
+    final canReadAudit = actor?.role == 'donor_manager';
     return Scaffold(
       appBar: AppBar(title: const AppText('آخر النشاط')),
-      body: d.activities.isEmpty
-          ? const Center(child: Padding(
-              padding: EdgeInsets.all(24),
-              child: AppText('لا توجد أنشطة محفوظة على هذا الجهاز بعد. تُعرض الأنشطة المحلية بعد تنفيذ العمليات أو المزامنة.'),
-            ))
-          : ListView.builder(
-        padding: const EdgeInsets.all(12),
-        itemCount: d.activities.length,
-        itemBuilder: (_, i) {
-          final a = d.activities[i];
-          return Card(
-            child: ListTile(
-              leading: StatusDot(level: a.level),
-              title: AppText(a.title, style: const TextStyle(fontWeight: FontWeight.w800)),
-              subtitle: AppText(a.detail),
-              trailing: AppText(DateFormat('HH:mm').format(DateTime.tryParse(a.createdAt) ?? DateTime.now())),
-            ),
-          );
-        },
-      ),
+      body: canReadAudit
+          ? StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+              stream: FirebaseFirestore.instance.collection('audit')
+                  .orderBy('timestamp', descending: true).limit(100).snapshots(),
+              builder: (context, snapshot) {
+                if (snapshot.hasError) {
+                  return _activityList(d, error: 'تعذر تحميل النشاط من Firebase: ${snapshot.error}');
+                }
+                if (!snapshot.hasData) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                return _activityList(d, auditDocs: snapshot.data!.docs);
+              },
+            )
+          : _activityList(d),
     );
+  }
+
+  Widget _activityList(DataService d, {
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> auditDocs = const [],
+    String? error,
+  }) {
+    final entries = <Widget>[];
+    if (error != null) {
+      entries.add(Padding(
+        padding: const EdgeInsets.all(12),
+        child: AppText(error, style: const TextStyle(color: Colors.red)),
+      ));
+    }
+    for (final doc in auditDocs) {
+      final x = doc.data();
+      final operation = '${x['operation'] ?? 'عملية'}';
+      final target = '${x['targetId'] ?? doc.id}';
+      final actor = '${x['actorId'] ?? 'غير محدد'}';
+      final rawTime = x['timestamp'];
+      final timestamp = rawTime is Timestamp
+          ? rawTime.toDate()
+          : DateTime.tryParse('${x['createdAt'] ?? ''}');
+      entries.add(Card(child: ListTile(
+        leading: const Icon(Icons.cloud_done_outlined),
+        title: AppText(operation, style: const TextStyle(fontWeight: FontWeight.w800)),
+        subtitle: AppText('العنصر: $target • المنفذ: $actor'),
+        trailing: AppText(timestamp == null ? '—' : DateFormat('dd/MM HH:mm').format(timestamp)),
+      )));
+    }
+    for (final a in d.activities) {
+      entries.add(Card(child: ListTile(
+        leading: StatusDot(level: a.level),
+        title: AppText(a.title, style: const TextStyle(fontWeight: FontWeight.w800)),
+        subtitle: AppText(a.detail),
+        trailing: AppText(DateFormat('dd/MM HH:mm').format(
+          DateTime.tryParse(a.createdAt) ?? DateTime.now())),
+      )));
+    }
+    if (entries.isEmpty) {
+      return const Center(child: Padding(
+        padding: EdgeInsets.all(24),
+        child: AppText('لا توجد أنشطة مسجلة حتى الآن. ستظهر هنا عمليات التدقيق السحابية والأنشطة المحفوظة على الجهاز.'),
+      ));
+    }
+    return ListView(padding: const EdgeInsets.all(12), children: entries);
   }
 }
 
