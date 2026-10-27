@@ -42,13 +42,14 @@ class DataService extends ChangeNotifier {
       if (online) {
         unawaited(sync());
         unawaited(refreshOperations());
-      unawaited(refreshSosInbox());
+        unawaited(refreshSosInbox());
       }
     });
     notifyListeners();
     if (online) {
       unawaited(sync());
       unawaited(refreshOperations());
+      unawaited(refreshSosInbox());
     }
   }
 
