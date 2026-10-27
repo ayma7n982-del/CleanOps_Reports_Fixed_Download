@@ -519,15 +519,41 @@ class OperationsAdminService {
     await batch.commit();
   }
 
+  Future<void> _requireManagedGroup(String groupId, String actorId) async {
+    if (groupId.trim().isEmpty) throw StateError('يجب اختيار مجموعة صالحة.');
+    final group = await _operations.doc(groupId.trim()).get(const GetOptions(source: Source.server));
+    if (!group.exists || group.data()?['_entity'] != 'group' ||
+        group.data()?['isDeleted'] == true ||
+        group.data()?['municipalityCoordinatorId'] != actorId) {
+      throw StateError('المجموعة غير موجودة أو لا تتبع بلديتك.');
+    }
+  }
+
+  void _requireOwnWorker(Map<String, dynamic>? data, String actorId) {
+    if (data == null || data['role'] != 'worker' ||
+        data['municipalityCoordinatorId'] != actorId ||
+        data['isActive'] == false) {
+      throw StateError('العامل غير نشط أو لا يتبع بلديتك.');
+    }
+  }
+
   Future<void> transferWorker({
     required String userId,
     required String toGroupId,
     required String toCycleId,
     required String actorId,
   }) async {
+    if (FirebaseAuth.instance.currentUser?.uid != actorId) {
+      throw StateError('انتهت الجلسة أو لا تملك صلاحية النقل.');
+    }
+    await _requireManagedGroup(toGroupId, actorId);
+    final cycle = await _cycles.doc(toCycleId).get(const GetOptions(source: Source.server));
+    if (!cycle.exists || cycle.data()?['status'] != 'active') {
+      throw StateError('دورة العمل الجديدة غير نشطة.');
+    }
     final ref = _users.doc(userId);
-    final snap = await ref.get();
-    if (!snap.exists || snap.data()?['role'] != 'worker') throw StateError('Worker account not found.');
+    final snap = await ref.get(const GetOptions(source: Source.server));
+    _requireOwnWorker(snap.data(), actorId);
     await ref.update({
       'groupId': toGroupId,
       'cycleId': toCycleId,
@@ -541,14 +567,23 @@ class OperationsAdminService {
     required String secondUserId,
     required String actorId,
   }) async {
+    if (firstUserId == secondUserId) throw StateError('اختر عاملين مختلفين.');
+    if (FirebaseAuth.instance.currentUser?.uid != actorId) {
+      throw StateError('انتهت الجلسة أو لا تملك صلاحية التبديل.');
+    }
     final aRef = _users.doc(firstUserId);
     final bRef = _users.doc(secondUserId);
+    final workerA = await aRef.get(const GetOptions(source: Source.server));
+    final workerB = await bRef.get(const GetOptions(source: Source.server));
+    _requireOwnWorker(workerA.data(), actorId);
+    _requireOwnWorker(workerB.data(), actorId);
+    await _requireManagedGroup('${workerA.data()?['groupId'] ?? ''}', actorId);
+    await _requireManagedGroup('${workerB.data()?['groupId'] ?? ''}', actorId);
     final results = await firestore.runTransaction((tx) async {
       final a = await tx.get(aRef);
       final b = await tx.get(bRef);
-      if (!a.exists || !b.exists || a.data()?['role'] != 'worker' || b.data()?['role'] != 'worker') {
-        throw StateError('Both selected accounts must be workers.');
-      }
+      _requireOwnWorker(a.data(), actorId);
+      _requireOwnWorker(b.data(), actorId);
       final ag = a.data()?['groupId'];
       final bg = b.data()?['groupId'];
       tx.update(aRef, {'groupId': bg, 'updatedBy': actorId, 'updatedAt': FieldValue.serverTimestamp()});
