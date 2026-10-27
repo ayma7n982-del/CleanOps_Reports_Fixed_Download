@@ -238,10 +238,6 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: AppText('أدخل كمية صحيحة أكبر من صفر.')));
       return;
     }
-    if (u.municipalityCoordinatorId == null || u.municipalityCoordinatorId!.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: AppText('حساب منسق البلدية غير مرتبط بالمجموعة. يرجى تصحيح الربط قبل إرسال SOS.')));
-      return;
-    }
     if (street.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: AppText('أدخل موقع أو شارع جمع النفايات.')));
       return;
