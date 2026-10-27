@@ -174,7 +174,8 @@ class ContainerService extends ChangeNotifier {
 
   Future<void> createContainer({required String locationName, required double latitude, required double longitude, required String municipalityId, String groupId = ''}) async {
     final u = _user;
-    if (u == null || u.role != 'jsc_coordinator') throw StateError('ليس لديك صلاحية إنشاء الحاويات.');
+    if (u == null || (u.role != 'jsc_coordinator' && u.role != 'group_supervisor')) throw StateError('ليس لديك صلاحية إنشاء الحاويات.');
+    if (u.role == 'group_supervisor' && (u.groupId == null || u.groupId!.isEmpty || groupId != u.groupId || municipalityId != u.municipalityCoordinatorId)) throw StateError('يمكنك إنشاء حاويات مجموعتك وبلديتك فقط.');
     if (locationName.trim().isEmpty) throw ArgumentError('اسم موقع الحاوية مطلوب.');
     if (latitude.abs() > 90 || longitude.abs() > 180) throw ArgumentError('إحداثيات GPS غير صحيحة.');
     final now = DateTime.now().toIso8601String();
@@ -187,7 +188,10 @@ class ContainerService extends ChangeNotifier {
 
   Future<void> updateContainer(ContainerItem item, {String? locationName, double? latitude, double? longitude, String? groupId}) async {
     final u = _user;
-    if (u == null || u.role != 'jsc_coordinator') throw StateError('ليس لديك صلاحية تعديل الحاويات.');
+    if (u == null || (u.role != 'jsc_coordinator' && u.role != 'group_supervisor')) throw StateError('ليس لديك صلاحية تعديل الحاويات.');
+    if (u.role == 'group_supervisor' && (u.groupId == null || u.groupId!.isEmpty || item.groupId != u.groupId || (groupId != null && groupId != item.groupId))) throw StateError('يمكنك تعديل مواقع حاويات مجموعتك فقط.');
+    if ((locationName ?? item.locationName).trim().isEmpty) throw ArgumentError('اسم الموقع مطلوب.');
+    if ((latitude ?? item.latitude).abs() > 90 || (longitude ?? item.longitude).abs() > 180) throw ArgumentError('إحداثيات GPS غير صحيحة.');
     final next = item.copyWith(locationName: locationName, latitude: latitude, longitude: longitude, groupId: groupId, updatedAt: DateTime.now().toIso8601String(), updatedBy: u.id);
     await _saveLocal(next);
     await data.enqueue('container', 'update', next.toMap());
