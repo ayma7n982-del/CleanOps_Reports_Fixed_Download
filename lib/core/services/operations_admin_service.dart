@@ -564,6 +564,12 @@ class OperationsAdminService {
       'updatedBy': actorId,
       'updatedAt': FieldValue.serverTimestamp(),
     });
+    final confirmed = await ref.get(const GetOptions(source: Source.server));
+    if (!confirmed.exists ||
+        confirmed.data()?['groupId'] != toGroupId ||
+        confirmed.data()?['cycleId'] != toCycleId) {
+      throw StateError('لم يتم تأكيد نقل العامل على خادم Firebase. تحقق من بيانات العامل قبل إعادة المحاولة.');
+    }
   }
 
   Future<void> swapWorkers({
