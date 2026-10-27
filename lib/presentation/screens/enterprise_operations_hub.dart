@@ -139,10 +139,10 @@ class _GlobalSearchPageState extends State<GlobalSearchPage> {
 
     Future<void> scan(String collection, String label) async {
       try {
-        Query<Map<String, dynamic>> query = db.collection(collection).limit(150);
+        Query<Map<String, dynamic>> query = db.collection(collection).limit(500);
         if (collection == 'users') {
           if (actor.role == 'municipality_coordinator') {
-            query = db.collection(collection).where('municipalityCoordinatorId', isEqualTo: actor.id).limit(150);
+            query = db.collection(collection).where('municipalityCoordinatorId', isEqualTo: actor.id).limit(500);
           } else if (actor.role != 'donor_manager' && actor.role != 'jsc_coordinator') {
             return;
           }
@@ -160,7 +160,7 @@ class _GlobalSearchPageState extends State<GlobalSearchPage> {
         }
         for (final d in docs) {
           final raw = _normalize(d.values.map((v) => '$v').join(' '));
-          if (_partialMatch(raw, q)) {
+          if (_partialMatch('$label ${d['_entity'] ?? ''} $raw', q)) {
             var resultLabel = label;
             if (collection == 'operations') {
               resultLabel = switch ('${d['_entity'] ?? ''}') {
@@ -255,6 +255,7 @@ class _GlobalSearchPageState extends State<GlobalSearchPage> {
       for (final candidate in options) {
         final normalized = _normalize(candidate);
         if (normalized.isEmpty || text.contains(normalized)) return true;
+         if (term.length <= 2 && words.any((word) => word.startsWith(term))) return true;
         for (final word in words) {
           if (word.length < 3 || normalized.length < 3) continue;
           final limit = normalized.length >= 7 ? 2 : 1;
@@ -293,7 +294,7 @@ class _GlobalSearchPageState extends State<GlobalSearchPage> {
               child: AiGlassCard(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 child: ListTile(
-                  onTap: () => _openResult(r),
+                  onTap: () => _showResultDetails(r),
                   leading: AiFeatureIcon(r.label == 'مستخدم' ? 'users' : r.label == 'حاوية' ? 'containers' : r.label == 'معدة' ? 'operations' : r.label == 'مكب' || r.label == 'بلدية' ? 'dumpsite' : r.label == 'دورة' ? 'cycle' : 'operations', size: 20),
                   title: AppText(r.title, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800)),
                   subtitle: AppText('${r.label} • ${r.id}', style: const TextStyle(fontSize: 11, color: cleanOpsMuted)),
@@ -301,6 +302,38 @@ class _GlobalSearchPageState extends State<GlobalSearchPage> {
                 ),
               ),
             ),
+        ],
+      ),
+    );
+  }
+
+  void _showResultDetails(_SearchResult result) {
+    final fields = result.data.entries
+        .where((entry) => !entry.key.startsWith('_') && entry.value != null)
+        .map((entry) => '${entry.key}: ${entry.value}')
+        .join('\\n');
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: AppText(result.title),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: SingleChildScrollView(
+            child: SelectableText(fields.isEmpty ? result.id : fields),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const AppText('إغلاق'),
+          ),
+          FilledButton(
+            onPressed: () {
+              Navigator.pop(dialogContext);
+              _openResult(result);
+            },
+            child: const AppText('فتح القسم'),
+          ),
         ],
       ),
     );
