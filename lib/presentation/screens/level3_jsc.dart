@@ -141,8 +141,11 @@ class _Level3JscState extends State<Level3JscScreen> {
     noteController.dispose();
     if (note == null || note.isEmpty || !mounted) return;
     try {
+      final recordRef = FirebaseFirestore.instance.collection('operations').doc(id);
+      final existing = (await recordRef.get()).data();
+      if (existing?['acknowledged'] != true) return;
       final now = DateTime.now().toIso8601String();
-      await FirebaseFirestore.instance.collection('operations').doc(id).update({
+      await recordRef.update({
         'status': 'closed',
         'acknowledged': true,
         'closedBy': user.id,
