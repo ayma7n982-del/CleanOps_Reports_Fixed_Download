@@ -25,6 +25,7 @@ class DataService extends ChangeNotifier {
   bool online = false, syncing = false;
   String lastSync = 'لم تتم المزامنة بعد';
   StreamSubscription<List<ConnectivityResult>>? connectivitySub;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? sosNotificationSub;
 
   DataService(this.store, this.config);
 
@@ -46,6 +47,13 @@ class DataService extends ChangeNotifier {
       }
     });
     notifyListeners();
+    if (Firebase.apps.isNotEmpty) {
+      sosNotificationSub = FirebaseFirestore.instance.collection('operations')
+          .where('_entity', isEqualTo: 'notification').snapshots().listen(
+        (_) => unawaited(refreshSosInbox()),
+        onError: (Object error) => debugPrint('SOS notification listener failed: $error'),
+      );
+    }
     if (online) {
       unawaited(sync());
       unawaited(refreshOperations());
@@ -56,6 +64,7 @@ class DataService extends ChangeNotifier {
   @override
   void dispose() {
     connectivitySub?.cancel();
+    sosNotificationSub?.cancel();
     super.dispose();
   }
 
