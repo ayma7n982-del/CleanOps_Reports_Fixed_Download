@@ -289,7 +289,7 @@ class _Level3JscState extends State<Level3JscScreen> {
                                     spacing: 6,
                                     children: [
                                       if (e['acknowledged'] != true && '${e['status']}' == 'urgent') OutlinedButton.icon(onPressed: () => _acknowledgeEmergency(id), icon: const Icon(Icons.check_circle_outline), label: const AppText('تأكيد الاستلام')),
-                                      if (e['acknowledged'] == true && e['status'] != 'closed') FilledButton(onPressed: () => _closeSos(id), child: const AppText('إغلاق SOS')),
+                                      if (e['acknowledged'] == true && ['acknowledged', 'resolved'].contains(e['status'])) FilledButton(onPressed: () => _closeSos(id), child: const AppText('إغلاق SOS')),
                                       if (!secured) OutlinedButton.icon(onPressed: () => _referEmergency(id), icon: const Icon(Icons.forward), label: const AppText('إحالة')),
                                       if (secured) OutlinedButton.icon(onPressed: () => _reopenStreet(id), icon: const Icon(Icons.lock_open), label: const AppText('إعادة فتح')),
                                     ],
