@@ -45,14 +45,24 @@ class _EquipmentSearchScreenState extends State<EquipmentSearchScreen> {
     }
   }
 
+  // Normalize Arabic spelling and diacritics for incremental search.
+  String _normalize(String value) => value
+      .toLowerCase()
+      .replaceAll(RegExp(r'[\u064B-\u065F\u0670\u0640]'), '')
+      .replaceAll(RegExp(r'[أإآٱ]'), 'ا')
+      .replaceAll('ى', 'ي')
+      .replaceAll('ة', 'ه')
+      .replaceAll(RegExp(r'[^\u0621-\u064A\u0660-\u0669a-z0-9]+'), ' ')
+      .trim();
+
   bool _matches(Map<String, dynamic> x) {
-    final q = search.text.trim().toLowerCase();
+    final q = _normalize(search.text);
     final status = '${x['status'] ?? x['machineStatus'] ?? ''}'.toLowerCase();
     if (filter != 'all' && status != filter) return false;
     if (q.isEmpty) return true;
     final hay = [x['name'], x['machine'], x['equipmentName'], x['type'], x['model'], x['plateNumber'], x['municipality'], x['municipalityName'], x['groupName'], x['status'], x['notes'], x['location']]
-        .map((v) => '$v'.toLowerCase()).join(' ');
-    return hay.contains(q);
+        .map((v) => _normalize('$v')).join(' ');
+    return hay.contains(q) || q.split(' ').every((word) => word.isNotEmpty && hay.contains(word));
   }
 
   @override Widget build(BuildContext context) {
