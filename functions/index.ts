@@ -873,3 +873,69 @@ function generatePassword(): string {
   const bytes = randomBytes(12);
   return Array.from(bytes, (b: number) => alphabet[b % alphabet.length]).join('');
 }
+
+
+export const redirectCartAssignment = onCall({ region: 'us-central1' }, async (request) => {
+  const uid = request.auth?.uid;
+  if (!uid) throw new HttpsError('unauthenticated', 'Sign in first.');
+  const actor = await requireActor(uid);
+  if (actor.role !== 'municipality_coordinator') {
+    throw new HttpsError('permission-denied', 'Municipality coordinator required.');
+  }
+  const input = (request.data ?? {}) as Record<string, unknown>;
+  const cartId = String(input.cartId ?? '').trim();
+  const fromGroupId = String(input.fromGroupId ?? '').trim();
+  const toGroupId = String(input.toGroupId ?? '').trim();
+  const cartCollection = String(input.cartCollection ?? '').trim();
+  const requestId = String(input.requestId ?? '').trim();
+  if (!cartId || !fromGroupId || !toGroupId || fromGroupId === toGroupId ||
+      !['equipment', 'operations'].includes(cartCollection) || !requestId ||
+      !/^[a-zA-Z0-9_-]{1,128}$/.test(requestId)) {
+    throw new HttpsError('invalid-argument', 'Invalid cart redirect selection.');
+  }
+  const cartRef = db.collection(cartCollection).doc(cartId);
+  const fromRef = db.collection('operations').doc(fromGroupId);
+  const toRef = db.collection('operations').doc(toGroupId);
+  const logRef = db.collection('operations').doc(requestId);
+  return db.runTransaction(async (tx) => {
+    const [cartSnap, fromSnap, toSnap, existing] = await Promise.all([
+      tx.get(cartRef), tx.get(fromRef), tx.get(toRef), tx.get(logRef),
+    ]);
+    if (existing.exists) {
+      const log = existing.data() ?? {};
+      if (log._entity === 'cart_redirect' && log.requestedBy === uid &&
+          log.cartId === cartId && log.fromGroupId === fromGroupId &&
+          log.toGroupId === toGroupId && log.cartCollection === cartCollection) {
+        return { success: true, alreadyApplied: true };
+      }
+      throw new HttpsError('already-exists', 'Request ID already used.');
+    }
+    const cart = cartSnap.data();
+    const from = fromSnap.data();
+    const to = toSnap.data();
+    if (!cart || !from || !to || from._entity !== 'group' || to._entity !== 'group' ||
+        from.isDeleted === true || to.isDeleted === true ||
+        from.municipalityCoordinatorId !== uid || to.municipalityCoordinatorId !== uid ||
+        cart.municipalityCoordinatorId !== uid || cart.isDeleted === true) {
+      throw new HttpsError('permission-denied', 'Records are missing or outside municipality.');
+    }
+    if (cartCollection === 'operations' && !['cart', 'equipment', 'heavy_machinery'].includes(String(cart._entity))) {
+      throw new HttpsError('invalid-argument', 'Not a cart record.');
+    }
+    const kind = [cart.type, cart.category, cart.name, cart.machine].map(v => String(v ?? '').toLowerCase());
+    if (!kind.some(v => v.includes('كارة') || v.includes('cart'))) {
+      throw new HttpsError('invalid-argument', 'Selected equipment is not a cart.');
+    }
+    if (String(cart.groupId ?? '') !== fromGroupId) {
+      throw new HttpsError('failed-precondition', 'Cart is no longer assigned to the source group.');
+    }
+    tx.update(cartRef, { groupId: toGroupId, updatedAt: FieldValue.serverTimestamp(), updatedBy: uid });
+    tx.create(logRef, {
+      id: requestId, _entity: 'cart_redirect', cartId, cartCollection,
+      cartEntity: cartCollection === 'equipment' ? 'equipment' : String(cart._entity),
+      fromGroupId, toGroupId, municipalityCoordinatorId: uid, requestedBy: uid,
+      status: 'applied', createdAt: FieldValue.serverTimestamp(),
+    });
+    return { success: true, alreadyApplied: false };
+  });
+});
