@@ -541,6 +541,33 @@ class OperationsAdminService {
     }
   }
 
+  Future<void> updateWorkerDetails({
+    required String userId,
+    required String name,
+    required String phone,
+    required String actorId,
+  }) async {
+    if (FirebaseAuth.instance.currentUser?.uid != actorId) {
+      throw StateError('انتهت الجلسة أو لا تملك صلاحية تعديل العامل.');
+    }
+    final cleanName = name.trim();
+    final cleanPhone = phone.trim();
+    if (cleanName.isEmpty) throw ArgumentError('اسم العامل مطلوب.');
+    final ref = _users.doc(userId);
+    final before = await ref.get(const GetOptions(source: Source.server));
+    _requireOwnWorker(before.data(), actorId);
+    await ref.update({
+      'name': cleanName,
+      'phone': cleanPhone,
+      'updatedBy': actorId,
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+    final after = await ref.get(const GetOptions(source: Source.server));
+    if (after.data()?['name'] != cleanName || after.data()?['phone'] != cleanPhone) {
+      throw StateError('تعذر تأكيد تعديل بيانات العامل على Firebase.');
+    }
+  }
+
   Future<void> transferWorker({
     required String userId,
     required String toGroupId,
