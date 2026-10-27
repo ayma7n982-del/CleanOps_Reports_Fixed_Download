@@ -1,0 +1,44 @@
+name: Validate and deploy user deletion function
+
+on:
+  workflow_dispatch:
+    inputs:
+      deploy:
+        description: 'Deploy deleteManagedUser to Firebase after build'
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  validate-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+      - name: Install function dependencies
+        working-directory: functions
+        run: npm install --no-audit --no-fund
+      - name: TypeScript build
+        working-directory: functions
+        run: npm run build
+      - name: Deploy only user deletion function
+        if: ${{ inputs.deploy }}
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          if [ -z "$FIREBASE_SERVICE_ACCOUNT" ]; then
+            echo "::error::Set FIREBASE_SERVICE_ACCOUNT repository secret before deployment."
+            exit 1
+          fi
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$RUNNER_TEMP/firebase-service-account.json"
+          chmod 600 "$RUNNER_TEMP/firebase-service-account.json"
+          export GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/firebase-service-account.json"
+          npx --yes firebase-tools deploy --only functions:deleteManagedUser --project "$(node -p "JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT).project_id")" --non-interactive
+          rm -f "$RUNNER_TEMP/firebase-service-account.json"
