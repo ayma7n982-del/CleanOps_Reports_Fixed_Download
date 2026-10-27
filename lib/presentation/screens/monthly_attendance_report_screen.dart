@@ -27,6 +27,7 @@ class MonthlyAttendanceReportScreen extends StatefulWidget {
 class _MonthlyAttendanceReportScreenState extends State<MonthlyAttendanceReportScreen> {
   DateTime month = DateTime(DateTime.now().year, DateTime.now().month);
   String exportLanguage = 'ar';
+  String periodMode = 'month';
   bool exporting = false;
   List<Map<String, dynamic>> roster = [];
 
@@ -72,11 +73,13 @@ class _MonthlyAttendanceReportScreenState extends State<MonthlyAttendanceReportS
     final currentUser = context.watch<AuthService>().currentUser;
     final daysInMonth = DateUtils.getDaysInMonth(month.year, month.month);
     final first = DateTime(month.year, month.month, 1);
+    final startDay = periodMode == 'second' ? 16 : 1;
+    final endDay = periodMode == 'first' ? 15 : daysInMonth;
     final records = data.operations.where((e) {
       if (e['_entity'] != 'attendance' || e['isDeleted'] == true || !_canViewAttendance(e, currentUser)) return false;
       final raw = e['createdAt'] ?? e['date'] ?? e['timestamp'];
       final date = raw is DateTime ? raw : raw is Timestamp ? raw.toDate() : DateTime.tryParse('$raw');
-      return date != null && date.year == month.year && date.month == month.month;
+      return date != null && date.year == month.year && date.month == month.month && date.day >= startDay && date.day <= endDay;
     }).toList();
 
     final names = <String>{};
@@ -134,6 +137,19 @@ class _MonthlyAttendanceReportScreenState extends State<MonthlyAttendanceReportS
               _summaryTile('نسبة الحضور / Attendance', '${attendanceRate.toStringAsFixed(1)}%', Colors.teal),
             ]),
           ),
+          Padding(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4), child: Wrap(spacing: 10, crossAxisAlignment: WrapCrossAlignment.center, children: [
+            const Text('نوع التقرير / Report period'),
+            DropdownButton<String>(
+              value: periodMode,
+              items: const [
+                DropdownMenuItem(value: 'month', child: Text('شهري / Monthly')),
+                DropdownMenuItem(value: 'first', child: Text('نصف شهري 1–15')),
+                DropdownMenuItem(value: 'second', child: Text('نصف شهري 16–النهاية')),
+              ],
+              onChanged: (value) { if (value != null) setState(() => periodMode = value); },
+            ),
+            Text('${month.year}-${month.month.toString().padLeft(2, '0')} | $startDay–$endDay'),
+          ])),
           Padding(padding: const EdgeInsets.symmetric(horizontal: 12), child: Row(children: [
             _legend('حضور', Colors.green), const SizedBox(width: 12), _legend('غياب', Colors.red), const SizedBox(width: 12), _legend('لا يوجد تسجيل', Colors.grey),
           ])),
@@ -156,7 +172,7 @@ class _MonthlyAttendanceReportScreenState extends State<MonthlyAttendanceReportS
                       horizontalMargin: 8,
                       columns: [
                         const DataColumn(label: SizedBox(width: 150, child: Text('العامل / المشرف'))),
-                        for (var day = 1; day <= daysInMonth; day++)
+                        for (var day = startDay; day <= endDay; day++)
                           DataColumn(label: SizedBox(width: 42, child: Column(mainAxisSize: MainAxisSize.min, children: [
                             Text(_weekday(DateTime(month.year, month.month, day), arabic), style: const TextStyle(fontSize: 9)),
                             Text('$day', style: const TextStyle(fontWeight: FontWeight.w800)),
@@ -240,7 +256,7 @@ class _MonthlyAttendanceReportScreenState extends State<MonthlyAttendanceReportS
     final projectLabel = english ? 'Project / cycle' : 'المشروع / الدورة';
     final headers = <pw.Widget>[
       pw.Container(width: 90, padding: const pw.EdgeInsets.all(3), child: pw.Text(english ? 'Worker / Supervisor' : 'العامل / المشرف', style: pw.TextStyle(font: bold, fontSize: 6))),
-      for (var d = 1; d <= daysInMonth; d++) pw.Container(width: 22, padding: const pw.EdgeInsets.all(1), child: pw.Column(children: [pw.Text(_weekday(DateTime(month.year, month.month, d), !english), style: pw.TextStyle(font: regular, fontSize: 5)), pw.Text('$d', style: pw.TextStyle(font: bold, fontSize: 6))])),
+      for (var d = (periodMode == 'second' ? 16 : 1); d <= (periodMode == 'first' ? 15 : daysInMonth); d++) pw.Container(width: 22, padding: const pw.EdgeInsets.all(1), child: pw.Column(children: [pw.Text(_weekday(DateTime(month.year, month.month, d), !english), style: pw.TextStyle(font: regular, fontSize: 5)), pw.Text('$d', style: pw.TextStyle(font: bold, fontSize: 6))])),
     ];
     final rows = <pw.TableRow>[pw.TableRow(children: headers), for (final name in names) pw.TableRow(children: [
       pw.Container(width: 90, padding: const pw.EdgeInsets.all(3), child: pw.Text(name, style: pw.TextStyle(font: regular, fontSize: 6))),
@@ -258,11 +274,11 @@ class _MonthlyAttendanceReportScreenState extends State<MonthlyAttendanceReportS
     doc.addPage(pw.MultiPage(pageFormat: PdfPageFormat.a3.landscape, margin: const pw.EdgeInsets.all(22), theme: pw.ThemeData.withFont(base: regular, bold: bold), build: (_) => [
       pw.Row(children: [if (municipalityLogo != null) pw.Container(width: 32,height:32,child:pw.Image(municipalityLogo)), if (councilLogo != null) pw.Padding(padding: const pw.EdgeInsets.only(left:3),child:pw.Container(width:32,height:32,child:pw.Image(councilLogo))), if (unicefLogo != null) pw.Padding(padding: const pw.EdgeInsets.only(left:3),child:pw.Container(width:32,height:32,child:pw.Image(unicefLogo))), pw.SizedBox(width:8), pw.Expanded(child:pw.Column(crossAxisAlignment:pw.CrossAxisAlignment.start,children:[if(municipalityName.isNotEmpty) pw.Text(municipalityName,style:pw.TextStyle(font:bold,fontSize:9)),if(councilName.isNotEmpty) pw.Text(councilName,style:pw.TextStyle(font:bold,fontSize:9)),if(projectName.isNotEmpty) pw.Text('$projectLabel: $projectName',style:pw.TextStyle(font:regular,fontSize:7)),pw.Text(english ? 'UNICEF' : 'اليونيسف (UNICEF)',style:pw.TextStyle(font:bold,fontSize:8))]))]),
       pw.SizedBox(height: 6),
-      pw.Text(english ? 'Monthly Attendance Calendar' : 'التقرير الشهري التقويمي للحضور', style: pw.TextStyle(font: bold, fontSize: 14)),
+      pw.Text(english ? (periodMode == 'month' ? 'Monthly Attendance Calendar' : 'Semi-Monthly Attendance Calendar') : (periodMode == 'month' ? 'التقرير الشهري التقويمي للحضور' : 'تقرير الحضور والغياب لنصف شهر'), style: pw.TextStyle(font: bold, fontSize: 14)),
       pw.SizedBox(height: 4),
-      pw.Text(_monthLabel(!english), style: pw.TextStyle(font: regular, fontSize: 9)),
+      pw.Text('${_monthLabel(!english)} • ${periodMode == 'second' ? 16 : 1}–${periodMode == 'first' ? 15 : daysInMonth}', style: pw.TextStyle(font: regular, fontSize: 9)),
       pw.SizedBox(height: 10),
-      pw.Directionality(textDirection: english ? pw.TextDirection.ltr : pw.TextDirection.rtl, child: pw.Table(border: pw.TableBorder.all(color: PdfColors.grey400, width: .35), columnWidths: {0: const pw.FixedColumnWidth(90), for (var d=1; d<=daysInMonth; d++) d: const pw.FixedColumnWidth(22)}, children: rows)),
+      pw.Directionality(textDirection: english ? pw.TextDirection.ltr : pw.TextDirection.rtl, child: pw.Table(border: pw.TableBorder.all(color: PdfColors.grey400, width: .35), columnWidths: {0: const pw.FixedColumnWidth(90), for (var d=(periodMode == 'second' ? 16 : 1); d<=(periodMode == 'first' ? 15 : daysInMonth); d++) d: const pw.FixedColumnWidth(22)}, children: rows)),
       pw.SizedBox(height: 8), pw.Text(english ? 'Present: ✓   Absent: ×   Excused: E   Unexcused: U   No entry: —' : 'حضور: ✓   غياب: ×   بعذر: م   دون عذر: غ   لا يوجد تسجيل: —', style: pw.TextStyle(font: regular, fontSize: 7)),
     ]));
     return Uint8List.fromList(await doc.save());
@@ -275,7 +291,7 @@ class _MonthlyAttendanceReportScreenState extends State<MonthlyAttendanceReportS
   }
   Future<void> _exportPdf(List<String> names, Map<String, String> statuses, int days) async {
     setState(() => exporting = true);
-    try { final bytes = await _pdfBytes(names, statuses, days); final path = await savePdfBytes(bytes, 'monthly_attendance_${month.year}_${month.month.toString().padLeft(2,'0')}_$exportLanguage.pdf'); if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: AppText(path == null ? 'تعذر حفظ PDF' : 'تم إنشاء PDF: $path'))); }
+    try { final bytes = await _pdfBytes(names, statuses, days); final path = await savePdfBytes(bytes, '${periodMode}_attendance_${month.year}_${month.month.toString().padLeft(2,'0')}_$exportLanguage.pdf'); if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: AppText(path == null ? 'تعذر حفظ PDF' : 'تم إنشاء PDF: $path'))); }
     catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: AppText('تعذر تصدير التقرير: $e'))); }
     finally { if (mounted) setState(() => exporting = false); }
   }
