@@ -587,8 +587,8 @@ class _WorkforceTabState extends State<_WorkforceTab> {
     return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
       stream: svc.activeCycles(),
       builder: (_, cs) {
-        final cycles = cs.data?.docs ?? [];
-        if (cycles.isNotEmpty && cycleId.isEmpty) {
+        final cycles = (cs.data?.docs ?? []).where((cycle) => cycle.data()['status'] == 'active').toList();
+        if (cycles.isNotEmpty && !cycles.any((cycle) => cycle.id == cycleId)) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (mounted) setState(() => cycleId = cycles.first.id);
           });
@@ -683,8 +683,9 @@ class _WorkforceTabState extends State<_WorkforceTab> {
               StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
                 stream: svc.cycleUsers(cycleId, actorId: u.id),
                 builder: (_, snap) {
+                  if (snap.hasError) return Card(child: Padding(padding: const EdgeInsets.all(16), child: AppText('تعذر تحميل عمال ومشرفي البلدية: ${snap.error}')));
                   if (!snap.hasData) return const Center(child: CircularProgressIndicator());
-                  final docs = snap.data!.docs;
+                  final docs = snap.data!.docs.where((d) => d.data()['municipalityCoordinatorId'] == u.id && (d.data()['role'] == 'worker' || d.data()['role'] == 'group_supervisor')).toList();
                   return AiSectionCard(
                     title: 'مستخدمو الدورة',
                     subtitle: 'Active / Frozen / Deactivated',
