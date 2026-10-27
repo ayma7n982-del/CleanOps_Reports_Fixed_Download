@@ -311,6 +311,7 @@ service cloud.firestore {
       return isL2OrL3()
         && userDoc().isActive != false
         && resource.data._entity == 'emergency'
+        && (isL3() || resource.data.municipalityCoordinatorId == request.auth.uid)
         && request.resource.data._entity == 'emergency'
         && resource.data.status in ['urgent', 'acknowledged', 'resolved']
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
