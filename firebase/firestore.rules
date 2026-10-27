@@ -362,13 +362,20 @@ service cloud.firestore {
         && request.resource.data.cartId is string
         && request.resource.data.fromGroupId != request.resource.data.toGroupId
         && request.resource.data.cartEntity in ['cart', 'equipment', 'heavy_machinery']
+        && request.resource.data.cartCollection in ['operations', 'equipment']
         && groupManagedByL2(request.resource.data.fromGroupId)
         && groupManagedByL2(request.resource.data.toGroupId)
-        && exists(/databases/$(database)/documents/operations/$(request.resource.data.cartId))
-        && get(/databases/$(database)/documents/operations/$(request.resource.data.cartId)).data._entity == request.resource.data.cartEntity
-        && get(/databases/$(database)/documents/operations/$(request.resource.data.cartId)).data.municipalityCoordinatorId == request.auth.uid
-        && (!get(/databases/$(database)/documents/operations/$(request.resource.data.cartId)).data.keys().hasAny(['isDeleted'])
-            || get(/databases/$(database)/documents/operations/$(request.resource.data.cartId)).data.isDeleted != true);
+        && (
+          (request.resource.data.cartCollection == 'operations'
+            && exists(/databases/$(database)/documents/operations/$(request.resource.data.cartId))
+            && get(/databases/$(database)/documents/operations/$(request.resource.data.cartId)).data._entity == request.resource.data.cartEntity
+            && get(/databases/$(database)/documents/operations/$(request.resource.data.cartId)).data.municipalityCoordinatorId == request.auth.uid)
+          ||
+          (request.resource.data.cartCollection == 'equipment'
+            && request.resource.data.cartEntity == 'equipment'
+            && exists(/databases/$(database)/documents/equipment/$(request.resource.data.cartId))
+            && get(/databases/$(database)/documents/equipment/$(request.resource.data.cartId)).data.municipalityCoordinatorId == request.auth.uid)
+        );
     }
 
     match /operations/{id} {
