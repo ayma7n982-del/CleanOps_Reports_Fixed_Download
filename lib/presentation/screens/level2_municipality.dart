@@ -111,19 +111,97 @@ class _Level2MunicipalityScreenState extends State<Level2MunicipalityScreen> {
 
   Future<void> _redirect() async {
     final u = context.read<AuthService>().currentUser;
-    if (u == null || u.role != 'municipality_coordinator' || !u.can('workers', 'edit')) return;
-    final d = context.read<DataService>();
-    final id = DateTime.now().millisecondsSinceEpoch.toString();
-    await d.enqueue('cart_redirect', 'create', {
-      'id': id,
-      'fromGroup': 'مجموعة 01',
-      'toGroup': 'مجموعة 02',
-      'cart': 'الكارة 01',
-      'requestedBy': u.id,
-      'createdAt': DateTime.now().toIso8601String(),
-    });
-    await d.writeAudit(actorId: u.id, operation: 'REDIRECT_CART', targetId: id, after: {'from': 'مجموعة 01', 'to': 'مجموعة 02'});
-    if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: AppText('تم تسجيل إعادة توجيه الكارة في قائمة المزامنة.')));
+    if (u == null || u.role != 'municipality_coordinator' || !u.can('workers', 'edit')) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: AppText('لا تملك صلاحية إعادة التوجيه.')));
+      return;
+    }
+    final data = context.read<DataService>();
+    await data.refreshOperations();
+    if (!mounted) return;
+    // Only allow existing, municipality-owned records. Never fabricate a cart or group.
+    final records = data.operations.where((x) => x['isDeleted'] != true &&
+        '${x['municipalityCoordinatorId'] ?? ''}' == u.id).toList();
+    final groups = records.where((x) => x['_entity'] == 'group').toList();
+    final carts = records.where((x) => x['_entity'] == 'cart' ||
+        (x['_entity'] == 'equipment' && ('${x['type'] ?? x['category'] ?? ''}'.contains('كارة') ||
+            '${x['type'] ?? x['category'] ?? ''}'.toLowerCase() == 'cart'))).toList();
+    String? fromId, toId, cartId;
+    String recordId(Map<String, dynamic> x) => '${x['id'] ?? ''}';
+    String recordName(Map<String, dynamic> x) =>
+        '${x['name'] ?? x['groupName'] ?? x['number'] ?? x['id'] ?? ''}';
+    if (groups.length < 2 || carts.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: AppText('لا توجد مجموعتان وكارة مسجلة ضمن بيانات بلديتك. تحقق من السجلات والمزامنة.')));
+      return;
+    }
+    final approved = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(builder: (dialogContext, setDialogState) {
+        final availableDestinations = groups.where((g) => recordId(g) != fromId).toList();
+        return AlertDialog(
+          title: const AppText('إعادة توجيه كارة'),
+          content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
+            DropdownButtonFormField<String>(
+              value: cartId, isExpanded: true,
+              decoration: const InputDecoration(labelText: 'الكارة'),
+              items: carts.map((c) => DropdownMenuItem(value: recordId(c),
+                child: Text(recordName(c), overflow: TextOverflow.ellipsis))).toList(),
+              onChanged: (v) => setDialogState(() => cartId = v),
+            ),
+            DropdownButtonFormField<String>(
+              value: fromId, isExpanded: true,
+              decoration: const InputDecoration(labelText: 'من المجموعة'),
+              items: groups.map((g) => DropdownMenuItem(value: recordId(g),
+                child: Text(recordName(g), overflow: TextOverflow.ellipsis))).toList(),
+              onChanged: (v) => setDialogState(() {
+                fromId = v;
+                if (toId == v) toId = null;
+              }),
+            ),
+            DropdownButtonFormField<String>(
+              value: toId, isExpanded: true,
+              decoration: const InputDecoration(labelText: 'إلى المجموعة'),
+              items: availableDestinations.map((g) => DropdownMenuItem(value: recordId(g),
+                child: Text(recordName(g), overflow: TextOverflow.ellipsis))).toList(),
+              onChanged: fromId == null ? null : (v) => setDialogState(() => toId = v),
+            ),
+          ])),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const AppText('إلغاء')),
+            FilledButton(
+              onPressed: cartId != null && fromId != null && toId != null && fromId != toId
+                  ? () => Navigator.pop(dialogContext, true) : null,
+              child: const AppText('تسجيل إعادة التوجيه'),
+            ),
+          ],
+        );
+      }),
+    );
+    if (approved != true || !mounted) return;
+    final current = context.read<AuthService>().currentUser;
+    if (current == null || current.id != u.id || !current.can('workers', 'edit')) return;
+    // Validate selections again before enqueuing an offline-first operation.
+    if (!carts.any((c) => recordId(c) == cartId) ||
+        !groups.any((g) => recordId(g) == fromId) ||
+        !groups.any((g) => recordId(g) == toId) || fromId == toId) return;
+    try {
+      final id = DateTime.now().microsecondsSinceEpoch.toString();
+      final payload = <String, dynamic>{
+        'id': id, 'municipalityCoordinatorId': u.id,
+        'fromGroupId': fromId, 'toGroupId': toId, 'cartId': cartId,
+        'fromGroup': recordName(groups.firstWhere((g) => recordId(g) == fromId)),
+        'toGroup': recordName(groups.firstWhere((g) => recordId(g) == toId)),
+        'cart': recordName(carts.firstWhere((c) => recordId(c) == cartId)),
+        'requestedBy': u.id, 'createdAt': DateTime.now().toIso8601String(),
+      };
+      await data.enqueue('cart_redirect', 'create', payload);
+      await data.writeAudit(actorId: u.id, operation: 'REDIRECT_CART', targetId: id, after: payload);
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: AppText('تم حفظ إعادة التوجيه محلياً وإدراجها للمزامنة التلقائية.')));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('تعذر حفظ إعادة التوجيه: $e')));
+    }
   }
 
   @override
@@ -282,7 +360,7 @@ class _Level2MunicipalityScreenState extends State<Level2MunicipalityScreen> {
       AiSectionCard(title: 'إدارة العمال', subtitle: 'استيراد كشف العمال بذكاء من Excel أو CSV.', feature: 'workers', child: SmartExcelImportCard(onImport: _saveImportedRows)),
       const SizedBox(height: 12),
       CardSection2(title: 'إعادة توجيه الكارات', icon: const Icon(Icons.swap_horiz), child: Column(children: [
-        const ListTile(title: AppText('الكارة 01'), subtitle: AppText('من مجموعة 01 → مجموعة 02')),
+        const ListTile(title: AppText('اختيار الكارة والمجموعتين'), subtitle: AppText('من سجلات البلدية الفعلية، دون بيانات ثابتة')),
         FilledButton.icon(onPressed: _redirect, icon: const Icon(Icons.double_arrow), label: const AppText('تنفيذ إعادة التوجيه')),
       ])),
     ]),
