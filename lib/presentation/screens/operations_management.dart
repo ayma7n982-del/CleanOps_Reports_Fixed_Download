@@ -781,6 +781,12 @@ class _WorkforceTabState extends State<_WorkforceTab> {
                               ),
                               if (active && x['role'] == 'worker')
                                 IconButton(
+                                  tooltip: 'تعديل بيانات العامل',
+                                  onPressed: () => _editWorkerDialog(context, svc, u.id, d.id, x),
+                                  icon: const Icon(Icons.edit_outlined),
+                                ),
+                              if (active && x['role'] == 'worker')
+                                IconButton(
                                   tooltip: 'نقل العامل إلى مجموعة أخرى',
                                   onPressed: () => _transferDialog(context, svc, u.id, cycleId, workerId: d.id),
                                   icon: const Icon(Icons.drive_file_move_outline),
@@ -805,6 +811,49 @@ class _WorkforceTabState extends State<_WorkforceTab> {
         );
       },
     );
+  }
+
+  Future<void> _editWorkerDialog(BuildContext context, OperationsAdminService svc,
+      String actor, String workerId, Map<String, dynamic> details) async {
+    final name = TextEditingController(text: '${details['name'] ?? ''}');
+    final phone = TextEditingController(text: '${details['phone'] ?? ''}');
+    try {
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const AppText('تعديل بيانات العامل'),
+          content: SingleChildScrollView(
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              TextField(controller: name, decoration: const InputDecoration(labelText: 'اسم العامل')),
+              const SizedBox(height: 10),
+              TextField(controller: phone, keyboardType: TextInputType.phone,
+                  decoration: const InputDecoration(labelText: 'رقم الهاتف')),
+            ]),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(dialogContext), child: const AppText('إلغاء')),
+            FilledButton(
+              onPressed: () async {
+                try {
+                  await svc.updateWorkerDetails(userId: workerId, name: name.text,
+                      phone: phone.text, actorId: actor);
+                  if (dialogContext.mounted) Navigator.pop(dialogContext);
+                  if (mounted) ScaffoldMessenger.of(this.context).showSnackBar(
+                    const SnackBar(content: AppText('تم حفظ تعديل العامل على Firebase.')));
+                } catch (e) {
+                  if (dialogContext.mounted) ScaffoldMessenger.of(dialogContext).showSnackBar(
+                    SnackBar(content: Text('$e')));
+                }
+              },
+              child: const AppText('حفظ التعديل'),
+            ),
+          ],
+        ),
+      );
+    } finally {
+      name.dispose();
+      phone.dispose();
+    }
   }
 
   Future<void> _transferDialog(BuildContext context, OperationsAdminService svc, String actor, String cycle, {String? workerId}) async {
