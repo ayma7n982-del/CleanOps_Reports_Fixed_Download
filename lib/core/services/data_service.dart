@@ -25,6 +25,7 @@ class DataService extends ChangeNotifier {
   bool online = false, syncing = false;
   String lastSync = 'لم تتم المزامنة بعد';
   StreamSubscription<List<ConnectivityResult>>? connectivitySub;
+  Timer? automaticSyncTimer;
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? sosNotificationSub;
 
   DataService(this.store, this.config);
@@ -46,6 +47,12 @@ class DataService extends ChangeNotifier {
         unawaited(refreshSosInbox());
       }
     });
+    automaticSyncTimer = Timer.periodic(const Duration(seconds: 45), (_) async {
+      if (syncing || queue.isEmpty) return;
+      final connections = await Connectivity().checkConnectivity();
+      online = !connections.contains(ConnectivityResult.none);
+      if (online) unawaited(sync());
+    });
     notifyListeners();
     if (Firebase.apps.isNotEmpty) {
       sosNotificationSub = FirebaseFirestore.instance.collection('operations')
@@ -64,6 +71,7 @@ class DataService extends ChangeNotifier {
   @override
   void dispose() {
     connectivitySub?.cancel();
+    automaticSyncTimer?.cancel();
     sosNotificationSub?.cancel();
     super.dispose();
   }
