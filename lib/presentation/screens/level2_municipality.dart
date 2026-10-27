@@ -125,7 +125,23 @@ class _Level2MunicipalityScreenState extends State<Level2MunicipalityScreen> {
     final carts = records.where((x) =>
         (x['_entity'] == 'cart' || x['_entity'] == 'equipment' || x['_entity'] == 'heavy_machinery') &&
         ['${x['type'] ?? ''}', '${x['category'] ?? ''}', '${x['machine'] ?? ''}', '${x['name'] ?? ''}']
-            .any((value) => value.contains('كارة') || value.toLowerCase().contains('cart'))).toList();
+            .any((value) => value.contains('كارة') || value.toLowerCase().contains('cart')))
+        .map((x) => {...x, '_cartCollection': 'operations'}).toList();
+    if (data.online) {
+      try {
+        final equipment = await FirebaseFirestore.instance.collection('equipment').limit(1000).get();
+        for (final doc in equipment.docs) {
+          final x = doc.data();
+          if (x['isDeleted'] == true || '${x['municipalityCoordinatorId'] ?? ''}' != u.id) continue;
+          if (!['${x['type'] ?? ''}', '${x['category'] ?? ''}', '${x['name'] ?? ''}']
+              .any((v) => v.contains('كارة') || v.toLowerCase().contains('cart'))) continue;
+          carts.add({...x, 'id': doc.id, '_cartCollection': 'equipment', '_entity': 'equipment'});
+        }
+      } catch (e) {
+        debugPrint('Equipment cart lookup unavailable; using offline operations cache: $e');
+      }
+    }
+    if (!mounted) return;
     String? fromId, toId, cartId;
     String recordId(Map<String, dynamic> x) => '${x['id'] ?? ''}';
     String recordName(Map<String, dynamic> x) =>
@@ -191,6 +207,7 @@ class _Level2MunicipalityScreenState extends State<Level2MunicipalityScreen> {
         'id': id, 'municipalityCoordinatorId': u.id,
         'fromGroupId': fromId, 'toGroupId': toId, 'cartId': cartId,
         'cartEntity': carts.firstWhere((c) => recordId(c) == cartId)['_entity'],
+        'cartCollection': carts.firstWhere((c) => recordId(c) == cartId)['_cartCollection'],
         'fromGroup': recordName(groups.firstWhere((g) => recordId(g) == fromId)),
         'toGroup': recordName(groups.firstWhere((g) => recordId(g) == toId)),
         'cart': recordName(carts.firstWhere((c) => recordId(c) == cartId)),
