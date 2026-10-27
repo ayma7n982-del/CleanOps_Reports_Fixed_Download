@@ -346,6 +346,14 @@ class DataService extends ChangeNotifier {
               ...payload,
               'updatedAt': FieldValue.serverTimestamp(),
             }, SetOptions(merge: true));
+          } else if (item.entity == 'cart_redirect') {
+            await FirebaseFunctions.instance.httpsCallable('redirectCartAssignment').call(<String, dynamic>{
+              'requestId': docId,
+              'cartId': payload['cartId'],
+              'cartCollection': payload['cartCollection'],
+              'fromGroupId': payload['fromGroupId'],
+              'toGroupId': payload['toGroupId'],
+            });
           } else if (item.entity == 'attendance_checkout') {
             await FirebaseFunctions.instance.httpsCallable('recordAttendanceCheckout').call(<String, dynamic>{'attendanceId': docId});
           } else if (item.entity == 'work_report' || item.entity == 'report_approval') {
