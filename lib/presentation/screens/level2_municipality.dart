@@ -1,3 +1,4 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../core/localization.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -157,6 +158,55 @@ class _Level2MunicipalityScreenState extends State<Level2MunicipalityScreen> {
     );
   }
 
+  Future<void> _acknowledgeMunicipalitySos(String id) async {
+    final user = context.read<AuthService>().currentUser;
+    if (user == null || user.role != 'municipality_coordinator') return;
+    try {
+      final now = DateTime.now().toIso8601String();
+      await FirebaseFirestore.instance.collection('operations').doc(id).update({
+        'acknowledged': true,
+        'acknowledgedBy': user.id,
+        'acknowledgedAt': now,
+        'status': 'acknowledged',
+        'updatedAt': now,
+      });
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: AppText('تم تأكيد استلام البلاغ.')));
+    } catch (error) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('تعذر تأكيد الاستلام: $error')));
+    }
+  }
+
+  Widget _municipalitySosInbox() {
+    final user = context.read<AuthService>().currentUser;
+    if (user == null) return const SizedBox.shrink();
+    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+      stream: FirebaseFirestore.instance.collection('operations')
+          .where('_entity', isEqualTo: 'emergency').snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.hasError) return const ListTile(title: AppText('تعذر تحميل بلاغات الطوارئ.'));
+        if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+        final cases = snapshot.data!.docs.where((doc) {
+          final item = doc.data();
+          return item['isDeleted'] != true
+              && item['acknowledged'] != true
+              && item['status'] == 'urgent'
+              && item['municipalityCoordinatorId'] == user.id;
+        }).toList();
+        if (cases.isEmpty) return const ListTile(title: AppText('لا توجد بلاغات SOS جديدة موجهة إليك.'));
+        return Column(children: cases.take(15).map((doc) => ListTile(
+          title: AppText('بلاغ SOS — ${doc.data()['street'] ?? ''}'),
+          subtitle: AppText('بانتظار تأكيد الاستلام'),
+          trailing: FilledButton(
+            onPressed: () => _acknowledgeMunicipalitySos(doc.id),
+            child: const AppText('تأكيد الاستلام'),
+          ),
+        )).toList());
+      },
+    );
+  }
+
   Widget _dashboardBody() => ListView(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
           children: [
@@ -168,6 +218,8 @@ class _Level2MunicipalityScreenState extends State<Level2MunicipalityScreen> {
             ),
             const SizedBox(height: 10),
             const OperationsOverviewStrip(),
+            const SizedBox(height: 12),
+            AiSectionCard(title: 'بلاغات SOS العاجلة', feature: 'emergency', child: _municipalitySosInbox()),
             const SizedBox(height: 12),
             Builder(builder: (context) {
               final cs = context.watch<ContainerService>();
