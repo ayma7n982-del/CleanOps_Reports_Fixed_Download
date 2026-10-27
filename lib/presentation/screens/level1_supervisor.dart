@@ -53,6 +53,7 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
   void initState() {
     super.initState();
     _loadWorkers();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _restoreEmergency());
   }
 
   @override
@@ -64,6 +65,29 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
     quantity.dispose();
     recorder.dispose();
     super.dispose();
+  }
+
+  Future<void> _restoreEmergency() async {
+    if (!mounted) return;
+    final user = context.read<AuthService>().currentUser;
+    if (user == null) return;
+    final data = context.read<DataService>();
+    await data.refreshOperations();
+    if (!mounted) return;
+    final emergencies = data.operations.where((item) =>
+      item['_entity'] == 'emergency' &&
+      item['reportedBy'] == user.id &&
+      item['isDeleted'] != true &&
+      item['status'] != 'closed' &&
+      item['status'] != 'resolved').toList();
+    if (emergencies.isEmpty) return;
+    emergencies.sort((a, b) => '${b['createdAt'] ?? ''}'.compareTo('${a['createdAt'] ?? ''}'));
+    setState(() {
+      emergencyLock = true;
+      activeEmergencyId = '${emergencies.first['id']}';
+      emergencyStatus = 'يوجد بلاغ طوارئ مفتوح. تحقق من حالته قبل استئناف العمل.';
+    });
+    _refreshEmergencyStatus(data);
   }
 
   Future<void> _loadWorkers() async {
