@@ -392,6 +392,15 @@ class GroupsCommandCenterPage extends StatelessWidget {
               if (!usersSnap.hasData) return const Center(child: CircularProgressIndicator());
               final users = usersSnap.data!.docs;
               final counts = <String, int>{};
+              final members = <String, List<Map<String, String>>>{};
+              void addMember(String group, String id, Map<String, dynamic> data) {
+                final label = '${data['name'] ?? data['fullName'] ?? data['displayName'] ?? data['username'] ?? data['workerName'] ?? id}'.trim();
+                members.putIfAbsent(group.toLowerCase(), () => []).add({
+                  'id': id,
+                  'name': label.isEmpty ? id : label,
+                  'role': '${data['role'] ?? 'worker'}',
+                });
+              }
               final seenMembers = <String>{};
               final legacyGroups = <String, Map<String, dynamic>>{};
               for (final d in users) {
@@ -402,7 +411,10 @@ class GroupsCommandCenterPage extends StatelessWidget {
                 final active = x['isActive'] != false;
                 if (active) {
                   final memberKey = '$rawGroup|${d.id}';
-                  if (seenMembers.add(memberKey)) counts[rawGroup] = (counts[rawGroup] ?? 0) + 1;
+                  if (seenMembers.add(memberKey)) {
+                    counts[rawGroup] = (counts[rawGroup] ?? 0) + 1;
+                    addMember(rawGroup, d.id, x);
+                  }
                   final key = rawGroup.toLowerCase();
                   legacyGroups.putIfAbsent(key, () => {
                     'id': 'legacy:$rawGroup', '_docId': '', '_isSynthetic': true,
@@ -424,7 +436,10 @@ class GroupsCommandCenterPage extends StatelessWidget {
                 if (rawGroup.isEmpty) continue;
                 final active = x['isActive'] != false;
                 final personKey = '$rawGroup|${x['id'] ?? d.id}';
-                if (active && seenMembers.add(personKey)) counts[rawGroup] = (counts[rawGroup] ?? 0) + 1;
+                if (active && seenMembers.add(personKey)) {
+                  counts[rawGroup] = (counts[rawGroup] ?? 0) + 1;
+                  addMember(rawGroup, '${x['id'] ?? d.id}', x);
+                }
                 final key = rawGroup.toLowerCase();
                 legacyGroups.putIfAbsent(key, () => {
                   'id': 'legacy:$rawGroup', '_docId': '', '_isSynthetic': true,
@@ -490,10 +505,25 @@ class GroupsCommandCenterPage extends StatelessWidget {
                       final name = '${x['name'] ?? x['groupName'] ?? number}'.trim();
                       final count = <String>{id, number, name}.where((e) => e.isNotEmpty).fold<int>(0, (sum, key) => sum + (counts[key] ?? 0));
                       final synthetic = x['_isSynthetic'] == true;
-                      return ListTile(
+                      final groupMembers = <Map<String, String>>[];
+                      final memberIds = <String>{};
+                      for (final key in <String>{id, number, name}) {
+                        for (final member in members[key.toLowerCase()] ?? const <Map<String, String>>[]) {
+                          if (memberIds.add(member['id'] ?? '')) groupMembers.add(member);
+                        }
+                      }
+                      return ExpansionTile(
                         leading: Icon(synthetic ? Icons.group_work_outlined : Icons.groups_rounded, color: synthetic ? Colors.amber : aiCyan),
                         title: AppText(name.isEmpty ? 'مجموعة ${number.isEmpty ? 'بدون رقم' : number}' : name),
                         subtitle: AppText('رقم المجموعة: ${number.isEmpty ? '—' : number} • العمال النشطون: $count • ${synthetic ? 'مجموعة قديمة تحتاج تسجيلًا' : (x['status'] ?? 'نشطة')}', style: const TextStyle(fontSize: 11, color: cleanOpsMuted)),
+                        children: groupMembers.isEmpty
+                            ? [const ListTile(title: AppText('لا توجد أسماء عمال مرتبطة بهذه المجموعة في البيانات المتاحة.'))]
+                            : groupMembers.map((member) => ListTile(
+                                dense: true,
+                                leading: const Icon(Icons.person_outline),
+                                title: AppText(member['name'] ?? 'عامل'),
+                                subtitle: AppText(member['role'] == 'group_supervisor' ? 'مشرف مجموعة' : 'عامل'),
+                              )).toList(),
                         trailing: canManage ? PopupMenuButton<String>(
                           tooltip: 'إدارة المجموعة',
                           onSelected: (v) {
