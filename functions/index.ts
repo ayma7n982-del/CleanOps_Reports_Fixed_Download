@@ -273,6 +273,21 @@ export const deleteManagedUser = onCall({ region: 'us-central1', timeoutSeconds:
   }
   if (targetSnap.exists) await targetRef.delete();
 
+  // Confirm the account and profile are absent before acknowledging success.
+  const remainingProfile = await targetRef.get();
+  let remainingAuth = false;
+  try {
+    await auth.getUser(userId);
+    remainingAuth = true;
+  } catch (e: any) {
+    if (e?.code !== 'auth/user-not-found') {
+      throw new HttpsError('internal', e?.message ?? 'تعذر التحقق من حذف حساب الدخول.');
+    }
+  }
+  if (remainingProfile.exists || remainingAuth) {
+    throw new HttpsError('internal', 'لم يكتمل حذف المستخدم من Firebase. يرجى إعادة المحاولة.');
+  }
+
   await db.collection('audit').add({
     actorId: actorUid,
     operation: 'DELETE_USER',
