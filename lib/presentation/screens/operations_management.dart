@@ -279,6 +279,7 @@ class _DumpsitesTab extends StatefulWidget {
 }
 
 class _DumpsitesTabState extends State<_DumpsitesTab> {
+  final _formKey = GlobalKey<FormState>();
   final nameAr = TextEditingController();
   final nameEn = TextEditingController();
   final capacity = TextEditingController();
@@ -433,7 +434,9 @@ class _DumpsitesTabState extends State<_DumpsitesTab> {
     final svc = context.read<OperationsAdminService>();
     final u = context.read<AuthService>().currentUser!;
     final can = u.role == 'municipality_coordinator' || u.role == 'jsc_coordinator';
-    return ListView(
+    return Stack(
+      children: [
+        ListView(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
       children: [
         AiHero(
@@ -448,7 +451,9 @@ class _DumpsitesTabState extends State<_DumpsitesTab> {
             title: 'إضافة مكب',
             subtitle: 'يُحفظ محليًا مع دعم مزامنة Firestore عند توفر الاتصال',
             feature: 'dumpsite',
-            child: Column(
+            child: Form(
+              key: _formKey,
+              child: Column(
               children: [
                 Row(children: [
                   Expanded(child: TextField(controller: nameAr, decoration: InputDecoration(labelText: tr('اسم المكب بالعربية')))),
@@ -470,8 +475,17 @@ class _DumpsitesTabState extends State<_DumpsitesTab> {
                 const SizedBox(height: 8),
                 LocationField(value: selectedLocation, onChanged: (v) => setState(() => selectedLocation = v)),
                 const SizedBox(height: 12),
-                SizedBox(width: double.infinity, child: FilledButton.icon(onPressed: busy ? null : _saveNew, icon: const Icon(Icons.add_location_alt_rounded), label: AppText(busy ? 'جارٍ الحفظ...' : 'إضافة مكب جديد'))),
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: busy ? null : _saveNew,
+                    icon: const Icon(Icons.check_circle_outline),
+                    label: AppText(busy ? 'جارٍ الحفظ...' : 'حفظ وإضافة المكب'),
+                  ),
+                ),
               ],
+              ),
             ),
           ),
         if (can) const SizedBox(height: 14),
@@ -526,6 +540,22 @@ class _DumpsitesTabState extends State<_DumpsitesTab> {
             );
           },
         ),
+      ],
+        ),
+        if (can)
+          Positioned(
+            left: 16,
+            right: 16,
+            bottom: 12,
+            child: SafeArea(
+              top: false,
+              child: FilledButton.icon(
+                onPressed: busy ? null : _saveNew,
+                icon: const Icon(Icons.save_outlined),
+                label: AppText(busy ? 'جارٍ الحفظ...' : 'حفظ وإضافة المكب'),
+              ),
+            ),
+          ),
       ],
     );
   }
