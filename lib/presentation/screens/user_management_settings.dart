@@ -72,6 +72,8 @@ class _UserManagementSettingsPageState extends State<UserManagementSettingsPage>
     if (actor.id.isNotEmpty && mounted) setState(() {});
   }
 
+  bool deletingUser = false;
+
   Future<void> _confirmDeleteManagedUser(BuildContext context, String id, String name, AppUser actor) async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -84,12 +86,15 @@ class _UserManagementSettingsPageState extends State<UserManagementSettingsPage>
         ],
       ),
     );
-    if (confirmed != true || !context.mounted) return;
+    if (confirmed != true || !context.mounted || deletingUser) return;
+    setState(() => deletingUser = true);
     try {
       await context.read<OperationsAdminService>().deleteManagedUser(id, actorId: actor.id);
-      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: AppText('تم حذف المستخدم نهائيًا.')));
+      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: AppText('تم حذف حساب المستخدم وملفه من الخادم بنجاح.')));
     } catch (e) {
-      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: AppText('تعذر حذف المستخدم: $e')));
+      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: AppText('لم يكتمل حذف المستخدم: $e')));
+    } finally {
+      if (mounted) setState(() => deletingUser = false);
     }
   }
 
@@ -201,7 +206,7 @@ class _UserManagementSettingsPageState extends State<UserManagementSettingsPage>
                         subtitle: Text('${d.data()['username'] ?? ''} • ${roleNames['${d.data()['role']}'] ?? d.data()['role'] ?? ''}'),
                         trailing: (actor.role == 'donor_manager' || actor.role == 'municipality_coordinator') && d.id != actor.id
                             ? Wrap(children: [
-                                IconButton(tooltip: 'حذف المستخدم', onPressed: () => _confirmDeleteManagedUser(context, d.id, '${d.data()['name'] ?? d.id}', actor), icon: const Icon(Icons.delete_forever_rounded, color: Colors.red)),
+                                IconButton(tooltip: 'حذف المستخدم', onPressed: deletingUser ? null : () => _confirmDeleteManagedUser(context, d.id, '${d.data()['name'] ?? d.id}', actor), icon: const Icon(Icons.delete_forever_rounded, color: Colors.red)),
                                 Switch(
                                   value: d.data()['isActive'] != false,
                                   onChanged: (v) async {
