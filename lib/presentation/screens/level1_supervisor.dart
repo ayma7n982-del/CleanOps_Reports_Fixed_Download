@@ -361,6 +361,14 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
             : record['acknowledged'] == true
                 ? 'تم تأكيد استلام البلاغ من المسؤول.'
                 : 'اكتملت المعالجة المحلية؛ تأكيد استلام المسؤول لم يصل بعد.';
+    if (mounted && record != null && record['status'] == 'closed' && !pending) {
+      setState(() {
+        emergencyLock = false;
+        activeEmergencyId = null;
+        emergencyStatus = 'تم إغلاق البلاغ من المسؤول المخوّل.';
+      });
+      return;
+    }
     if (mounted && next != emergencyStatus) setState(() => emergencyStatus = next);
   }
 
