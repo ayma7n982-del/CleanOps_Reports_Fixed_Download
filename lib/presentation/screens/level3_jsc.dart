@@ -143,7 +143,7 @@ class _Level3JscState extends State<Level3JscScreen> {
     try {
       final recordRef = FirebaseFirestore.instance.collection('operations').doc(id);
       final existing = (await recordRef.get()).data();
-      if (existing?['acknowledged'] != true) return;
+      if (existing?['acknowledged'] != true || existing?['status'] == 'closed') return;
       final now = DateTime.now().toIso8601String();
       await recordRef.update({
         'status': 'closed',
