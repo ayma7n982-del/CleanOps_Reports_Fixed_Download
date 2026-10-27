@@ -194,7 +194,7 @@ class _Level2MunicipalityScreenState extends State<Level2MunicipalityScreen> {
               && item['status'] == 'urgent'
               && (item['municipalityCoordinatorId'] == user.id ||
                   (item['municipalityCoordinatorId'] == null &&
-                   item['municipalityId'] == user.municipalityId));
+                   item['municipalityCoordinatorId'] == user.id));
         }).toList();
         if (cases.isEmpty) return const ListTile(title: AppText('لا توجد بلاغات SOS جديدة موجهة إليك.'));
         return Column(children: cases.take(15).map((doc) => ListTile(
