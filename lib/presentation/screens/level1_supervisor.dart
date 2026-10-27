@@ -42,6 +42,8 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
   final Map<String, String> attendanceStatus = {};
   bool savingAttendance = false;
   bool savingTrip = false;
+  bool sendingEmergency = false;
+  String emergencyStatus = '';
   final Map<String, bool> tripPpe = {'بوت': false, 'قفازات': false, 'كمامة': false, 'قبعة': false, 'صديري': false};
   final List<String> tripPhotoPaths = [];
   List<Map<String, String>> workers = [];
@@ -324,10 +326,16 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
   Future<void> _sendEmergency() async {
     final u = context.read<AuthService>().currentUser;
     final d = context.read<DataService>();
-    if (u == null || emergencyLock || !u.can('emergency', 'create')) return;
+    if (u == null || emergencyLock || sendingEmergency || !u.can('emergency', 'create')) return;
+    if (street.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: AppText('اسم الشارع أو الموقع إلزامي لبلاغ SOS.')));
+      return;
+    }
+    setState(() => sendingEmergency = true);
+    try {
     final p = await _gps();
     if (p == null) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: AppText('لا يمكن إرسال البلاغ قبل الحصول على إحداثيات GPS.')));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: AppText('الإحداثيات إلزامية. فعّل GPS وأعد المحاولة؛ لم يُرسل البلاغ.')));
       return;
     }
     if (recording) await _stopAudio();
@@ -344,6 +352,10 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
       'reportedBy': u.id,
       'createdAt': DateTime.now().toIso8601String(),
       'status': 'urgent',
+      'deliveryStatus': 'pending_sync',
+      'acknowledged': false,
+      'groupId': u.groupId,
+      'recipientLayers': ['L2', 'L3', 'UNICEF'],
       'statusLevel': 'critical',
       'isDeleted': false,
     });
@@ -363,6 +375,14 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
       'sourceId': id,
       'createdAt': DateTime.now().toIso8601String(),
     });
+    await d.enqueue('notification', 'urgent', {
+      'id': '${id}_UNICEF',
+      'targetLayer': 'UNICEF',
+      'title': 'بلاغ SOS عاجل',
+      'body': 'بلاغ $id من مشرف المجموعة — الموقع: ${street.text.trim()}',
+      'sourceId': id,
+      'createdAt': DateTime.now().toIso8601String(),
+    });
     await d.writeAudit(actorId: u.id, operation: 'CREATE_EMERGENCY', targetId: id, after: {
       'type': 'war_remnants',
       'street': street.text.trim(),
@@ -373,6 +393,7 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
     if (mounted) {
       setState(() {
         emergencyLock = true;
+        emergencyStatus = 'تم حفظ البلاغ محليًا بانتظار المزامنة؛ لم يتأكد استلام الجهات بعد.';
         tab = 3;
       });
       await showDialog(
@@ -384,6 +405,11 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
           actions: [FilledButton(onPressed: () => Navigator.pop(context), child: const AppText('تم'))],
         ),
       );
+    }
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: AppText('تعذر حفظ بلاغ SOS: $e')));
+    } finally {
+      if (mounted) setState(() => sendingEmergency = false);
     }
   }
 
@@ -803,10 +829,12 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
                 const SizedBox(height: 12),
                 FilledButton.icon(
                   style: FilledButton.styleFrom(backgroundColor: red, minimumSize: const Size.fromHeight(58)),
-                  onPressed: emergencyLock ? null : _sendEmergency,
+                  onPressed: emergencyLock || sendingEmergency ? null : _sendEmergency,
                   icon: const Icon(Icons.gps_fixed),
-                  label: const AppText('إرسال إنذار عاجل'),
+                  label: AppText(sendingEmergency ? 'جارٍ حفظ البلاغ...' : 'إرسال إنذار عاجل'),
                 ),
+                if (emergencyStatus.isNotEmpty)
+                  Padding(padding: const EdgeInsets.only(top: 10), child: AppText(emergencyStatus, textAlign: TextAlign.center)),
                 if (emergencyLock)
                   const Padding(
                     padding: EdgeInsets.only(top: 14),
