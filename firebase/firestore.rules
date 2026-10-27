@@ -224,7 +224,15 @@ service cloud.firestore {
       allow read: if isL3OrL4()
         || (isL2() && resource.data.municipalityId == request.auth.uid)
         || ((role() == 'group_supervisor' || role() == 'worker') && resource.data.groupId == userDoc().groupId);
-      allow create: if isL3()
+      allow create: if (isL3() || (
+          role() == 'group_supervisor'
+          && userDoc().isActive != false
+          && userDoc().groupId is string && userDoc().groupId.size() > 0
+          && userDoc().municipalityCoordinatorId is string
+          && request.resource.data.groupId == userDoc().groupId
+          && request.resource.data.municipalityId == userDoc().municipalityCoordinatorId
+          && request.resource.data.updatedBy == request.auth.uid
+        ))
         && request.resource.data.id == id
         && request.resource.data.locationName is string
         && request.resource.data.gpsCoordinates is map
@@ -237,6 +245,23 @@ service cloud.firestore {
         && request.resource.data.status in ['empty','partial','full']
         && request.resource.data.issueStatus == 'none';
       allow update: if isL3()
+        || (role() == 'group_supervisor'
+          && userDoc().isActive != false
+          && userDoc().groupId is string && userDoc().groupId.size() > 0
+          && resource.data.groupId == userDoc().groupId
+          && request.resource.data.groupId == resource.data.groupId
+          && request.resource.data.municipalityId == resource.data.municipalityId
+          && request.resource.data.updatedBy == request.auth.uid
+          && request.resource.data.locationName is string
+          && request.resource.data.locationName.size() > 0
+          && request.resource.data.gpsCoordinates is map
+          && request.resource.data.gpsCoordinates.lat is number
+          && request.resource.data.gpsCoordinates.lng is number
+          && request.resource.data.gpsCoordinates.lat >= -90
+          && request.resource.data.gpsCoordinates.lat <= 90
+          && request.resource.data.gpsCoordinates.lng >= -180
+          && request.resource.data.gpsCoordinates.lng <= 180
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['locationName','gpsCoordinates','updatedAt','updatedBy']))
         || (isL2() && resource.data.municipalityId == request.auth.uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['issueStatus','feedbackNotes','updatedAt','updatedBy']))
         || ((role() == 'group_supervisor' || role() == 'worker')
             && userDoc().isActive != false
