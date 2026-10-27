@@ -102,6 +102,12 @@ class _MonthlyAttendanceReportScreenState extends State<MonthlyAttendanceReportS
       statusByPersonDay['$name|${date.day}'] = '${r['status'] ?? ''}';
     }
     final sortedNames = names.toList()..sort();
+    final presentCount = statusByPersonDay.values.where((s) => s == 'present' || s == 'حضور').length;
+    final absentCount = statusByPersonDay.values.where((s) => ['absent', 'غياب', 'excused_absence', 'unexcused_absence'].contains(s)).length;
+    final lateCount = statusByPersonDay.values.where((s) => s == 'late' || s == 'متأخر').length;
+    final leaveCount = statusByPersonDay.values.where((s) => s == 'leave' || s == 'إجازة' || s == 'on_leave').length;
+    final classifiedCount = presentCount + absentCount + lateCount + leaveCount;
+    final attendanceRate = classifiedCount == 0 ? 0.0 : 100 * presentCount / classifiedCount;
     final headerBg = Theme.of(context).colorScheme.surfaceContainerHighest;
 
     return Directionality(
@@ -115,6 +121,17 @@ class _MonthlyAttendanceReportScreenState extends State<MonthlyAttendanceReportS
               IconButton(tooltip: 'الشهر السابق', onPressed: () => setState(() => month = DateTime(month.year, month.month - 1)), icon: const Icon(Icons.chevron_left)),
               Expanded(child: Center(child: Text(_monthLabel(arabic), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18)))),
               IconButton(tooltip: 'الشهر التالي', onPressed: () => setState(() => month = DateTime(month.year, month.month + 1)), icon: const Icon(Icons.chevron_right)),
+            ]),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            child: Wrap(spacing: 8, runSpacing: 8, children: [
+              _summaryTile('إجمالي العاملين / Total Workers', '${sortedNames.length}', Colors.blue),
+              _summaryTile('الحاضرون / Present', '$presentCount', Colors.green),
+              _summaryTile('الغائبون / Absent', '$absentCount', Colors.red),
+              _summaryTile('المتأخرون / Late', '$lateCount', Colors.orange),
+              _summaryTile('الإجازات / On Leave', '$leaveCount', Colors.deepPurple),
+              _summaryTile('نسبة الحضور / Attendance', '${attendanceRate.toStringAsFixed(1)}%', Colors.teal),
             ]),
           ),
           Padding(padding: const EdgeInsets.symmetric(horizontal: 12), child: Row(children: [
@@ -167,6 +184,23 @@ class _MonthlyAttendanceReportScreenState extends State<MonthlyAttendanceReportS
           Padding(padding: const EdgeInsets.all(8), child: Text('عدد السجلات: ${records.length} — ${first.year}-${first.month.toString().padLeft(2, '0')}-${first.day.toString().padLeft(2, '0')}', style: Theme.of(context).textTheme.bodySmall)),
         ]),
       ),
+    );
+  }
+
+  Widget _summaryTile(String label, String value, Color color) {
+    return Container(
+      width: 154,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: color.withOpacity(.07),
+        border: Border.all(color: color.withOpacity(.25)),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(label, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600)),
+        const SizedBox(height: 5),
+        Text(value, style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: color)),
+      ]),
     );
   }
 
