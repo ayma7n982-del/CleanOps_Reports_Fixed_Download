@@ -157,6 +157,7 @@ class ConfigService extends ChangeNotifier {
   Future<void> attachRole(String role) async {
     attachedRole = role;
     seedFor(role);
+    AppUser.roleOverrides.remove(role);
     if (Firebase.apps.isEmpty) return;
     await configSub?.cancel();
     configSub = FirebaseFirestore.instance
@@ -167,8 +168,13 @@ class ConfigService extends ChangeNotifier {
         .snapshots()
         .listen((snap) {
       final data = snap.data();
-      if (data == null) return;
+      if (data == null) {
+        AppUser.roleOverrides.remove(role);
+        return;
+      }
       final raw = Map<String, dynamic>.from(data['features'] as Map? ?? {});
+      AppUser.roleOverrides[role] = raw.map((key, value) => MapEntry(
+        key, FeaturePolicy.fromJson(Map<String, dynamic>.from(value as Map))));
       for (final e in raw.entries) {
         policies[e.key] = FeaturePolicy.fromJson(Map<String, dynamic>.from(e.value));
       }
@@ -283,11 +289,10 @@ class ConfigService extends ChangeNotifier {
   }
 
   Future<void> setPolicy(String role, String feature, FeaturePolicy policy) async {
-    policies[feature] = policy;
+    if (Firebase.apps.isEmpty) throw StateError('يلزم الاتصال بـ Firebase لحفظ الصلاحيات.');
     permissionVersion++;
     await _persistLocal();
     notifyListeners();
-    if (Firebase.apps.isEmpty) return;
     final ref = FirebaseFirestore.instance.collection('config').doc('roles').collection('items').doc(role);
     await ref.set({
       'permissionVersion': permissionVersion,
@@ -296,7 +301,12 @@ class ConfigService extends ChangeNotifier {
       'imageTargetKb': imageTargetKb,
       'localImageRetentionDays': localImageRetentionDays,
     }, SetOptions(merge: true));
-    await ref.update({'features.$feature': policy.toJson()});
+    await ref.set({'features': {feature: policy.toJson()}}, SetOptions(merge: true));
+    if (role == attachedRole) {
+      policies[feature] = policy;
+      AppUser.roleOverrides.putIfAbsent(role, () => {})[feature] = policy;
+      notifyListeners();
+    }
   }
 
   Future<void> setOperationalFeature(String feature, bool enabled) async {
