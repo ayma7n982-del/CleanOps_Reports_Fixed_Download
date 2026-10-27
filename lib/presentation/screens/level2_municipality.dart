@@ -190,7 +190,9 @@ class _Level2MunicipalityScreenState extends State<Level2MunicipalityScreen> {
   Widget _municipalitySosInbox() {
     final user = context.read<AuthService>().currentUser;
     if (user == null) return const SizedBox.shrink();
-    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+    return StreamBuilder<Set<String>>(
+      stream: _assignedLegacySosIds(user.id),
+      builder: (context, assignments) => StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
       stream: FirebaseFirestore.instance.collection('operations')
           .where('_entity', isEqualTo: 'emergency').snapshots(),
       builder: (context, snapshot) {
