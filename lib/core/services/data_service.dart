@@ -42,6 +42,7 @@ class DataService extends ChangeNotifier {
       if (online) {
         unawaited(sync());
         unawaited(refreshOperations());
+      unawaited(refreshSosInbox());
       }
     });
     notifyListeners();
@@ -126,6 +127,40 @@ class DataService extends ChangeNotifier {
     notifications = [n, ...notifications].take(100).toList();
     await store.saveNotifications(notifications);
     notifyListeners();
+  }
+
+  Future<void> refreshSosInbox() async {
+    if (!online || Firebase.apps.isEmpty) return;
+    final current = FirebaseAuth.instance.currentUser;
+    if (current == null) return;
+    try {
+      final profile = await FirebaseFirestore.instance.collection('users').doc(current.uid).get();
+      final role = profile.data()?['role']?.toString();
+      if (profile.data()?['isActive'] == false || role == null) return;
+      if (!['municipality_coordinator', 'jsc_coordinator', 'donor_manager'].contains(role)) return;
+      final result = await FirebaseFirestore.instance.collection('operations')
+          .where('_entity', isEqualTo: 'notification').limit(300).get();
+      var changed = false;
+      for (final document in result.docs) {
+        final item = document.data();
+        if (item['sourceEntity'] != 'emergency' || item['targetRole'] != role) continue;
+        final recipient = item['targetUserId']?.toString();
+        if (recipient != null && recipient.isNotEmpty && recipient != current.uid) continue;
+        if (notifications.any((n) => n.id == document.id)) continue;
+        notifications = [NotificationItem(
+          id: document.id, title: '${item['title'] ?? 'SOS'}',
+          body: '${item['body'] ?? ''}', level: 'urgent',
+          createdAt: '${item['createdAt'] ?? ''}',
+        ), ...notifications].take(100).toList();
+        changed = true;
+      }
+      if (changed) {
+        await store.saveNotifications(notifications);
+        notifyListeners();
+      }
+    } catch (e) {
+      debugPrint('SOS inbox refresh failed: $e');
+    }
   }
 
   Future<void> markRead(String id) async {
