@@ -779,6 +779,12 @@ class _WorkforceTabState extends State<_WorkforceTab> {
                                   ],
                                 ),
                               ),
+                              if (active && x['role'] == 'worker')
+                                IconButton(
+                                  tooltip: 'نقل العامل إلى مجموعة أخرى',
+                                  onPressed: () => _transferDialog(context, svc, u.id, cycleId, workerId: d.id),
+                                  icon: const Icon(Icons.drive_file_move_outline),
+                                ),
                               if (active)
                                 IconButton(tooltip: 'Deactivate', onPressed: () => svc.deactivateUser(d.id, actorId: u.id), icon: const Icon(Icons.person_off_rounded, color: Colors.red))
                               else
@@ -801,8 +807,8 @@ class _WorkforceTabState extends State<_WorkforceTab> {
     );
   }
 
-  Future<void> _transferDialog(BuildContext context, OperationsAdminService svc, String actor, String cycle) async {
-    final worker = TextEditingController();
+  Future<void> _transferDialog(BuildContext context, OperationsAdminService svc, String actor, String cycle, {String? workerId}) async {
+    final worker = TextEditingController(text: workerId ?? '');
     final group = TextEditingController();
     await showDialog(
       context: context,
