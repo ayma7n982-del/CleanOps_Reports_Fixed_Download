@@ -351,7 +351,7 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
   void _refreshEmergencyStatus(DataService data) {
     final id = activeEmergencyId;
     if (id == null) return;
-    final pending = data.queue.any((item) => item.entity == 'emergency' && item.payload.contains('"id":"$id"'));
+    final pending = data.queue.any((item) => item.entity == 'emergency' && (item.payload.contains('"id":"$id"') || item.payload.contains('"id": "$id"')));
     final record = data.operations.where((item) => '${item['id']}' == id && item['_entity'] == 'emergency').firstOrNull;
     final next = pending
         ? 'البلاغ محفوظ محليًا وينتظر المزامنة.'
