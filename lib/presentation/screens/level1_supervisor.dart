@@ -402,6 +402,9 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
     await d.enqueue('notification', 'urgent', {
       'id': '${id}_L2',
       'targetLayer': 'L2',
+      'targetRole': 'municipality_coordinator',
+      'targetUserId': u.municipalityCoordinatorId,
+      'sourceEntity': 'emergency',
       'title': 'بلاغ مخلفات حربية عاجل',
       'body': 'بلاغ $id — إيقاف الحركة والتنسيق الفوري.',
       'sourceId': id,
@@ -410,6 +413,8 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
     await d.enqueue('notification', 'urgent', {
       'id': '${id}_L3',
       'targetLayer': 'L3',
+      'targetRole': 'jsc_coordinator',
+      'sourceEntity': 'emergency',
       'title': 'بلاغ مخلفات حربية عاجل',
       'body': 'بلاغ $id صادر من المشرف الميداني.',
       'sourceId': id,
@@ -418,6 +423,8 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
     await d.enqueue('notification', 'urgent', {
       'id': '${id}_UNICEF',
       'targetLayer': 'UNICEF',
+      'targetRole': 'donor_manager',
+      'sourceEntity': 'emergency',
       'title': 'بلاغ SOS عاجل',
       'body': 'بلاغ $id من مشرف المجموعة — الموقع: ${street.text.trim()}',
       'sourceId': id,
