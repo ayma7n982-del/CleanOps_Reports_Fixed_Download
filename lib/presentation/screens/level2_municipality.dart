@@ -192,9 +192,7 @@ class _Level2MunicipalityScreenState extends State<Level2MunicipalityScreen> {
           return item['isDeleted'] != true
               && item['acknowledged'] != true
               && item['status'] == 'urgent'
-              && (item['municipalityCoordinatorId'] == user.id ||
-                  (item['municipalityCoordinatorId'] == null &&
-                   item['municipalityCoordinatorId'] == user.id));
+              && item['municipalityCoordinatorId'] == user.id;
         }).toList();
         if (cases.isEmpty) return const ListTile(title: AppText('لا توجد بلاغات SOS جديدة موجهة إليك.'));
         return Column(children: cases.take(15).map((doc) => ListTile(
