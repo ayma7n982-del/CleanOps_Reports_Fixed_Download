@@ -225,9 +225,15 @@ class MessagingService extends ChangeNotifier {
   Future<void> sendBroadcast({required String content, required String type, String? groupId}) async {
     final user = _user;
     if (user == null || !canSend(type)) throw StateError('ليس لديك صلاحية إرسال هذا النوع من الرسائل.');
+    final requestedGroup = (groupId ?? '').trim();
+    if (user.role == 'group_supervisor' &&
+        (user.groupId == null || user.groupId!.isEmpty ||
+         (requestedGroup.isNotEmpty && requestedGroup != user.groupId))) {
+      throw StateError('رئيس المجموعة يستطيع الإرسال إلى مجموعته المرتبطة فقط.');
+    }
     final targetGroup = user.role == 'donor_manager' || user.role == 'jsc_coordinator'
         ? allMunicipalitiesGroup
-        : (groupId ?? _groupId ?? '');
+        : (user.role == 'group_supervisor' ? user.groupId! : (groupId ?? _groupId ?? ''));
     if (targetGroup.isEmpty) throw StateError('لم يتم تحديد المجموعة المستهدفة.');
     await _send(
       content: content,
