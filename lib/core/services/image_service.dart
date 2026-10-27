@@ -12,23 +12,24 @@ class ImageService {
   final FirebaseStorage storage = FirebaseStorage.instance;
 
   Future<Uint8List> compress(Uint8List bytes, int targetKb) async {
-    if (bytes.lengthInBytes <= targetKb * 1024) return bytes;
-    int quality = 85;
-    Uint8List result = bytes;
-    for (var i = 0; i < 6; i++) {
-      final scale = math.max(480, 1600 - i * 180);
-      final out = await FlutterImageCompress.compressWithList(
-        bytes,
-        minWidth: scale,
-        minHeight: scale,
-        quality: quality,
-        format: CompressFormat.jpeg,
-      );
-      result = Uint8List.fromList(out);
-      if (result.lengthInBytes <= targetKb * 1024) break;
-      quality = math.max(40, quality - 10);
+    final limitBytes = targetKb * 1024;
+    if (bytes.lengthInBytes <= limitBytes) return bytes;
+    Uint8List smallest = bytes;
+    for (final dimension in <int>[1600, 1280, 1024, 800, 640, 480, 360, 240]) {
+      for (final quality in <int>[85, 70, 55, 40, 25, 15, 8]) {
+        final output = await FlutterImageCompress.compressWithList(
+          bytes,
+          minWidth: dimension,
+          minHeight: dimension,
+          quality: quality,
+          format: CompressFormat.jpeg,
+        );
+        final candidate = Uint8List.fromList(output);
+        if (candidate.lengthInBytes < smallest.lengthInBytes) smallest = candidate;
+        if (candidate.lengthInBytes <= limitBytes) return candidate;
+      }
     }
-    return result;
+    throw StateError('تعذر ضغط الصورة إلى $targetKb كيلوبايت؛ اختر صورة أخرى.');
   }
 
   Future<String> compressToLocal(XFile file, {int targetKb = 500}) async {
