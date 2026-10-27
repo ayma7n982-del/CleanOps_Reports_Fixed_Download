@@ -323,6 +323,7 @@ service cloud.firestore {
         && request.resource.data.acknowledgedAt is string
         && request.resource.data.acknowledgedAt.size() > 0
         && request.resource.data.status in ['acknowledged', 'resolved', 'closed']
+        && (resource.data.status != 'urgent' || request.resource.data.status in ['acknowledged'])
         && (
           (resource.data.acknowledged == false
             && request.resource.data.acknowledgedBy == request.auth.uid)
