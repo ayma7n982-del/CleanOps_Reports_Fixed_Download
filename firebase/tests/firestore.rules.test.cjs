@@ -2,7 +2,7 @@ const {before, after, beforeEach, test} = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const {initializeTestEnvironment, assertSucceeds, assertFails} = require('@firebase/rules-unit-testing');
-const {doc, setDoc, getDoc, Timestamp} = require('firebase/firestore');
+const {doc, setDoc, getDoc, updateDoc, deleteDoc, Timestamp} = require('firebase/firestore');
 
 let env;
 const projectId = 'cleanops-messaging-rules-test';
@@ -60,8 +60,20 @@ test('worker in same group can read; other group cannot', async () => {
 });
 test('supervisor cannot change message content or delete', async () => {
   await assertSucceeds(setDoc(doc(db('head-a'),'messages','msg-1'), message('head-a','group-a')));
-  await assertFails(setDoc(doc(db('head-a'),'messages','msg-1'), {...message('head-a','group-a'), content:'changed'}));
+  await assertFails(updateDoc(doc(db('head-a'),'messages','msg-1'), {content:'changed'}));
+  await assertFails(deleteDoc(doc(db('head-a'),'messages','msg-1')));
 });
 test('unauthenticated users cannot read messages', async () => {
   await assertFails(getDoc(doc(env.unauthenticatedContext().firestore(),'messages','msg-1')));
+});
+
+test('supervisor warning broadcast is rejected', async () => {
+  await assertFails(setDoc(doc(db('head-a'),'messages','msg-1'), message('head-a','group-a','warning')));
+});
+test('inactive worker cannot read group messages', async () => {
+  await env.withSecurityRulesDisabled(async ctx => {
+    await setDoc(doc(ctx.firestore(),'users','worker-a'), {role:'worker',groupId:'group-a',isActive:false});
+    await setDoc(doc(ctx.firestore(),'messages','msg-1'), message('head-a','group-a'));
+  });
+  await assertFails(getDoc(doc(db('worker-a'),'messages','msg-1')));
 });
