@@ -308,18 +308,35 @@ service cloud.firestore {
         && request.resource.data.acknowledged == false;
     }
     function validSosAcknowledgment() {
-      return (isL2() || isL3())
+      return isL2OrL3()
+        && userDoc().isActive != false
         && resource.data._entity == 'emergency'
         && request.resource.data._entity == 'emergency'
+        && resource.data.status in ['urgent', 'acknowledged', 'resolved']
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
           'acknowledged', 'acknowledgedBy', 'acknowledgedAt', 'status', 'closedBy',
           'closedAt', 'resolutionNote', 'updatedAt'
         ])
         && request.resource.data.acknowledged == true
         && request.resource.data.acknowledgedBy is string
-        && request.resource.data.acknowledgedBy == request.auth.uid
-        && request.resource.data.status in ['urgent', 'acknowledged', 'resolved', 'closed']
-        && (request.resource.data.status != 'closed' || request.resource.data.closedBy == request.auth.uid);
+        && request.resource.data.acknowledgedBy.size() > 0
+        && request.resource.data.acknowledgedAt is string
+        && request.resource.data.acknowledgedAt.size() > 0
+        && request.resource.data.status in ['acknowledged', 'resolved', 'closed']
+        && (
+          (resource.data.acknowledged == false
+            && request.resource.data.acknowledgedBy == request.auth.uid)
+          || (resource.data.acknowledged == true
+            && request.resource.data.acknowledgedBy == resource.data.acknowledgedBy
+            && request.resource.data.acknowledgedAt == resource.data.acknowledgedAt)
+        )
+        && (request.resource.data.status != 'closed'
+          || (request.resource.data.closedBy == request.auth.uid
+            && request.resource.data.closedAt is string
+            && request.resource.data.closedAt.size() > 0
+            && request.resource.data.resolutionNote is string
+            && request.resource.data.resolutionNote.size() > 0))
+        && (resource.data.status != 'resolved' || request.resource.data.status in ['resolved', 'closed']);
     }
 
     match /operations/{id} {
