@@ -178,6 +178,15 @@ class _Level2MunicipalityScreenState extends State<Level2MunicipalityScreen> {
     }
   }
 
+  Stream<Set<String>> _assignedLegacySosIds(String userId) =>
+      FirebaseFirestore.instance.collection('operations')
+          .where('_entity', isEqualTo: 'notification')
+          .where('targetUserId', isEqualTo: userId)
+          .snapshots()
+          .map((snapshot) => snapshot.docs
+              .where((doc) => doc.data()['sourceEntity'] == 'emergency')
+              .map((doc) => '${doc.data()['sourceId']}').toSet());
+
   Widget _municipalitySosInbox() {
     final user = context.read<AuthService>().currentUser;
     if (user == null) return const SizedBox.shrink();
