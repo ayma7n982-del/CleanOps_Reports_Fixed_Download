@@ -365,6 +365,7 @@ class DataService extends ChangeNotifier {
         lastSync = DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now());
         await store.saveLastSync(lastSync);
         await refreshOperations();
+        await refreshSosInbox();
         await notifyUser('المزامنة مكتملة', 'تمت مزامنة $completed عملية بنجاح.', level: 'success');
         await addActivity('مزامنة البيانات', 'تم رفع $completed عملية إلى السحابة.', level: 'success');
       }
