@@ -41,6 +41,7 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
   final Map<String, Map<String, bool>> ppe = {};
   final Map<String, String> attendanceStatus = {};
   bool savingAttendance = false;
+  bool savingTrip = false;
   final Map<String, bool> tripPpe = {'بوت': false, 'قفازات': false, 'كمامة': false, 'قبعة': false, 'صديري': false};
   final List<String> tripPhotoPaths = [];
   List<Map<String, String>> workers = [];
@@ -142,9 +143,9 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
     final config = context.read<ConfigService>();
     if (emergencyLock || tripPhotoPaths.length >= 3) return;
     try {
-      final path = await imageService.pickCompressLocal(targetKb: config.imageTargetKb, context: context);
-      if (path == null || !mounted) return;
-      setState(() => tripPhotoPaths.add(path));
+      final paths = await imageService.pickTripPhotos(targetKb: config.imageTargetKb, remainingSlots: 3 - tripPhotoPaths.length, context: context);
+      if (paths.isEmpty || !mounted) return;
+      setState(() => tripPhotoPaths.addAll(paths));
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: AppText('تمت إضافة صورة للنقلة.')));
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: AppText('تعذر إضافة الصورة: $e')));
@@ -201,7 +202,19 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: AppText('المرحلة مجمّدة — التعديلات التشغيلية مقفلة')));
       return;
     }
-    if (u == null || emergencyLock || !u.can('trips', 'create')) return;
+    if (u == null || emergencyLock || savingTrip || !u.can('trips', 'create')) return;
+    if ((u.groupId ?? '').trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: AppText('يجب ربط المشرف بمجموعة قبل تسجيل النقلة.')));
+      return;
+    }
+    if (double.tryParse(quantity.text.trim()) == null || double.parse(quantity.text.trim()) <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: AppText('أدخل كمية صحيحة أكبر من صفر.')));
+      return;
+    }
+    if (street.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: AppText('أدخل موقع أو شارع جمع النفايات.')));
+      return;
+    }
     if (landfill.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: AppText('اختر المكب أو نقطة التجميع قبل تسجيل النقلة.')));
       return;
@@ -212,6 +225,7 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
     }
     final d = context.read<DataService>();
     final id = DateTime.now().microsecondsSinceEpoch.toString();
+    setState(() => savingTrip = true);
     try {
       await d.enqueue('trip', 'create', {
         'id': id,
@@ -223,6 +237,7 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
         'alternative': alternative,
         'landfill': landfill,
         'estimatedQuantity': quantity.text.trim(),
+        'quantityUnit': 'ton',
         'issue': issue.text.trim(),
         'solution': solution.text.trim(),
         'shift': config.shift,
@@ -253,10 +268,12 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
           tripPhotoPaths.clear();
           tripPpe.updateAll((key, value) => false);
         });
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: AppText('تم تسجيل النقلة بنجاح وإضافتها إلى المزامنة.')));
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: AppText('حُفظت النقلة محليًا وتنتظر تأكيد مزامنتها مع الخادم.')));
       }
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: AppText('تعذر تسجيل النقلة. تم الاحتفاظ بالبيانات محليًا إن أمكن. التفاصيل: $e')));
+    } finally {
+      if (mounted) setState(() => savingTrip = false);
     }
   }
 
@@ -705,12 +722,12 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
             ),
             const SizedBox(height: 10),
             Row(children: [
-              Expanded(child: FilledButton.icon(onPressed: emergencyLock ? null : () => _registerTrip(false), icon: const Icon(Icons.add), label: const AppText('نقلة أساسية'))),
+              Expanded(child: FilledButton.icon(onPressed: emergencyLock || savingTrip ? null : () => _registerTrip(false), icon: const Icon(Icons.add), label: const AppText('نقلة أساسية'))),
               const SizedBox(width: 8),
-              Expanded(child: OutlinedButton.icon(onPressed: emergencyLock || !config.alternativeCartEnabled ? null : () => _registerTrip(true), icon: const Icon(Icons.swap_horiz), label: const AppText('نقلة بديلة'))),
+              Expanded(child: OutlinedButton.icon(onPressed: emergencyLock || savingTrip || !config.alternativeCartEnabled ? null : () => _registerTrip(true), icon: const Icon(Icons.swap_horiz), label: const AppText('نقلة بديلة'))),
             ]),
             const SizedBox(height: 10),
-            TextField(controller: quantity, enabled: !emergencyLock, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: tr('الكمية التقديرية (طن/حاويات)'))),
+            TextField(controller: quantity, enabled: !emergencyLock, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: tr('الكمية التقديرية (طن)'))),
             const SizedBox(height: 8),
             TextField(controller: issue, enabled: !emergencyLock, decoration: InputDecoration(labelText: tr('مشكلة/عطل/إغلاق طريق'))),
             const SizedBox(height: 8),
@@ -720,7 +737,7 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
               AiSectionCard(title: 'اعتماد السلامة قبل النقلة', subtitle: 'يجب تأكيد جميع معدات الوقاية قبل تسجيل النقلة.', feature: 'permissions', child: Wrap(spacing: 6, runSpacing: 6, children: tripPpe.keys.map((k) => FilterChip(avatar: Icon(k == 'بوت' ? Icons.hiking_rounded : k == 'قفازات' ? Icons.back_hand_rounded : k == 'كمامة' ? Icons.masks_rounded : k == 'قبعة' ? Icons.sports_baseball_rounded : Icons.health_and_safety_rounded, size: 16), label: AppText(k), selected: tripPpe[k]!, onSelected: emergencyLock ? null : (v) => setState(() => tripPpe[k] = v))).toList())),
             ],
             const SizedBox(height: 12),
-            AiSectionCard(title: 'صور النقلة', subtitle: 'أضف حتى 3 صور لتوثيق النقلة.', feature: 'streets', child: Column(children: [
+            AiSectionCard(title: 'صور النقلة', subtitle: 'اختر عدة صور من الاستوديو دفعة واحدة أو التقط صورًا بالكاميرا (حتى 3 صور).', feature: 'streets', child: Column(children: [
               Align(alignment: AlignmentDirectional.centerStart, child: FilledButton.tonalIcon(onPressed: emergencyLock || tripPhotoPaths.length >= 3 ? null : _addTripPhoto, icon: const Icon(Icons.add_a_photo_rounded), label: AppText('إضافة صورة (${tripPhotoPaths.length}/3)'))),
               if (tripPhotoPaths.isNotEmpty) const SizedBox(height: 8),
               if (tripPhotoPaths.isNotEmpty) SizedBox(height: 92, child: ListView.separated(scrollDirection: Axis.horizontal, itemCount: tripPhotoPaths.length, separatorBuilder: (_, __) => const SizedBox(width: 8), itemBuilder: (_, i) { final path = tripPhotoPaths[i]; return Stack(children: [ClipRRect(borderRadius: BorderRadius.circular(12), child: Image.file(File(path), width: 92, height: 92, fit: BoxFit.cover)), PositionedDirectional(top: 2, end: 2, child: InkWell(onTap: () => _removeTripPhoto(path), child: Container(decoration: const BoxDecoration(color: Colors.black87, shape: BoxShape.circle), padding: const EdgeInsets.all(4), child: const Icon(Icons.close, size: 14, color: Colors.white))))]); })),
