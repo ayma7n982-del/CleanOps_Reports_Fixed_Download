@@ -452,7 +452,7 @@ class AppDrawer extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             if (visible('activity')) _item(context, 'activity', 'آخر النشاط', Icons.timeline, () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ActivityPage()))),
-            if (visible('workers')) _item(context, 'workers', 'العمال والمجموعات', Icons.groups_outlined, () => Navigator.push(context, MaterialPageRoute(builder: (_) => const WorkersPage()))),
+            if (visible('workers')) _item(context, 'workers', 'العمال والمجموعات', Icons.groups_outlined, () => Navigator.push(context, MaterialPageRoute(builder: (_) => const GroupsCommandCenterPage()))),
             if (visible('excel')) _item(context, 'excel', 'استيراد Excel', Icons.table_view_outlined, () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ExcelPage()))),
             if (visible('permissions')) _item(context, 'permissions', 'الصلاحيات الديناميكية', Icons.admin_panel_settings_outlined, () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PermissionsPage()))),
             if (visible('audit')) _item(context, 'audit', 'سجل التدقيق', Icons.security_outlined, () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AuditPage()))),
