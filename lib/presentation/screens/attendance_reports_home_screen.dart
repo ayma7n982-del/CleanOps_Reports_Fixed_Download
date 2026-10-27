@@ -1,3 +1,4 @@
+import 'dart:ui' as ui;
 import 'dart:typed_data';
 import 'dart:convert';
 import 'package:flutter/material.dart';
@@ -88,7 +89,7 @@ class _AttendanceReportsHomeScreenState extends State<AttendanceReportsHomeScree
     final absent = records.where((e) => ['absent','غياب','excused_absence','unexcused_absence'].contains(e['status'])).length;
     final late = records.where((e) => ['late', 'متأخر'].contains(e['status'])).length;
     final leave = records.where((e) => ['leave', 'on_leave', 'إجازة'].contains(e['status'])).length;
-    return Directionality(textDirection: arabic ? TextDirection.rtl : TextDirection.ltr, child: Scaffold(
+    return Directionality(textDirection: arabic ? ui.TextDirection.rtl : ui.TextDirection.ltr, child: Scaffold(
       appBar: AppBar(title: const AppText('تقارير الحضور'), actions: [IconButton(tooltip: 'التقرير الشهري التقويمي', onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const MonthlyAttendanceReportScreen())), icon: const Icon(Icons.calendar_month))]),
       body: ListView(padding: const EdgeInsets.all(14), children: [
         Card(child: Padding(padding: const EdgeInsets.all(12), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
