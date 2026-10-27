@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:typed_data';
+import 'package:uuid/uuid.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:excel/excel.dart';
 import 'package:archive/archive.dart';
@@ -52,7 +53,7 @@ class ExcelService {
       'الاسم', 'full name', 'name', 'employee name', 'worker name',
     ],
     'job': [
-      'المسمى الوظيفي', 'المسمى الوظيفى', 'الوظيفة', 'المهنة', 'العمل', 'الوظيفة الحالية',
+      'المسمى الوظيفي', 'المسمى الوظيفى', 'الوظيفة', 'المهنة', 'العمل', 'الوظيفة الحالية', 'نوع العامل', 'نوع العمل', 'تصنيف العامل', 'عامل او عامل مع كارة',
       'job title', 'job', 'position', 'occupation',
     ],
     'id': [
@@ -403,7 +404,7 @@ class ExcelService {
       if (score > bestScore) { bestScore = score; headerRow = r; }
       if (score >= 4) break;
     }
-    if (headerRow < 0 || bestScore < 2) {
+    if (headerRow < 0 || bestScore < 1) {
       throw Exception('فشل الاستيراد: تعذر اكتشاف صف العناوين تلقائيًا. ضع عناوين مثل «الاسم»، «الوظيفة»، «رقم الهوية»، «الجوال» ثم أعد المحاولة.');
     }
 
@@ -419,7 +420,7 @@ class ExcelService {
       }
     }
 
-    const coreRequired = ['name', 'job', 'id', 'phone'];
+    const coreRequired = ['name'];
     final missing = coreRequired.where((f) => !indexes.containsKey(f)).toList();
     if (missing.isNotEmpty) {
       final labels = {'name': 'الاسم', 'job': 'المسمى الوظيفي', 'id': 'رقم الهوية', 'phone': 'رقم الجوال'};
@@ -433,6 +434,8 @@ class ExcelService {
     }
 
     final seenIds = <String>{};
+    final seenNames = <String>{};
+    const uuid = Uuid();
     final valid = <Map<String, String>>[];
     final errors = <String>[];
     var duplicates = 0;
@@ -440,16 +443,69 @@ class ExcelService {
     for (var r = headerRow + 1; r < rows.length; r++) {
       final row = rows[r];
       final name = cell(row, 'name');
-      final job = cell(row, 'job');
+      final rawJob = cell(row, 'job');
+      final normalizedJob = _normalize(rawJob);
+      final job = normalizedJob.contains('كاره') || normalizedJob.contains('كاره') || normalizedJob.contains('عربه') || normalizedJob.contains('cart') ? 'عامل مع كارة' : 'عامل';
       final id = cell(row, 'id').replaceAll(RegExp(r'\D'), '');
       final phone = cell(row, 'phone');
-      if ([name, job, id, phone].every((v) => v.isEmpty)) continue;
+      if (row.every((v) => v.trim().isEmpty)) continue;
 
       final rowErrors = <String>[];
       if (name.isEmpty) rowErrors.add('الاسم مفقود');
-      if (job.isEmpty) rowErrors.add('المسمى الوظيفي مفقود');
-      if (!RegExp(r'^\d{9}$').hasMatch(id)) rowErrors.add('رقم الهوية يجب أن يتكون من 9 أرقام');
-      if (phone.isEmpty) rowErrors.add('رقم الجوال مفقود');
+      if (id.isNotEmpty && !RegExp(r'^\d{9}
+      if (id.isNotEmpty && RegExp(r'^\d{9}$').hasMatch(id) && !seenIds.add(id)) {
+        duplicates++;
+        rowErrors.add('رقم الهوية مكرر في الملف');
+      }
+      if (rowErrors.isNotEmpty) {
+        errors.add('الصف ${r + 1}: ${rowErrors.join('، ')}');
+        continue;
+      }
+      valid.add({
+        'name': name,
+        'job': job,
+        'id': id.isNotEmpty ? id : uuid.v4(),
+        'phone': phone,
+        'municipality': cleanMunicipality,
+        'group': cleanGroup,
+        'municipalityCoordinatorId': coordinatorId?.trim() ?? '',
+      });
+    }
+    return ExcelImportResult(validRows: valid, errors: errors, duplicateCount: duplicates, detectedHeaderRow: headerRow + 1, detectedColumns: detected);
+  }
+
+  Future<ExcelImportResult> importWorkers({
+    required String municipality,
+    required String group,
+    String? coordinatorId,
+  }) async {
+    final file = await pickWorkersFile();
+    if (file == null) return const ExcelImportResult(validRows: [], errors: [], duplicateCount: 0);
+    return parseWorkersBytes(file.bytes!, municipality: municipality, group: group, coordinatorId: coordinatorId, fileName: file.name);
+  }
+
+  Future<String?> exportWorkers(List<Map<String, String>> workers) async {
+    final book = Excel.createExcel();
+    final sheet = book['Workers'];
+    const headers = ['الاسم الرباعي', 'المسمى الوظيفي', 'رقم الهوية', 'رقم الجوال', 'اسم البلدية', 'رقم المجموعة'];
+    sheet.appendRow(headers.map(TextCellValue.new).toList());
+    for (final w in workers) {
+      sheet.appendRow([
+        TextCellValue(w['name'] ?? ''), TextCellValue(w['job'] ?? ''), TextCellValue(w['id'] ?? ''),
+        TextCellValue(w['phone'] ?? ''), TextCellValue(w['municipality'] ?? ''), TextCellValue(w['group'] ?? ''),
+      ]);
+    }
+    final bytes = book.encode();
+    if (bytes == null || bytes.isEmpty) return null;
+    return saveExcelBytes(Uint8List.fromList(bytes), 'workers_${DateTime.now().millisecondsSinceEpoch}.xlsx');
+  }
+}
+
+
+/// Backward/semantic alias for callers that refer to this module as ExcelImportService.
+typedef ExcelImportService = ExcelService;
+).hasMatch(id)) rowErrors.add('رقم الهوية يجب أن يتكون من 9 أرقام عند إدخاله');
+      if (name.isNotEmpty && !seenNames.add(_normalize(name))) { duplicates++; rowErrors.add('اسم العامل مكرر في الملف'); }
       if (id.isNotEmpty && RegExp(r'^\d{9}$').hasMatch(id) && !seenIds.add(id)) {
         duplicates++;
         rowErrors.add('رقم الهوية مكرر في الملف');
