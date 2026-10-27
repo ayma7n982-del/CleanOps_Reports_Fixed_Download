@@ -318,7 +318,8 @@ service cloud.firestore {
         && request.resource.data.acknowledged == true
         && request.resource.data.acknowledgedBy is string
         && request.resource.data.acknowledgedBy == request.auth.uid
-        && request.resource.data.status in ['urgent', 'acknowledged', 'resolved', 'closed'];
+        && request.resource.data.status in ['urgent', 'acknowledged', 'resolved', 'closed']
+        && (request.resource.data.status != 'closed' || request.resource.data.closedBy == request.auth.uid);
     }
 
     match /operations/{id} {
