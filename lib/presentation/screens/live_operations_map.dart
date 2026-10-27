@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
+import '../../core/services/container_service.dart';
 import '../../core/constants/app_constants.dart';
 import '../../core/models/core_models.dart';
 import '../../core/services/auth_service.dart';
@@ -18,6 +19,7 @@ class LiveOperationsMapScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final user = context.watch<AuthService>().currentUser;
     final config = context.watch<ConfigService>();
+    final containers = context.watch<ContainerService>().containers;
     if (user == null || (user.role != 'donor_manager' && user.role != 'jsc_coordinator')) {
       return const Scaffold(body: Center(child: AppText('لا توجد صلاحية للوصول إلى خريطة العمليات.')));
     }
@@ -57,6 +59,7 @@ class LiveOperationsMapScreen extends StatelessWidget {
                           child: _SatelliteOperationsMap(
                             dumpsites: dumpsites,
                             groups: groups.values.toList(),
+                            containers: containers.map((c) => {'id': c.id, 'name': c.locationName, 'latitude': c.latitude, 'longitude': c.longitude, 'status': c.status}).toList(),
                             enabled: config.liveOperationsMapEnabled,
                           ),
                         ),
@@ -67,6 +70,9 @@ class LiveOperationsMapScreen extends StatelessWidget {
                         const SizedBox(height: 12),
                         Wrap(spacing: 16, runSpacing: 8, children: [
                           _Legend(color: aiGreen, label: 'مكب نشط'),
+                          _Legend(color: Colors.redAccent, label: 'حاوية ممتلئة'),
+                          _Legend(color: Colors.orange, label: 'حاوية نصف ممتلئة'),
+                          _Legend(color: Colors.lightGreenAccent, label: 'حاوية فارغة'),
                           _Legend(color: aiCyan, label: 'مجموعة نشطة'),
                           _Legend(color: Colors.redAccent, label: 'تحديث حرج/قديم'),
                         ]),
@@ -74,6 +80,7 @@ class LiveOperationsMapScreen extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 12),
+                  ListTile(leading: const Icon(Icons.inventory_2_outlined, color: aiCyan), title: const AppText('الحاويات على الخريطة'), trailing: Text('${containers.length}')),
                   ListTile(leading: const Icon(Icons.delete_sweep_outlined, color: aiGreen), title: AppText('المكبات'), trailing: Text('${dumpsites.length}')),
                   ListTile(leading: const Icon(Icons.groups_rounded, color: aiCyan), title: AppText('المجموعات ذات الموقع'), trailing: Text('${groups.length}')),
                   if (dumpsites.isEmpty && groups.isEmpty)
@@ -103,8 +110,9 @@ class LiveOperationsMapScreen extends StatelessWidget {
 class _SatelliteOperationsMap extends StatelessWidget {
   final List<Map<String, dynamic>> dumpsites;
   final List<Map<String, dynamic>> groups;
+  final List<Map<String, dynamic>> containers;
   final bool enabled;
-  const _SatelliteOperationsMap({required this.dumpsites, required this.groups, required this.enabled});
+  const _SatelliteOperationsMap({required this.dumpsites, required this.groups, required this.containers, required this.enabled});
 
   LatLng? _latLng(dynamic value) {
     if (value is GeoPoint) return LatLng(value.latitude, value.longitude);
@@ -122,6 +130,10 @@ class _SatelliteOperationsMap extends StatelessWidget {
     for (final d in dumpsites) {
       final point = _latLng(d['locationGeo'] ?? d['location'] ?? {'latitude': d['latitude'], 'longitude': d['longitude']});
       if (point != null) points.add(point);
+    }
+    for (final c in containers) {
+      final point = _latLng(c);
+      if (point != null && (point.latitude != 0 || point.longitude != 0)) points.add(point);
     }
     for (final g in groups) {
       final point = _latLng(g['point'] ?? g['lastLocation']);
@@ -150,6 +162,19 @@ class _SatelliteOperationsMap extends StatelessWidget {
             errorTileCallback: (tile, error, stackTrace) {},
           ),
           MarkerLayer(markers: [
+            for (final c in containers)
+              if (_latLng(c) case final LatLng p)
+                if (p.latitude != 0 || p.longitude != 0)
+                  Marker(
+                    point: p,
+                    width: 40,
+                    height: 42,
+                    child: Tooltip(
+                      message: '${c['name'] ?? 'حاوية'} — ${c['status'] == 'full' ? 'ممتلئة' : c['status'] == 'partial' ? 'نصف ممتلئة' : 'فارغة'}',
+                      child: Icon(Icons.delete_rounded, size: 32,
+                        color: c['status'] == 'full' ? Colors.redAccent : c['status'] == 'partial' ? Colors.orange : Colors.lightGreenAccent),
+                    ),
+                  ),
             for (final d in dumpsites)
               if (_latLng(d['locationGeo'] ?? d['location'] ?? {'latitude': d['latitude'], 'longitude': d['longitude']}) case final LatLng p)
                 Marker(point: p, width: 42, height: 48, child: const Icon(Icons.location_on, size: 38, color: Color(0xFF72D572))),
