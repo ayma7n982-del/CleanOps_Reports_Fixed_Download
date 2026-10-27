@@ -44,6 +44,7 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
   bool savingTrip = false;
   bool sendingEmergency = false;
   String emergencyStatus = '';
+  String? activeEmergencyId;
   final Map<String, bool> tripPpe = {'بوت': false, 'قفازات': false, 'كمامة': false, 'قبعة': false, 'صديري': false};
   final List<String> tripPhotoPaths = [];
   List<Map<String, String>> workers = [];
@@ -323,6 +324,21 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
     }
   }
 
+  void _refreshEmergencyStatus(DataService data) {
+    final id = activeEmergencyId;
+    if (id == null) return;
+    final pending = data.queue.any((item) => item.entity == 'emergency' && item.payload.contains('"id":"$id"'));
+    final record = data.operations.where((item) => '${item['id']}' == id && item['_entity'] == 'emergency').firstOrNull;
+    final next = pending
+        ? 'البلاغ محفوظ محليًا وينتظر المزامنة.'
+        : record == null
+            ? 'لا تتوفر حالة مؤكدة للبلاغ. تحقق من الاتصال والمزامنة.'
+            : record['acknowledged'] == true
+                ? 'تم تأكيد استلام البلاغ من المسؤول.'
+                : 'اكتملت المعالجة المحلية؛ تأكيد استلام المسؤول لم يصل بعد.';
+    if (mounted && next != emergencyStatus) setState(() => emergencyStatus = next);
+  }
+
   Future<void> _sendEmergency() async {
     final u = context.read<AuthService>().currentUser;
     final d = context.read<DataService>();
@@ -393,6 +409,7 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
     if (mounted) {
       setState(() {
         emergencyLock = true;
+        activeEmergencyId = id;
         emergencyStatus = 'تم حفظ البلاغ محليًا بانتظار المزامنة؛ لم يتأكد استلام الجهات بعد.';
         tab = 3;
       });
@@ -804,6 +821,8 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
   );
 
   Widget _emergency(ConfigService config) {
+    final data = context.watch<DataService>();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _refreshEmergencyStatus(data));
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
       children: [
