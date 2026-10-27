@@ -331,7 +331,9 @@ service cloud.firestore {
             && request.resource.data.acknowledgedAt == resource.data.acknowledgedAt)
         )
         && (request.resource.data.status != 'closed'
-          || (request.resource.data.closedBy == request.auth.uid
+          || (resource.data.acknowledged == true
+            && resource.data.status in ['acknowledged', 'resolved']
+            && request.resource.data.closedBy == request.auth.uid
             && request.resource.data.closedAt is string
             && request.resource.data.closedAt.size() > 0
             && request.resource.data.resolutionNote is string
