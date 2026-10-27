@@ -125,7 +125,7 @@ class _GlobalSearchPageState extends State<GlobalSearchPage> {
     final request = ++_searchRequest;
     if (value.trim().isEmpty) { setState(() { results = []; busy = false; }); return; }
     setState(() => busy = true);
-    _searchDebounce = Timer(const Duration(milliseconds: 500), () { if (mounted && request == _searchRequest) search(); });
+    _searchDebounce = Timer(const Duration(milliseconds: 180), () { if (mounted && request == _searchRequest) search(); });
   }
 
   Future<void> search() async {
@@ -229,16 +229,16 @@ class _GlobalSearchPageState extends State<GlobalSearchPage> {
     if (compactText.contains(compactQuery)) return true;
     final words = text.split(RegExp(r'\s+')).where((x) => x.isNotEmpty).toList();
     const aliases = <String, List<String>>{
-      'مكب': ['مكب', 'مطمر', 'مطامر', 'مكبات'],
+      'مكب': ['مكب', 'مطمر', 'مطامر', 'مكبات', 'نفايات', 'مردم'],
       'مطمر': ['مطمر', 'مكب', 'مكبات'],
       'حاويه': ['حاويه', 'حاويات', 'سله', 'سلال', 'كونتينر', 'كونتينرات'],
       'حاويات': ['حاويات', 'حاويه', 'سلال', 'كونتينر', 'كونتينرات'],
       'نقله': ['نقله', 'نقل', 'ترحيل', 'ترحيلات', 'رحله', 'رحلات', 'شحن'],
       'ترحيل': ['ترحيل', 'ترحيلات', 'نقله', 'نقل', 'رحلات'],
       'غياب': ['غياب', 'غيابات', 'عدم', 'حضور'],
-      'عمال': ['عمال', 'عاملين', 'موظفين', 'قوى', 'موارد'],
-      'مجموعه': ['مجموعه', 'مجموعات', 'فريق', 'فرق'],
-      'تقرير': ['تقرير', 'تقارير', 'تحليل', 'احصائيات', 'كشف', 'ملخص'],
+      'عمال': ['عمال', 'عاملين', 'موظفين', 'قوى', 'موارد', 'افراد', 'طاقم'],
+      'مجموعه': ['مجموعه', 'مجموعات', 'فريق', 'فرق', 'طواقم'],
+      'تقرير': ['تقرير', 'تقارير', 'تحليل', 'احصائيات', 'كشف', 'ملخص', 'سجل', 'بيان'],
       'معده': ['معده', 'معدات', 'آليه', 'آليات', 'سياره', 'مركبه'],
       'امن': ['امن', 'سلامه', 'وقايه', 'ppe'],
       'بحث': ['بحث', 'استعلام', 'تفتيش', 'عثور'],
@@ -246,9 +246,12 @@ class _GlobalSearchPageState extends State<GlobalSearchPage> {
       'اشراف': ['اشراف', 'مشرف', 'مشرفين', 'مراقب', 'مراقبين'],
       'بلديه': ['بلديه', 'بلديات', 'بلدية', 'مجلس', 'محلي', 'مدينة'],
       'دوره': ['دوره', 'دورات', 'دورة', 'مرحله', 'مراحل', 'تشغيل'],
+      'ممتلئه': ['ممتلئه', 'ممتلي', 'ممتلئ', 'full', 'filled'],
+      'فارغه': ['فارغه', 'فارغ', 'empty', 'vacant'],
+      'حضور': ['حضور', 'دوام', 'بصمه', 'مداومه'],
     };
     bool matchesTerm(String term) {
-      final options = <String>{term, ...(aliases[term] ?? const [])};
+      final options = <String>{term, ...aliases.entries.where((entry) => entry.key.startsWith(term) || entry.value.any((alias) => _normalize(alias).startsWith(term))).expand((entry) => [entry.key, ...entry.value]), ...(aliases[term] ?? const [])};
       for (final candidate in options) {
         final normalized = _normalize(candidate);
         if (normalized.isEmpty || text.contains(normalized)) return true;
