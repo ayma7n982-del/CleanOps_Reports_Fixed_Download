@@ -109,6 +109,10 @@ class OperationsAdminService {
       'createdAt': FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
     });
+    final confirmed = await ref.get(const GetOptions(source: Source.server));
+    if (!confirmed.exists || confirmed.data()?['createdBy'] != actorId) {
+      throw StateError('لم يتم تأكيد حفظ المكب على الخادم. تحقق من القائمة قبل إعادة المحاولة.');
+    }
   }
 
   Future<void> updateDumpsite({
