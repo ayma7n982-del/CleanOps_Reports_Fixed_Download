@@ -40,6 +40,7 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
   final imageService = ImageService();
   final Map<String, Map<String, bool>> ppe = {};
   final Map<String, String> attendanceStatus = {};
+  bool savingAttendance = false;
   final Map<String, bool> tripPpe = {'بوت': false, 'قفازات': false, 'كمامة': false, 'قبعة': false, 'صديري': false};
   final List<String> tripPhotoPaths = [];
   List<Map<String, String>> workers = [];
@@ -63,25 +64,40 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
 
   Future<void> _loadWorkers() async {
     final loaded = <String, Map<String, String>>{};
+    final user = context.read<AuthService>().currentUser;
+    final groupId = user?.groupId?.trim() ?? '';
     try {
       final data = context.read<DataService>();
       await data.refreshOperations();
-      for (final m in data.operations.where((e) => '${e['_entity'] ?? ''}' == 'worker')) {
-        if (m['isDeleted'] == true) continue;
-        final id = '${m['id'] ?? ''}';
-        if (id.isEmpty) continue;
-        loaded[id] = {
-          'id': id,
-          'name': '${m['name'] ?? ''}',
-          'phone': '${m['phone'] ?? ''}',
-          'job': '${m['job'] ?? ''}',
-          'group': '${m['group'] ?? ''}'
-        };
+      if (groupId.isNotEmpty) {
+        for (final m in data.operations.where((e) => '${e['_entity'] ?? ''}' == 'worker')) {
+          if (m['isDeleted'] == true || m['isActive'] == false ||
+              '${m['status'] ?? ''}'.toLowerCase() == 'frozen' ||
+              '${m['status'] ?? ''}'.toLowerCase() == 'deleted') continue;
+          final workerGroup = '${m['groupId'] ?? m['groupNumber'] ?? m['group'] ?? ''}'.trim();
+          if (workerGroup != groupId) continue;
+          final id = '${m['id'] ?? ''}';
+          if (id.isEmpty) continue;
+          loaded[id] = {
+            'id': id,
+            'name': '${m['name'] ?? ''}',
+            'phone': '${m['phone'] ?? ''}',
+            'job': '${m['job'] ?? ''}',
+            'role': '${m['role'] ?? 'worker'}',
+            'group': workerGroup,
+            'groupId': workerGroup,
+            'groupName': '${m['groupName'] ?? workerGroup}',
+            'municipalityName': '${m['municipalityName'] ?? m['municipality'] ?? ''}',
+          };
+        }
       }
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('Unable to load group attendance workers: $e');
+    }
     if (mounted) {
       setState(() {
-        workers = loaded.values.where((w) => (w['name'] ?? '').isNotEmpty).toList();
+        workers = loaded.values.where((w) => (w['name'] ?? '').isNotEmpty).toList()
+          ..sort((a, b) => (a['name'] ?? '').compareTo(b['name'] ?? ''));
         loadingWorkers = false;
       });
     }
@@ -410,7 +426,7 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
                 children: [
-                  _SupervisorActionCard(icon: Icons.fact_check_rounded, title: 'الحضور', subtitle: 'الحضور وPPE', color: aiGreen, onTap: () => _openAction(context, 'الحضور', _attendance(config))),
+                  _SupervisorActionCard(icon: Icons.fact_check_rounded, title: 'حضور مجموعتي', subtitle: 'كشف الحضور وفحص السلامة', color: aiGreen, onTap: () => _openAction(context, 'حضور مجموعتي', _attendance(config))),
                   _SupervisorActionCard(icon: Icons.local_shipping_rounded, title: 'تسجيل نقلة', subtitle: 'تسجيل الترحيل والكميات', color: aiCyan, onTap: () => _openAction(context, 'تسجيل نقلة', _trips(config))),
                   _SupervisorActionCard(icon: Icons.delete_sweep_rounded, title: 'إدخال حالة الحاويات', subtitle: 'تحديث حالة حاويات المجموعة', color: const Color(0xFF8B7CFF), onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ContainerManagementScreen()))),
                   _SupervisorActionCard(icon: Icons.warning_amber_rounded, title: 'SOS / طوارئ', subtitle: 'إبلاغ فوري مع الموقع', color: red, emergency: true, onTap: () => _openAction(context, 'SOS / طوارئ', _emergency(config))),
@@ -441,8 +457,8 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
         AiHero(
           user: context.read<AuthService>().currentUser!,
           eyebrow: 'LEVEL 1 • FIELD OPERATIONS',
-          title: 'لوحة المشرف الميداني',
-          subtitle: 'الحضور، النقلات، توثيق الشوارع والطوارئ ضمن واجهة تشغيل سريعة.',
+          title: 'حضور مجموعتي',
+          subtitle: 'حدد حالة كل عامل قبل حفظ كشف الوردية، ثم افحص معدات الوقاية للحاضرين.',
         ),
         const SizedBox(height: 14),
         Wrap(
@@ -489,7 +505,7 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
         ),
         const SizedBox(height: 12),
         SupervisorCardSection(
-          title: 'الحضور وPPE',
+          title: 'عمال مجموعتي',
           icon: const Icon(Icons.health_and_safety_outlined),
           child: loadingWorkers
               ? const Center(child: Padding(padding: EdgeInsets.all(16), child: CircularProgressIndicator()))
@@ -498,10 +514,12 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
                   : Column(children: workers.map((w) => _worker(w, config)).toList()),
         ),
         const SizedBox(height: 12),
+        AppText('العمال: ${workers.length} • حاضر: ${attendanceStatus.values.where((v) => v == 'present').length} • لم تُحدد حالتهم: ${workers.where((w) => !attendanceStatus.containsKey(w['id'])).length}'),
+        const SizedBox(height: 12),
         FilledButton.tonalIcon(
-          onPressed: emergencyLock || workers.isEmpty ? null : _saveAttendance,
+          onPressed: emergencyLock || workers.isEmpty || savingAttendance ? null : _saveAttendance,
           icon: const Icon(Icons.fact_check_outlined),
-          label: const AppText('حفظ كشف الحضور وPPE'),
+          label: AppText(savingAttendance ? 'جارٍ حفظ الكشف...' : 'حفظ كشف حضور مجموعتي'),
         ),
         const SizedBox(height: 8),
         FilledButton.icon(
@@ -520,9 +538,14 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: AppText('المرحلة مجمّدة — التعديلات التشغيلية مقفلة')));
       return;
     }
-    if (u == null || !u.can('attendance', 'create')) return;
+    if (u == null || !u.can('attendance', 'create') || savingAttendance) return;
+    final missing = workers.where((w) => !attendanceStatus.containsKey(w['id'])).length;
+    if (missing > 0) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: AppText('حدد حالة جميع العمال أولًا. المتبقي: $missing')));
+      return;
+    }
     if (config.ppeEnabled) {
-      final incomplete = workers.where((w) => (attendanceStatus[w['name'] ?? ''] ?? 'present') == 'present').where((w) {
+      final incomplete = workers.where((w) => (attendanceStatus[w['id'] ?? ''] ?? 'unset') == 'present').where((w) {
         final state = ppe[w['name'] ?? ''] ?? const <String, bool>{};
         return state.length != 5 || !state.values.every((v) => v);
       }).toList();
@@ -531,11 +554,14 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
         return;
       }
     }
+    setState(() => savingAttendance = true);
+    try {
     final d = context.read<DataService>();
+    final day = DateTime.now().toIso8601String().substring(0, 10);
     for (final w in workers) {
       final name = w['name'] ?? '';
-      final state = ppe[name] ?? {};
-      final id = '${DateTime.now().microsecondsSinceEpoch}_${name.hashCode}';
+      final state = ppe[w['id'] ?? ''] ?? {};
+      final id = 'attendance_${u.groupId}_${config.shift.replaceAll(RegExp(r'[^0-9]'), '')}_${day}_${w['id']}';
       await d.enqueue('attendance', 'create', {
         'id': id,
         'workerId': w['id'],
@@ -545,8 +571,8 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
         'groupName': w['groupName'] ?? u.groupId ?? '',
         'municipalityName': u.scope == 'assigned_only' ? (w['municipalityName'] ?? '') : u.scope,
         'municipalityCoordinatorId': u.municipalityCoordinatorId ?? '',
-        'status': attendanceStatus[name] ?? 'present',
-        if ((attendanceStatus[name] ?? 'present') == 'present') 'checkInAt': DateTime.now().toIso8601String(),
+        'status': attendanceStatus[w['id'] ?? ''] ?? 'unset',
+        if ((attendanceStatus[workerId] ?? 'unset') == 'present') 'checkInAt': DateTime.now().toIso8601String(),
         'ppeComplete': state.length == 5 && state.values.every((v) => v),
         'ppe': state,
         'reportedBy': u.id,
@@ -556,12 +582,18 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
       });
     }
     await d.addActivity('الحضور وPPE', 'تم حفظ كشف الحضور وفحص معدات الوقاية للمجموعة.', level: 'success');
-    if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: AppText('تم حفظ الحضور وفحص PPE في قائمة المزامنة.')));
+    if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: AppText('تم حفظ الكشف محليًا وإضافته لقائمة المزامنة؛ تأكيد الخادم لاحقًا.')));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: AppText('تعذر حفظ الكشف: $e')));
+    } finally {
+      if (mounted) setState(() => savingAttendance = false);
+    }
   }
 
   Widget _worker(Map<String, String> w, ConfigService config) {
     final name = w['name'] ?? '';
-    final state = ppe.putIfAbsent(name, () => {'صديري': false, 'قفازات': false, 'بوت': false, 'كمامة': false, 'قبعة': false});
+    final workerId = w['id'] ?? '';
+    final state = ppe.putIfAbsent(workerId, () => {'صديري': false, 'قفازات': false, 'بوت': false, 'كمامة': false, 'قبعة': false});
     return Card(
       child: InkWell(
         borderRadius: BorderRadius.circular(18),
@@ -581,9 +613,10 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
               ],
             ),
             DropdownButtonFormField<String>(
-              value: attendanceStatus[name] ?? 'present',
+              value: attendanceStatus[workerId] ?? 'unset',
               decoration: InputDecoration(labelText: tr('حالة العامل')),
               items: const [
+                DropdownMenuItem(value: 'unset', child: AppText('لم يتم تحديد الحالة')),
                 DropdownMenuItem(value: 'present', child: AppText('حضور')),
                 DropdownMenuItem(value: 'absent', child: AppText('غياب')),
                 DropdownMenuItem(value: 'leave', child: AppText('إجازة')),
@@ -592,7 +625,7 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
                 DropdownMenuItem(value: 'unexcused_absence', child: AppText('غياب بدون عذر')),
                 DropdownMenuItem(value: 'external_task', child: AppText('مهمة خارج المجموعة')),
               ],
-              onChanged: emergencyLock ? null : (v) => setState(() => attendanceStatus[name] = v ?? 'present'),
+              onChanged: emergencyLock ? null : (v) => setState(() => attendanceStatus[workerId] = v ?? 'unset'),
             ),
             const SizedBox(height: 8),
             if (config.ppeEnabled && (attendanceStatus[name] ?? 'present') == 'present')
