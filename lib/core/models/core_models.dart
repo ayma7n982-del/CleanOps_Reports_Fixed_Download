@@ -110,6 +110,7 @@ FeaturePolicy defaultPolicy(String role, String feature) {
 }
 
 class AppUser {
+  static final Map<String, Map<String, FeaturePolicy>> roleOverrides = {};
   final String id;
   final String username;
   final String name;
@@ -133,7 +134,7 @@ class AppUser {
   });
 
   bool can(String feature, String action) {
-    final p = policies[feature] ?? defaultPolicy(role, feature);
+    final p = roleOverrides[role]?[feature] ?? policies[feature] ?? defaultPolicy(role, feature);
     if (!p.visible || !p.enabled) return false;
     switch (action) {
       case 'view': return p.view;
