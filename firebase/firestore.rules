@@ -367,7 +367,8 @@ service cloud.firestore {
         && exists(/databases/$(database)/documents/operations/$(request.resource.data.cartId))
         && get(/databases/$(database)/documents/operations/$(request.resource.data.cartId)).data._entity == request.resource.data.cartEntity
         && get(/databases/$(database)/documents/operations/$(request.resource.data.cartId)).data.municipalityCoordinatorId == request.auth.uid
-        && get(/databases/$(database)/documents/operations/$(request.resource.data.cartId)).data.isDeleted != true;
+        && (!get(/databases/$(database)/documents/operations/$(request.resource.data.cartId)).data.keys().hasAny(['isDeleted'])
+            || get(/databases/$(database)/documents/operations/$(request.resource.data.cartId)).data.isDeleted != true);
     }
 
     match /operations/{id} {
