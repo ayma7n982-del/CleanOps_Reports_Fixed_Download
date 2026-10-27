@@ -116,6 +116,49 @@ class _Level3JscState extends State<Level3JscScreen> {
     }
   }
 
+  Future<void> _closeSos(String id) async {
+    final user = context.read<AuthService>().currentUser;
+    if (user == null || user.role != 'jsc_coordinator') return;
+    final noteController = TextEditingController();
+    final note = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const AppText('إغلاق بلاغ SOS'),
+        content: TextField(
+          controller: noteController,
+          maxLines: 3,
+          decoration: const InputDecoration(labelText: 'سبب الإغلاق والإجراءات المتخذة'),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const AppText('إلغاء')),
+          FilledButton(onPressed: () {
+            final value = noteController.text.trim();
+            if (value.isNotEmpty) Navigator.pop(dialogContext, value);
+          }, child: const AppText('اعتماد الإغلاق')),
+        ],
+      ),
+    );
+    noteController.dispose();
+    if (note == null || note.isEmpty || !mounted) return;
+    try {
+      final now = DateTime.now().toIso8601String();
+      await FirebaseFirestore.instance.collection('operations').doc(id).update({
+        'status': 'closed',
+        'acknowledged': true,
+        'closedBy': user.id,
+        'closedAt': now,
+        'resolutionNote': note,
+        'updatedAt': now,
+      });
+      await _loadOperationsState();
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: AppText('تم إغلاق بلاغ SOS في Firebase.')));
+    } catch (error) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('تعذر إغلاق البلاغ: $error')));
+    }
+  }
+
   Future<void> _referEmergency(String id) async {
     final u = context.read<AuthService>().currentUser;
     if (u == null || u.role != 'jsc_coordinator') return;
