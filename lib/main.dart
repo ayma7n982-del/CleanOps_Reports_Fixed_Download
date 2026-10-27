@@ -990,6 +990,7 @@ class PermissionsPage extends StatefulWidget {
 
 class _PermissionsState extends State<PermissionsPage> {
   String selected = roles.first;
+  bool showAdvanced = false;
   @override Widget build(BuildContext context) {
     final config = context.watch<ConfigService>();
     return Directionality(
@@ -1006,10 +1007,18 @@ class _PermissionsState extends State<PermissionsPage> {
               decoration: InputDecoration(labelText: tr('اختر الدور الوظيفي')),
             ),
             const SizedBox(height: 12),
-            const AppText('اختر الدور، ثم افتح القسم المطلوب لتعديل صلاحياته. التغييرات تحفظ على الخادم.'),
+            const AppText('1. اختر الدور الوظيفي. 2. افتح القسم. 3. حدد ما يستطيع هذا الدور فعله.'),
+            SwitchListTile(
+              title: const AppText('إظهار الخيارات المتقدمة'),
+              subtitle: const AppText('مثل الاستيراد والتصدير والعمل دون إنترنت'),
+              value: showAdvanced,
+              onChanged: (value) => setState(() => showAdvanced = value),
+            ),
             const SizedBox(height: 12),
             ...allFeatures.entries.map((entry) {
-              final policy = config.policies[entry.key] ?? defaultPolicy(selected, entry.key);
+              final policy = selected == config.attachedRole
+                  ? (config.policies[entry.key] ?? defaultPolicy(selected, entry.key))
+                  : defaultPolicy(selected, entry.key);
               return Card(
                 child: ExpansionTile(
                   leading: FeatureIcon(entry.key),
@@ -1024,13 +1033,15 @@ class _PermissionsState extends State<PermissionsPage> {
                           _permissionSwitch('إضافة', policy.create, (v) => _set(entry.key, policy.copyWith(create: v))),
                           _permissionSwitch('تعديل', policy.edit, (v) => _set(entry.key, policy.copyWith(edit: v))),
                           _permissionSwitch('اعتماد', policy.approve, (v) => _set(entry.key, policy.copyWith(approve: v))),
-                          _permissionSwitch('حذف منطقي', policy.softDelete, (v) => _set(entry.key, policy.copyWith(softDelete: v))),
-                          _permissionSwitch('استيراد', policy.importData, (v) => _set(entry.key, policy.copyWith(importData: v))),
-                          _permissionSwitch('تصدير', policy.export, (v) => _set(entry.key, policy.copyWith(export: v))),
-                          _permissionSwitch('إشعارات', policy.notifications, (v) => _set(entry.key, policy.copyWith(notifications: v))),
-                          _permissionSwitch('Offline', policy.offlineAllowed, (v) => _set(entry.key, policy.copyWith(offlineAllowed: v))),
-                          _permissionSwitch('إظهار', policy.visible, (v) => _set(entry.key, policy.copyWith(visible: v))),
-                          _permissionSwitch('تفعيل', policy.enabled, (v) => _set(entry.key, policy.copyWith(enabled: v))),
+                          if (showAdvanced) ...[
+                            _permissionSwitch('حذف السجلات', policy.softDelete, (v) => _set(entry.key, policy.copyWith(softDelete: v))),
+                            _permissionSwitch('استيراد البيانات', policy.importData, (v) => _set(entry.key, policy.copyWith(importData: v))),
+                            _permissionSwitch('تصدير البيانات', policy.export, (v) => _set(entry.key, policy.copyWith(export: v))),
+                            _permissionSwitch('الإشعارات', policy.notifications, (v) => _set(entry.key, policy.copyWith(notifications: v))),
+                            _permissionSwitch('العمل دون إنترنت', policy.offlineAllowed, (v) => _set(entry.key, policy.copyWith(offlineAllowed: v))),
+                            _permissionSwitch('إظهار في القائمة', policy.visible, (v) => _set(entry.key, policy.copyWith(visible: v))),
+                          ],
+                          _permissionSwitch('تفعيل القسم', policy.enabled, (v) => _set(entry.key, policy.copyWith(enabled: v))),
                         ],
                       )),
                     ],
