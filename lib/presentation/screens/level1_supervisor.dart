@@ -33,6 +33,7 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
   Position? reportPosition;
   String? audioPath;
   Timer? timer;
+  StreamSubscription? sosUpdates;
   final street = TextEditingController();
   final issue = TextEditingController();
   final solution = TextEditingController();
@@ -55,11 +56,19 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
     super.initState();
     _loadWorkers();
     WidgetsBinding.instance.addPostFrameCallback((_) => _restoreEmergency());
+    sosUpdates = FirebaseFirestore.instance.collection('operations')
+        .where('_entity', isEqualTo: 'emergency').snapshots().listen((_) async {
+      if (!mounted || activeEmergencyId == null) return;
+      final data = context.read<DataService>();
+      await data.refreshOperations();
+      if (mounted) _refreshEmergencyStatus(data);
+    });
   }
 
   @override
   void dispose() {
     timer?.cancel();
+    sosUpdates?.cancel();
     street.dispose();
     issue.dispose();
     solution.dispose();
