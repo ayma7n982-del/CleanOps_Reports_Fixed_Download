@@ -70,13 +70,28 @@ class _Level2MunicipalityScreenState extends State<Level2MunicipalityScreen> {
     final latest = <String, DateTime>{};
     try {
       final data = context.read<DataService>();
+      final user = context.read<AuthService>().currentUser;
+      if (user == null || user.role != 'municipality_coordinator') return;
       await data.refreshOperations();
+      // Only consider trips linked to groups assigned to this municipality.
+      final ownGroups = <String>{};
+      for (final item in data.operations.where((e) => e['_entity'] == 'group' && e['isDeleted'] != true)) {
+        if ('${item['municipalityCoordinatorId'] ?? ''}' != user.id) continue;
+        for (final key in ['id', 'number', 'groupId', 'name', 'groupName']) {
+          final value = '${item[key] ?? ''}'.trim();
+          if (value.isNotEmpty) ownGroups.add(value);
+        }
+      }
       for (final m in data.operations.where((e) => '${e['_entity'] ?? ''}' == 'trip')) {
+        final coordinatorId = '${m['municipalityCoordinatorId'] ?? ''}'.trim();
+        final groupId = '${m['groupId'] ?? ''}'.trim();
+        final groupName = '${m['groupName'] ?? ''}'.trim();
+        if (coordinatorId != user.id && !ownGroups.contains(groupId) && !ownGroups.contains(groupName)) continue;
         if (m['isDeleted'] == true) continue;
         final group = '${m['groupName'] ?? m['groupId'] ?? ''}'.trim();
         final created = DateTime.tryParse('${m['createdAt'] ?? ''}');
-        if (group.isEmpty || created == null || latest.containsKey(group)) continue;
-        latest[group] = created;
+        if (group.isEmpty || created == null) continue;
+        if (latest[group] == null || created.isAfter(latest[group]!)) latest[group] = created;
       }
     } catch (_) {}
     final now = DateTime.now();
