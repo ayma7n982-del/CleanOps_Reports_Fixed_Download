@@ -22,6 +22,7 @@ class _MessagesCenterScreenState extends State<MessagesCenterScreen> {
   String type = 'info';
   String? selectedGroup;
   bool sending = false;
+  bool supervisorBroadcast = false;
 
   @override
   void dispose() {
@@ -161,6 +162,7 @@ class _MessagesCenterScreenState extends State<MessagesCenterScreen> {
     composer.clear();
     type = user.role == 'group_supervisor' ? 'emergency' : 'info';
     selectedGroup = null;
+    supervisorBroadcast = false;
     final data = context.read<DataService>();
     try { await data.refreshOperations(); } catch (_) {}
     final groups = <String>{};
@@ -215,7 +217,12 @@ class _MessagesCenterScreenState extends State<MessagesCenterScreen> {
                   items: groups.map((g) => DropdownMenuItem(value: g, child: Text(g))).toList(),
                   onChanged: (value) => setSheetState(() => selectedGroup = value),
                 ),
-              if (isL1) const Card(color: Color(0x16EF4444), child: ListTile(leading: Icon(Icons.shield_outlined, color: red), title: AppText('رسالة إلى منسق البلدية'), subtitle: AppText('يجب أن يكون حساب المشرف مرتبطًا بالمجموعة والمنسق.'))),
+              if (isL1) SwitchListTile(
+                title: const AppText('إرسال لجميع أفراد مجموعتي'),
+                subtitle: AppText(supervisorBroadcast ? 'سيتم الإرسال إلى المجموعة المرتبطة بحسابك فقط.' : 'سيتم الإرسال إلى منسق البلدية.'),
+                value: supervisorBroadcast,
+                onChanged: (value) => setSheetState(() => supervisorBroadcast = value),
+              ),
               const SizedBox(height: 10),
               TextField(controller: composer, minLines: 4, maxLines: 8, textInputAction: TextInputAction.newline, decoration: InputDecoration(labelText: tr('محتوى الرسالة'), hintText: tr('اكتب الرسالة هنا...'))),
               const SizedBox(height: 14),
@@ -224,7 +231,9 @@ class _MessagesCenterScreenState extends State<MessagesCenterScreen> {
                 onPressed: sending ? null : () async {
                   setSheetState(() => sending = true);
                   try {
-                    if (isL1) {
+                    if (isL1 && supervisorBroadcast) {
+                      await messaging.sendBroadcast(content: composer.text, type: type, groupId: user.groupId);
+                    } else if (isL1) {
                       final target = await _resolveCoordinator(user, data);
                       if (target == null || target.isEmpty) throw StateError('لم يتم العثور على منسق البلدية المرتبط بهذه المجموعة.');
                       await messaging.sendToUser(targetUserId: target, content: composer.text, type: type);
