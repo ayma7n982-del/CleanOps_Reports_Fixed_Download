@@ -150,7 +150,65 @@ class _OpsStreamPage extends StatelessWidget {
   const _OpsStreamPage({required this.title,required this.feature,required this.query,required this.empty,required this.builder});
   @override Widget build(BuildContext context)=>Scaffold(appBar:AppBar(title:AppText(title)),body:StreamBuilder<QuerySnapshot<Map<String,dynamic>>>(stream:query.snapshots(),builder:(c,s){if(s.hasError)return Center(child:Padding(padding:const EdgeInsets.all(20),child:AppText('تعذر تحميل البيانات: ${s.error}')));if(!s.hasData)return const Center(child:CircularProgressIndicator());final docs=s.data!.docs.toList()..sort((a,b)=>'${b.data()['createdAt']??b.data()['timestamp']??''}'.compareTo('${a.data()['createdAt']??a.data()['timestamp']??''}'));if(docs.isEmpty)return Center(child:AppText(empty));return ListView(padding:const EdgeInsets.fromLTRB(16,16,16,120),children:[AiSectionCard(title:title,feature:feature,subtitle:s.data!.metadata.isFromCache ? 'بيانات محلية مخزنة (قد تكون قديمة)' : 'بيانات Firestore بحسب الصلاحيات',child:builder(docs))]);}));
 }
-class _OperationTile extends StatelessWidget { final QueryDocumentSnapshot<Map<String,dynamic>> doc; final bool critical; const _OperationTile(this.doc,{this.critical=false}); @override Widget build(BuildContext c){final d=doc.data();final entity='${d['_entity']??''}';final title='${d['title']??d['name']??d['operation']??entity}';final detail='${d['detail']??d['description']??d['status']??''}';return ListTile(contentPadding:const EdgeInsets.symmetric(vertical:4),leading:AiFeatureIcon(critical?'emergency':entity=='trip'?'trips':'notifications',size:15),title:AppText(title,style:const TextStyle(fontSize:12,fontWeight:FontWeight.w800)),subtitle:AppText(detail,maxLines:2,overflow:TextOverflow.ellipsis,style:const TextStyle(fontSize:10,color:cleanOpsMuted)),trailing:Text(doc.id.substring(0,doc.id.length < 8 ? doc.id.length : 8),style:const TextStyle(fontSize:9,color:cleanOpsMuted)));}}
+class _OperationTile extends StatelessWidget {
+  final QueryDocumentSnapshot<Map<String, dynamic>> doc;
+  final bool critical;
+  const _OperationTile(this.doc, {this.critical = false});
+
+  @override
+  Widget build(BuildContext context) {
+    final record = doc.data();
+    final entity = '${record['_entity'] ?? ''}';
+    final title = '${record['title'] ?? record['name'] ?? record['operation'] ?? entity}';
+    final detail = '${record['body'] ?? record['detail'] ?? record['description'] ?? record['status'] ?? ''}';
+    final fields = <String, Object?>{
+      'معرّف السجل': doc.id,
+      'الحالة': record['status'],
+      'درجة الأولوية': record['statusLevel'] ?? record['level'],
+      'المجموعة': record['groupName'] ?? record['groupId'],
+      'البلدية': record['municipalityName'] ?? record['municipality'],
+      'الشارع / الموقع': record['street'] ?? record['location'],
+      'المكب / الوجهة': record['landfill'],
+      'كمية النفايات': record['estimatedQuantity'],
+      'تاريخ التسجيل': record['createdAt'],
+      'تاريخ الموعد المستهدف': record['deadlineAt'] ?? record['dueAt'],
+    };
+    return ListTile(
+      contentPadding: const EdgeInsets.symmetric(vertical: 4),
+      leading: AiFeatureIcon(critical ? 'emergency' : entity == 'trip' ? 'trips' : 'notifications', size: 15),
+      title: AppText(title, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800)),
+      subtitle: AppText(detail, maxLines: 2, overflow: TextOverflow.ellipsis,
+          style: const TextStyle(fontSize: 10, color: cleanOpsMuted)),
+      trailing: const Icon(Icons.chevron_left_rounded, size: 18),
+      onTap: () => showDialog<void>(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: AppText(title),
+          content: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (detail.isNotEmpty) AppText(detail),
+                ...fields.entries.where((entry) =>
+                    entry.value != null && '${entry.value}'.trim().isNotEmpty)
+                    .map((entry) => ListTile(
+                      dense: true,
+                      title: AppText(entry.key),
+                      subtitle: AppText('${entry.value}'),
+                    )),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context),
+                child: const AppText('إغلاق')),
+          ],
+        ),
+      ),
+    );
+  }
+}
 
 class SyncCenterPage extends StatelessWidget {
   const SyncCenterPage({super.key});
