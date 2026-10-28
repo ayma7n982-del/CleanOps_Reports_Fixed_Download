@@ -319,6 +319,8 @@ class ReportService {
     required ReportSnapshot snapshot,
     String? municipality,
     String? group,
+    String? cycle,
+    String? periodPreset,
   }) async {
     final attendanceText = snapshot.attendanceRate >= .95 ? 'التزام حضور مرتفع' : 'تحتاج الحضور إلى متابعة';
     final ppeText = snapshot.ppeRate >= .95 ? 'التزام PPE جيد' : 'يوجد احتياج لمراجعة PPE';
@@ -336,6 +338,11 @@ class ReportService {
       'scope': user.scope,
       'municipality': municipality,
       'group': group,
+      'cycle': cycle,
+      'reportId': snapshot.reportId,
+      'reportType': snapshot.reportType ?? 'all',
+      'period': snapshot.periodLabel,
+      'periodPreset': periodPreset ?? 'custom',
       'generatedBy': user.id,
       'createdAt': DateTime.now().toIso8601String(),
       'objectives': objective,
@@ -343,7 +350,12 @@ class ReportService {
       'shiftSummary': 'موجز الوردية: $summary',
       'status': 'draft',
     });
-    await data.writeAudit(actorId: user.id, operation: 'CREATE_SMART_REPORT', targetId: id, after: {'type': 'smart_operational'});
+    await data.writeAudit(actorId: user.id, operation: 'CREATE_SMART_REPORT', targetId: id, after: {
+      'type': 'smart_operational',
+      'reportId': snapshot.reportId,
+      'period': snapshot.periodLabel,
+      'periodPreset': periodPreset ?? 'custom',
+    });
     return summary;
   }
 
