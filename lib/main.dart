@@ -366,16 +366,25 @@ class _AppShellState extends State<AppShell>{
         appBar:AppBar(
           title:AppText(titles[index]),
           actions:[
-            if(data.queue.isNotEmpty)
-              Padding(
-                padding:const EdgeInsets.symmetric(horizontal:8),
-                child:Center(
+            Padding(
+              padding:const EdgeInsets.symmetric(horizontal:4),
+              child:Center(
+                child:Tooltip(
+                  message:data.automaticSyncStatus,
                   child:Badge(
+                    isLabelVisible:data.queue.isNotEmpty,
                     label:AppText('${data.queue.length}'),
-                    child:IconButton(onPressed:data.syncing?null:data.sync,icon:Icon(data.syncing?Icons.sync:Icons.cloud_upload_outlined)),
+                    child:Icon(
+                      data.syncing
+                          ? Icons.sync_rounded
+                          : data.online
+                              ? Icons.cloud_done_outlined
+                              : Icons.cloud_off_outlined,
+                    ),
                   ),
                 ),
               ),
+            ),
             IconButton(
               tooltip: tr('البحث الذكي'),
               onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const GlobalSearchPage())),
