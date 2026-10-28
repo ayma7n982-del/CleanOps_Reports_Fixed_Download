@@ -539,7 +539,7 @@ service cloud.firestore {
         && resource.data.get('dispatchStatus', '') != 'dispatched'
         && resource.data.get('type', '') != 'cart'
         && resource.data.get('category', '') != 'cart'
-        && resource.data.get('status', '') not in ['maintenance', 'broken', 'out_of_service']
+        && !(resource.data.get('status', '') in ['maintenance', 'broken', 'out_of_service'])
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
           'dispatchStatus', 'dispatchMunicipality', 'dispatchRequestId',
           'dispatchBy', 'dispatchAt'
