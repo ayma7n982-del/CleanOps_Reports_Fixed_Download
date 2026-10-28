@@ -180,6 +180,14 @@ class _AIBotScreenState extends State<AIBotScreen> with TickerProviderStateMixin
                   children: [
                     _BotAction(icon: Icons.forum_rounded, title: 'الرسائل', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const MessagesCenterScreen()))),
                     _BotAction(icon: Icons.hub_rounded, title: 'مركز التشغيل', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const EnterpriseOperationsHubPage()))),
+                    if (user.can('trips', 'view'))
+                      _BotAction(icon: Icons.route_rounded, title: 'سجل النقلات', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const TripsLogPage()))),
+                    if (user.can('workers', 'view'))
+                      _BotAction(icon: Icons.groups_rounded, title: 'المجموعات والعمال', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const GroupsCommandCenterPage()))),
+                    if (user.can('emergency', 'view'))
+                      _BotAction(icon: Icons.notification_important_rounded, title: 'مركز التنبيهات', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AlertsCenterPage()))),
+                    if (user.can('reports', 'view'))
+                      _BotAction(icon: Icons.description_rounded, title: 'التقارير', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ReportsCenterScreen()))),
                     if (user.role == 'jsc_coordinator')
                       _BotAction(icon: Icons.location_on_rounded, title: 'المكبات', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const OperationsManagementScreen(initialTab: 0)))),
                     if (context.watch<ConfigService>().liveOperationsMapEnabled)
