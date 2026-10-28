@@ -1,4 +1,8 @@
 name: Firestore rules validation
+
+concurrency:
+  group: firestore-rules-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: ${{ github.event_name == 'push' }}
 on:
   push:
     paths:

@@ -26,6 +26,8 @@ beforeEach(async () => {
       ['worker-b', 'worker', 'group-b', true],
       ['inactive-head', 'group_supervisor', 'group-a', false],
       ['coordinator', 'municipality_coordinator', null, true],
+      ['jsc', 'jsc_coordinator', null, true],
+      ['manager', 'donor_manager', null, true],
     ]) {
       await setDoc(doc(db, 'users', id), {
         role, groupId, isActive: active, municipalityCoordinatorId: 'coordinator',
@@ -77,3 +79,43 @@ test('inactive worker cannot read group messages', async () => {
   });
   await assertFails(getDoc(doc(db('worker-a'),'messages','msg-1')));
 });
+
+test('operations: active workforce can read own group but not another group', async () => {
+  await env.withSecurityRulesDisabled(async ctx => {
+    const admin = ctx.firestore();
+    await setDoc(doc(admin,'operations','trip-a'), {_entity:'trip',groupId:'group-a',reportedBy:'head-a'});
+    await setDoc(doc(admin,'operations','trip-b'), {_entity:'trip',groupId:'group-b',reportedBy:'head-b'});
+  });
+  await assertSucceeds(getDoc(doc(db('worker-a'),'operations','trip-a')));
+  await assertFails(getDoc(doc(db('worker-a'),'operations','trip-b')));
+  await assertSucceeds(getDoc(doc(db('head-a'),'operations','trip-a')));
+  await assertFails(getDoc(doc(db('head-a'),'operations','trip-b')));
+});
+
+test('operations: direct target is readable only by the targeted workforce user', async () => {
+  await env.withSecurityRulesDisabled(async ctx => {
+    await setDoc(doc(ctx.firestore(),'operations','direct-worker-a'), {
+      _entity:'notification', targetUserId:'worker-a'
+    });
+  });
+  await assertSucceeds(getDoc(doc(db('worker-a'),'operations','direct-worker-a')));
+  await assertFails(getDoc(doc(db('worker-b'),'operations','direct-worker-a')));
+});
+
+test('operations: inactive workforce and anonymous users are rejected', async () => {
+  await env.withSecurityRulesDisabled(async ctx => {
+    await setDoc(doc(ctx.firestore(),'operations','trip-a'), {_entity:'trip',groupId:'group-a'});
+  });
+  await assertFails(getDoc(doc(db('inactive-head'),'operations','trip-a')));
+  await assertFails(getDoc(doc(env.unauthenticatedContext().firestore(),'operations','trip-a')));
+});
+
+test('operations: management roles retain operational oversight', async () => {
+  await env.withSecurityRulesDisabled(async ctx => {
+    await setDoc(doc(ctx.firestore(),'operations','trip-b'), {_entity:'trip',groupId:'group-b'});
+  });
+  for (const uid of ['coordinator','jsc','manager']) {
+    await assertSucceeds(getDoc(doc(db(uid),'operations','trip-b')));
+  }
+});
+

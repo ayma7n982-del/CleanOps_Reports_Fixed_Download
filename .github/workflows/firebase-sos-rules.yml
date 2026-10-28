@@ -16,8 +16,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: firebase-sos-rules
-  cancel-in-progress: false
+  group: firebase-sos-rules-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: ${{ github.event_name == 'push' }}
 
 jobs:
   validate:
