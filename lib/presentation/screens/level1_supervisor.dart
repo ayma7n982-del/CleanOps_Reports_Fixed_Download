@@ -520,7 +520,7 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
 
   Future<void> _smartReport() async {
     final u = context.read<AuthService>().currentUser;
-    if (u == null) return;
+    if (u == null || !u.can('reports', 'create')) return;
     final d = context.read<DataService>();
     final s = await ReportService(d).load(user: u);
     final summary = await ReportService(d).createSmartReport(user: u, snapshot: s, group: 'مجموعة المشرف');
@@ -540,6 +540,7 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
   Widget build(BuildContext context) {
     final data = context.watch<DataService>();
     final config = context.watch<ConfigService>();
+    final user = context.watch<AuthService>().currentUser!;
     final online = data.online;
     return Directionality(
       textDirection: context.watch<LocaleController>().isArabic ? TextDirection.rtl : TextDirection.ltr,
@@ -550,7 +551,17 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
             if (data.queue.isNotEmpty)
               Padding(padding: const EdgeInsets.symmetric(horizontal: 8), child: Center(child: AppText('${data.queue.length} بانتظار المزامنة', style: const TextStyle(fontSize: 10, color: cleanOpsMuted)))),
             IconButton(tooltip: tr('البحث الذكي'), onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const GlobalSearchPage())), icon: const Icon(Icons.search_rounded)),
-            IconButton(onPressed: data.syncing ? null : data.sync, icon: Icon(data.syncing ? Icons.sync : (online ? Icons.cloud_done : Icons.cloud_off), color: online ? aiGreen : orange)),
+            Tooltip(
+              message: data.automaticSyncStatus,
+              child: Icon(
+                data.syncing
+                    ? Icons.sync_rounded
+                    : online
+                        ? Icons.cloud_done_rounded
+                        : Icons.cloud_off_rounded,
+                color: online ? aiGreen : orange,
+              ),
+            ),
           ],
         ),
         body: SafeArea(
@@ -574,10 +585,14 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
                 children: [
-                  _SupervisorActionCard(icon: Icons.fact_check_rounded, title: 'حضور مجموعتي', subtitle: 'كشف الحضور وفحص السلامة', color: aiGreen, onTap: () => _openAction(context, 'حضور مجموعتي', _attendance(config))),
-                  _SupervisorActionCard(icon: Icons.local_shipping_rounded, title: 'تسجيل نقلة', subtitle: 'تسجيل الترحيل والكميات', color: aiCyan, onTap: () => _openAction(context, 'تسجيل نقلة', _trips(config))),
-                  _SupervisorActionCard(icon: Icons.delete_sweep_rounded, title: 'إدخال حالة الحاويات', subtitle: 'تحديث حالة حاويات المجموعة', color: const Color(0xFF8B7CFF), onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ContainerManagementScreen()))),
-                  _SupervisorActionCard(icon: Icons.warning_amber_rounded, title: 'SOS / طوارئ', subtitle: 'إبلاغ فوري مع الموقع', color: red, emergency: true, onTap: () => _openAction(context, 'SOS / طوارئ', _emergency(config))),
+                  if (user.can('attendance', 'create'))
+                    _SupervisorActionCard(icon: Icons.fact_check_rounded, title: 'حضور مجموعتي', subtitle: 'كشف الحضور وفحص السلامة', color: aiGreen, onTap: () => _openAction(context, 'حضور مجموعتي', _attendance(config))),
+                  if (user.can('trips', 'create'))
+                    _SupervisorActionCard(icon: Icons.local_shipping_rounded, title: 'تسجيل نقلة', subtitle: 'تسجيل الترحيل والكميات', color: aiCyan, onTap: () => _openAction(context, 'تسجيل نقلة', _trips(config))),
+                  if (user.can('containers', 'create') || user.can('containers', 'edit'))
+                    _SupervisorActionCard(icon: Icons.delete_sweep_rounded, title: 'إدخال حالة الحاويات', subtitle: 'تحديث حالة حاويات المجموعة', color: const Color(0xFF8B7CFF), onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ContainerManagementScreen()))),
+                  if (user.can('emergency', 'create'))
+                    _SupervisorActionCard(icon: Icons.warning_amber_rounded, title: 'SOS / طوارئ', subtitle: 'إبلاغ فوري مع الموقع', color: red, emergency: true, onTap: () => _openAction(context, 'SOS / طوارئ', _emergency(config))),
                 ],
               ),
               const SizedBox(height: 16),
