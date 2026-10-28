@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:http/http.dart' as http;
 import '../models/core_models.dart';
 import 'config_service.dart';
+import 'operational_insights.dart';
 
 class AIService {
   final FirebaseFirestore firestore;
@@ -94,18 +95,33 @@ class AIService {
     final trips = has(['ترحيل', 'ترحيلات', 'رحلات', 'نقل النفايات', 'النقلات', 'حمولات', 'الشحنات', 'trip', 'load']);
     final alerts = has(['طوارئ', 'تنبيه', 'انذارات', 'بلاغات', 'بلاغ', 'استغاثة', 'sos', 'emergency', 'alert']);
     final sites = has(['مكب', 'مكبات', 'مكبات النفايات', 'امتلاء', 'المطامر', 'مطمر', 'مواقع التخلص', 'dumpsite', 'landfill']);
-    if (!(summary || workers || groups || trips || alerts || sites)) return null;
+    final risks = has(['مخاطر', 'تأخر', 'متأخر', 'مشاكل التشغيل', 'اولويات', 'توصيات', 'نقص العمال', 'risk', 'overdue']);
+    if (!(summary || workers || groups || trips || alerts || sites || risks)) return null;
     final data = await _fetchOperationalContext(user);
     final lines = <String>[];
     if (summary) lines.add('ملخص التشغيل بتاريخ ${data['date']}:');
     if (summary || workers) lines.add('العمال النشطون: ${data['activeWorkers']}، المشرفون: ${data['activeGroupSupervisors']}');
-    if (summary || groups) lines.add('المجموعات النشطة: ${data['activeGroups']}');
-    if (summary || trips) lines.add('الترحيلات اليوم: ${data['loadsTransferredToday']}');
-    if (summary || alerts) {
+    if (summary || groups || risks) lines.add('المجموعات النشطة: ${data['activeGroups']}');
+    if (summary || workers || groups || risks) {
+      final gaps = data['supervisedGroupsWithoutWorkers'] as int;
+      if (gaps > 0) lines.add('تنبيه توزيع: $gaps مجموعة لديها مشرف نشط دون عمال نشطين ضمن البيانات المقروءة.');
+    }
+    if (summary || trips || risks) {
+      lines.add('الترحيلات اليوم: ${data['loadsTransferredToday']}');
+      final assessed = data['assessableTripDeadlines'] as int;
+      final overdue = data['overdueTrips'] as int;
+      if (assessed == 0) {
+        lines.add('تأخر الترحيلات: لا توجد رحلات بمواعيد إنجاز وحالات مفتوحة قابلة للتحقق ضمن البيانات المقروءة.');
+      } else {
+        lines.add('ترحيلات تجاوزت موعد الإنجاز: $overdue من أصل $assessed رحلة قابلة للتقييم.');
+        if (overdue > 0) lines.add('أولوية متابعة: راجع الرحلات المتأخرة في شاشة الترحيلات.');
+      }
+    }
+    if (summary || alerts || risks) {
       lines.add('حالات الطوارئ غير المغلقة: ${data['activeSOSorEmergencies']}');
       if ((data['activeSOSorEmergencies'] as int) > 0) lines.add('تنبيه تشغيلي: توجد حالات طوارئ تحتاج مراجعة في شاشة العمليات.');
     }
-    if (summary || sites) {
+    if (summary || sites || risks) {
       lines.add('المكبات النشطة: ${data['activeDumpsites']}');
       final critical = (data['dumpsites'] as List).where((site) => (site['fillPercentage'] as num) >= 85).length;
       if (critical > 0) lines.add('تنبيه تشغيلي: $critical مكب/مكبات بنسبة امتلاء 85% أو أكثر. يُنصح بمراجعة السعة المتاحة قبل توجيه الترحيلات.');
@@ -145,6 +161,8 @@ class AIService {
       if (groupId.isNotEmpty) groups.add(groupId);
     }
 
+    final coverageGaps = OperationalInsights.supervisedGroupsWithoutWorkers(usersSnap.docs.map((d) => d.data()));
+
     final dumpsitesSnap = await firestore.collection('dumpsites').where('isActive', isEqualTo: true).limit(500).get();
     final dumpsites = <Map<String, dynamic>>[];
     for (final doc in dumpsitesSnap.docs) {
@@ -162,10 +180,18 @@ class AIService {
     final opsSnap = await firestore.collection('operations').limit(1500).get();
     var loadsToday = 0;
     var activeEmergencies = 0;
+    final tripDocuments = <Map<String, dynamic>>[];
     for (final doc in opsSnap.docs) {
       final d = doc.data();
       final created = _parseDate(d['createdAt']);
       final entity = '${d['_entity'] ?? ''}';
+      if (entity == 'trip' && d['isDeleted'] != true) {
+        final trip = Map<String, dynamic>.from(d);
+        for (final field in const ['deadlineAt', 'dueAt', 'expectedCompletionAt', 'expectedArrivalAt', 'plannedEndAt']) {
+          if (trip[field] is Timestamp) trip[field] = (trip[field] as Timestamp).toDate();
+        }
+        tripDocuments.add(trip);
+      }
       if (entity == 'trip' && created != null && !created.isBefore(start) && created.isBefore(end) && d['isDeleted'] != true) {
         loadsToday++;
       }
@@ -178,7 +204,12 @@ class AIService {
       }
     }
 
+    final reviewedTrips = OperationalInsights.reviewTrips(tripDocuments, now: now);
+
     return {
+      'supervisedGroupsWithoutWorkers': coverageGaps,
+      'assessableTripDeadlines': reviewedTrips.assessable,
+      'overdueTrips': reviewedTrips.overdue,
       'date': '${start.year.toString().padLeft(4, '0')}-${start.month.toString().padLeft(2, '0')}-${start.day.toString().padLeft(2, '0')}',
       'managementLevel': user.role == 'donor_manager' ? 4 : 3,
       'activeWorkers': activeWorkers,
