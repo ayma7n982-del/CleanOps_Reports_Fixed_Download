@@ -416,4 +416,26 @@ test('cart redirect: offline equipment move persists and reconciles on reconnect
     }
   });
 
+  test('offline JSC equipment return leaves server assignment unchanged', () async {
+    final fixture = await openStore('jsc_machine_return');
+    final data = DataService(fixture.store, ConfigService(fixture.store));
+    try {
+      data.online = false;
+      await data.enqueue('equipment_return', 'return', {
+        'id':'return-local-1','equipmentId':'loader-1',
+        'sourceDispatchRequestId':'dispatch-1','requestedBy':'jsc',
+        'returnNote':'Mission completed',
+      });
+      expect(data.hasPendingEquipmentDispatch('loader-1'), isTrue);
+      expect(data.operations.where((e) => e['_entity'] == 'equipment_return'),
+        isEmpty);
+      await data.sync();
+      expect(fixture.store.queue(), hasLength(1));
+    } finally {
+      data.dispose();
+      await fixture.box.close();
+      await fixture.directory.delete(recursive:true);
+    }
+  });
+
 }

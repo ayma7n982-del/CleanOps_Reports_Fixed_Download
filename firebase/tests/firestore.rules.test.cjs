@@ -360,3 +360,52 @@ test('only JSC can reopen an already secured and acknowledged SOS', async () => 
     updatedAt:'2026-10-28T09:10:00.000Z',
   }));
 });
+
+// JSC return is a new operation, independent of the L2 cart redirect model.
+test('JSC can atomically return a dispatched machine without changing its group', async () => {
+  await env.withSecurityRulesDisabled(async ctx => {
+    await setDoc(doc(ctx.firestore(), 'equipment', 'loader-return'), {
+      id:'loader-return', type:'loader', municipalityCoordinatorId:'coordinator',
+      groupId:'group-a', isDeleted:false, dispatchStatus:'dispatched',
+      dispatchRequestId:'dispatch-source', dispatchBy:'jsc',
+      dispatchMunicipality:'رفح',
+    });
+  });
+  const jscDb = db('jsc');
+  const batch = writeBatch(jscDb);
+  batch.update(doc(jscDb,'equipment','loader-return'), {
+    dispatchStatus:'available', lastReturnRequestId:'return-a',
+    returnedBy:'jsc', returnedAt:'2026-10-28T12:00:00Z', returnNote:'Mission completed',
+  });
+  batch.set(doc(jscDb,'operations','return-a'), {
+    id:'return-a', _entity:'equipment_return', equipmentId:'loader-return',
+    sourceDispatchRequestId:'dispatch-source', requestedBy:'jsc',
+    returnNote:'Mission completed', status:'applied',
+  });
+  await assertSucceeds(batch.commit());
+  const saved = await getDoc(doc(jscDb,'equipment','loader-return'));
+  assert.equal(saved.data().groupId, 'group-a');
+  assert.equal(saved.data().dispatchStatus, 'available');
+  await assertFails(updateDoc(doc(jscDb,'equipment','loader-return'), {
+    groupId:'group-b',
+  }));
+});
+
+test('JSC cannot return machine without a matching log or wrong source dispatch', async () => {
+  await env.withSecurityRulesDisabled(async ctx => {
+    await setDoc(doc(ctx.firestore(),'equipment','loader-return-b'), {
+      id:'loader-return-b', type:'loader', dispatchStatus:'dispatched',
+      dispatchRequestId:'real-source', dispatchBy:'jsc',
+    });
+  });
+  await assertFails(updateDoc(doc(db('jsc'),'equipment','loader-return-b'), {
+    dispatchStatus:'available',lastReturnRequestId:'none',
+    returnedBy:'jsc',returnedAt:'2026-10-28T12:00:00Z',
+    returnNote:'Mission complete',
+  }));
+  await assertFails(setDoc(doc(db('jsc'),'operations','fake-return'), {
+    id:'fake-return',_entity:'equipment_return',
+    equipmentId:'loader-return-b',sourceDispatchRequestId:'wrong-source',
+    requestedBy:'jsc',returnNote:'Mission complete',status:'applied',
+  }));
+});

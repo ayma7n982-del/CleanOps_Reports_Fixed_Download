@@ -577,6 +577,53 @@ service cloud.firestore {
         && getAfter(/databases/$(database)/documents/equipment/$(request.resource.data.equipmentId)).data.dispatchBy == request.auth.uid;
     }
 
+    // Returning a machine never edits its cart/group ownership or history.
+    function validJscEquipmentReturnUpdate(equipmentId) {
+      return isL3()
+        && resource.data.get('isDeleted', false) != true
+        && resource.data.get('dispatchStatus', '') == 'dispatched'
+        && resource.data.dispatchRequestId is string
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'dispatchStatus', 'lastReturnRequestId', 'returnedBy', 'returnedAt', 'returnNote'
+        ])
+        && request.resource.data.dispatchStatus == 'available'
+        && request.resource.data.returnedBy == request.auth.uid
+        && request.resource.data.returnedAt is string
+        && request.resource.data.returnedAt.size() > 0
+        && request.resource.data.returnNote is string
+        && request.resource.data.returnNote.size() > 0
+        && request.resource.data.lastReturnRequestId is string
+        && request.resource.data.lastReturnRequestId.size() > 0
+        && existsAfter(/databases/$(database)/documents/operations/$(request.resource.data.lastReturnRequestId))
+        && getAfter(/databases/$(database)/documents/operations/$(request.resource.data.lastReturnRequestId)).data._entity == 'equipment_return'
+        && getAfter(/databases/$(database)/documents/operations/$(request.resource.data.lastReturnRequestId)).data.equipmentId == equipmentId
+        && getAfter(/databases/$(database)/documents/operations/$(request.resource.data.lastReturnRequestId)).data.sourceDispatchRequestId == resource.data.dispatchRequestId
+        && getAfter(/databases/$(database)/documents/operations/$(request.resource.data.lastReturnRequestId)).data.requestedBy == request.auth.uid
+        && getAfter(/databases/$(database)/documents/operations/$(request.resource.data.lastReturnRequestId)).data.returnNote == request.resource.data.returnNote
+        && getAfter(/databases/$(database)/documents/operations/$(request.resource.data.lastReturnRequestId)).data.status == 'applied';
+    }
+
+    function validJscEquipmentReturnCreate(requestId) {
+      return isL3()
+        && request.resource.data._entity == 'equipment_return'
+        && request.resource.data.id == requestId
+        && request.resource.data.requestedBy == request.auth.uid
+        && request.resource.data.status == 'applied'
+        && request.resource.data.equipmentId is string
+        && request.resource.data.equipmentId.size() > 0
+        && request.resource.data.sourceDispatchRequestId is string
+        && request.resource.data.sourceDispatchRequestId.size() > 0
+        && request.resource.data.returnNote is string
+        && request.resource.data.returnNote.size() > 0
+        && exists(/databases/$(database)/documents/equipment/$(request.resource.data.equipmentId))
+        && get(/databases/$(database)/documents/equipment/$(request.resource.data.equipmentId)).data.dispatchStatus == 'dispatched'
+        && get(/databases/$(database)/documents/equipment/$(request.resource.data.equipmentId)).data.dispatchRequestId == request.resource.data.sourceDispatchRequestId
+        && getAfter(/databases/$(database)/documents/equipment/$(request.resource.data.equipmentId)).data.dispatchStatus == 'available'
+        && getAfter(/databases/$(database)/documents/equipment/$(request.resource.data.equipmentId)).data.lastReturnRequestId == requestId
+        && getAfter(/databases/$(database)/documents/equipment/$(request.resource.data.equipmentId)).data.returnedBy == request.auth.uid
+        && getAfter(/databases/$(database)/documents/equipment/$(request.resource.data.equipmentId)).data.returnNote == request.resource.data.returnNote;
+    }
+
     // Equipment remains municipality-scoped. Cart assignment changes are
     // atomic client transactions validated by the matching cart_redirect log.
     match /equipment/{id} {
@@ -585,7 +632,8 @@ service cloud.firestore {
         (isL2() && resource.data.municipalityCoordinatorId == request.auth.uid)
       );
       allow update: if validEquipmentCartAssignmentUpdate(id)
-        || validJscEquipmentDispatchUpdate(id);
+        || validJscEquipmentDispatchUpdate(id)
+        || validJscEquipmentReturnUpdate(id);
       allow create, delete: if false;
     }
 
@@ -595,6 +643,7 @@ service cloud.firestore {
         (isL4() && (request.resource.data._entity == 'report' || request.resource.data._entity == 'user'))
         || (isL2() && (request.resource.data._entity == 'group' || request.resource.data._entity == 'worker' || validCartRedirect()))
         || validJscEquipmentDispatchCreate(id)
+        || validJscEquipmentReturnCreate(id)
         || (isL3() && (request.resource.data._entity == 'heavy_machinery' || request.resource.data._entity == 'emergency' || request.resource.data._entity == 'notification' || request.resource.data._entity == 'report'))
         || (role() == 'group_supervisor' && (validSupervisorTripCreate() || request.resource.data._entity == 'trip_photo' || (request.resource.data._entity == 'attendance' && userDoc().isActive != false && userDoc().groupId is string && userDoc().groupId.size() > 0 && request.resource.data.groupId == userDoc().groupId && request.resource.data.reportedBy == request.auth.uid && request.resource.data.status in ['present','absent','leave','permission','excused_absence','unexcused_absence','external_task']) || request.resource.data._entity == 'street_photo' || (request.resource.data._entity == 'emergency' && validSupervisorSosCreate()) || request.resource.data._entity == 'notification' || request.resource.data._entity == 'report'))
       );

@@ -96,6 +96,7 @@ class _Level3JscState extends State<Level3JscScreen> with SingleTickerProviderSt
         return item['isDeleted'] != true &&
             !const ['cart', 'كارة'].contains(kind) &&
             item['dispatchStatus'] != 'dispatched' &&
+            !context.read<DataService>().hasPendingEquipmentDispatch(doc.id) &&
             !const ['out_of_service', 'maintenance', 'broken'].contains(state);
       }).toList();
       if (!mounted) return;
@@ -174,6 +175,11 @@ class _Level3JscState extends State<Level3JscScreen> with SingleTickerProviderSt
     final u = context.read<AuthService>().currentUser;
     if (u == null || u.role != 'jsc_coordinator' || !u.can('operations', 'create')) return;
     final d = context.read<DataService>();
+    if (d.hasPendingEquipmentDispatch(equipmentId)) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: AppText('يوجد طلب توجيه أو استعادة سابق بانتظار المزامنة.')));
+      return;
+    }
     final id = d.uuid.v4();
     await d.enqueue('equipment_dispatch', 'dispatch', {
       'id': id,
@@ -185,6 +191,101 @@ class _Level3JscState extends State<Level3JscScreen> with SingleTickerProviderSt
     });
     if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
       content: AppText('تم حفظ طلب توجيه الآلية؛ لن يعتمد التخصيص حتى تؤكد Firebase نجاح المزامنة.')));
+  }
+
+  Future<void> _chooseEquipmentReturn() async {
+    final user = context.read<AuthService>().currentUser;
+    if (user == null || user.role != 'jsc_coordinator' ||
+        !user.can('operations', 'edit')) return;
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection('equipment')
+          .where('dispatchStatus', isEqualTo: 'dispatched')
+          .limit(300)
+          .get(const GetOptions(source: Source.serverAndCache));
+      if (!mounted) return;
+      final service = context.read<DataService>();
+      final assigned = snapshot.docs.where((doc) =>
+          doc.data()['isDeleted'] != true &&
+          doc.data()['dispatchRequestId'] is String &&
+          !service.hasPendingEquipmentDispatch(doc.id)).toList();
+      if (assigned.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: AppText('لا توجد آليات موجّهة قابلة للاستعادة الآن.')));
+        return;
+      }
+      String? selectedId = assigned.first.id;
+      final noteController = TextEditingController();
+      final result = await showDialog<Map<String, String>>(
+        context: context,
+        builder: (dialogContext) => StatefulBuilder(
+          builder: (dialogContext, setDialogState) => AlertDialog(
+            title: const AppText('إنهاء توجيه الآلية'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                DropdownButtonFormField<String>(
+                  initialValue: selectedId,
+                  isExpanded: true,
+                  decoration: const InputDecoration(labelText: 'الآلية الموجّهة'),
+                  items: assigned.map((doc) {
+                    final item = doc.data();
+                    return DropdownMenuItem(
+                      value: doc.id,
+                      child: Text(
+                        '${item['name'] ?? item['equipmentName'] ?? item['type'] ?? doc.id} — ${item['dispatchMunicipality'] ?? ''}',
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    );
+                  }).toList(),
+                  onChanged: (value) => setDialogState(() => selectedId = value),
+                ),
+                TextField(
+                  controller: noteController,
+                  maxLines: 2,
+                  decoration: const InputDecoration(
+                    labelText: 'سبب إنهاء التوجيه وملاحظات العودة',
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const AppText('إلغاء')),
+              FilledButton(
+                onPressed: () {
+                  final note = noteController.text.trim();
+                  if (selectedId == null || note.isEmpty) return;
+                  Navigator.pop(dialogContext, {
+                    'equipmentId': selectedId!, 'returnNote': note,
+                  });
+                },
+                child: const AppText('حفظ طلب الاستعادة'),
+              ),
+            ],
+          ),
+        ),
+      );
+      noteController.dispose();
+      if (result == null || !mounted) return;
+      final equipmentId = result['equipmentId']!;
+      final machine = assigned.firstWhere((doc) => doc.id == equipmentId).data();
+      if (service.hasPendingEquipmentDispatch(equipmentId)) return;
+      await service.enqueue('equipment_return', 'return', {
+        'id': service.uuid.v4(),
+        'equipmentId': equipmentId,
+        'sourceDispatchRequestId': machine['dispatchRequestId'],
+        'requestedBy': user.id,
+        'returnNote': result['returnNote'],
+        'createdAt': DateTime.now().toIso8601String(),
+      });
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: AppText('تم حفظ طلب استعادة الآلية؛ لن تصبح متاحة حتى يؤكد الخادم ذلك.')));
+    } catch (error) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('تعذر استعادة الآلية: $error')));
+    }
   }
 
   Future<void> _sendLandfillWarning() async {
@@ -517,6 +618,7 @@ class _Level3JscState extends State<Level3JscScreen> with SingleTickerProviderSt
   Widget _managementBody() => ListView(padding: const EdgeInsets.fromLTRB(14, 14, 14, 120), children: [
     CreativeShortcutGrid(emphasize: true, maxColumns: 2, items: [
       CreativeShortcut(title: 'توجيه الآليات', subtitle: 'إرسال المعدات للمواقع', feature: 'operations', onTap: _chooseDispatch),
+      CreativeShortcut(title: 'استعادة الآليات', subtitle: 'إنهاء التوجيه وإتاحتها', feature: 'operations', onTap: _chooseEquipmentReturn),
       CreativeShortcut(title: 'الحاويات', subtitle: 'إدارة المواقع والحالات', feature: 'containers', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ContainerManagementScreen()))),
       CreativeShortcut(title: 'المكبات', subtitle: 'السعة والامتلاء والحالة', feature: 'dumpsite', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const OperationsManagementScreen(initialTab: 0)))),
       CreativeShortcut(title: 'التقارير', subtitle: 'تقارير البلديات والتشغيل', feature: 'reports', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ReportsCenterScreen()))),

@@ -306,6 +306,22 @@ class DataService extends ChangeNotifier {
     payload['localAttachmentPath'] = stored.path;
   }
 
+  /// Prevent two locally pending, mutually exclusive machine assignments.
+  bool hasPendingEquipmentDispatch(String equipmentId) {
+    for (final item in queue) {
+      if (item.entity != 'equipment_dispatch' &&
+          item.entity != 'equipment_return') continue;
+      try {
+        final payload = jsonDecode(item.payload);
+        if (payload is Map &&
+            '${payload['equipmentId'] ?? ''}' == equipmentId) return true;
+      } catch (_) {
+        // Invalid unrelated entries must not block other equipment.
+      }
+    }
+    return false;
+  }
+
   Future<void> enqueue(String entity, String operation, Map<String, dynamic> payload) async {
     final safePayload = Map<String, dynamic>.from(_toJsonSafe(payload) as Map);
     final queueId = uuid.v4();
@@ -321,7 +337,8 @@ class DataService extends ChangeNotifier {
     );
     queue = [...queue, item];
     await store.saveQueue(queue);
-    if (entity != 'cart_redirect' && entity != 'equipment_dispatch') {
+    if (entity != 'cart_redirect' && entity != 'equipment_dispatch' &&
+        entity != 'equipment_return') {
       _applyLocalOperation(entity == 'attendance_checkout' ? 'attendance' : entity, operation, safePayload);
     }
     notifyListeners();
@@ -358,7 +375,8 @@ class DataService extends ChangeNotifier {
     for (final item in queue) {
       if (item.entity == 'audit' || item.entity == 'notification' ||
           item.entity == 'cart_redirect' ||
-          item.entity == 'equipment_dispatch') continue;
+          item.entity == 'equipment_dispatch' ||
+          item.entity == 'equipment_return') continue;
       try {
         final payload = jsonDecode(item.payload);
         if (payload is! Map) continue;
@@ -496,7 +514,8 @@ class DataService extends ChangeNotifier {
                 payload,
                 coordinatorId: '${payload['municipalityCoordinatorId'] ?? ''}',
               );
-            } else if (item.entity != 'equipment_dispatch') {
+            } else if (item.entity != 'equipment_dispatch' &&
+                item.entity != 'equipment_return') {
               _applyLocalOperation(
                 item.entity == 'attendance_checkout' ? 'attendance' : item.entity,
                 item.operation,
@@ -749,6 +768,57 @@ class DataService extends ChangeNotifier {
                 'updatedAt': now,
               });
             });
+          } else if (item.entity == 'equipment_return' &&
+              item.operation == 'return') {
+            final actorId = FirebaseAuth.instance.currentUser?.uid ?? '';
+            final equipmentId = '${payload['equipmentId'] ?? ''}'.trim();
+            final sourceRequestId = '${payload['sourceDispatchRequestId'] ?? ''}'.trim();
+            final returnNote = '${payload['returnNote'] ?? ''}'.trim();
+            if (actorId.isEmpty || equipmentId.isEmpty ||
+                sourceRequestId.isEmpty || returnNote.isEmpty ||
+                payload['requestedBy'] != actorId) {
+              throw StateError('طلب استعادة الآلية غير مكتمل أو يخص مستخدمًا آخر.');
+            }
+            final db = FirebaseFirestore.instance;
+            final equipmentRef = db.collection('equipment').doc(equipmentId);
+            await db.runTransaction((tx) async {
+              final existing = await tx.get(ref);
+              final equipment = await tx.get(equipmentRef);
+              if (existing.exists) {
+                final saved = existing.data();
+                if (saved?['_entity'] == 'equipment_return' &&
+                    saved?['equipmentId'] == equipmentId &&
+                    saved?['sourceDispatchRequestId'] == sourceRequestId &&
+                    saved?['requestedBy'] == actorId &&
+                    saved?['status'] == 'applied') return;
+                throw StateError('معرّف طلب الاستعادة مستخدم لعملية أخرى.');
+              }
+              final current = equipment.data();
+              if (current == null || current['isDeleted'] == true ||
+                  current['dispatchStatus'] != 'dispatched' ||
+                  current['dispatchRequestId'] != sourceRequestId) {
+                throw StateError('الآلية لم تعد في حالة التوجيه المسجلة؛ حدّث بياناتها.');
+              }
+              final now = DateTime.now().toIso8601String();
+              tx.update(equipmentRef, {
+                'dispatchStatus': 'available',
+                'lastReturnRequestId': docId,
+                'returnedBy': actorId,
+                'returnedAt': now,
+                'returnNote': returnNote,
+              });
+              tx.set(ref, {
+                ...cloudPayload,
+                'id': docId,
+                '_entity': 'equipment_return',
+                'equipmentId': equipmentId,
+                'sourceDispatchRequestId': sourceRequestId,
+                'requestedBy': actorId,
+                'returnNote': returnNote,
+                'status': 'applied',
+                'updatedAt': now,
+              });
+            });
           } else if (item.entity == 'attendance_checkout') {
             await FirebaseFunctions.instance.httpsCallable('recordAttendanceCheckout').call(<String, dynamic>{'attendanceId': docId});
           } else if (item.entity == 'work_report' || item.entity == 'report_approval') {
@@ -794,7 +864,8 @@ class DataService extends ChangeNotifier {
                 debugPrint('Cart cache refresh deferred: $error');
               }
             }
-          } else if (item.entity != 'equipment_dispatch') {
+          } else if (item.entity != 'equipment_dispatch' &&
+              item.entity != 'equipment_return') {
             _applyLocalOperation(item.entity == 'attendance_checkout' ? 'attendance' : item.entity, item.operation, cloudPayload);
           }
           queue = queue.where((e) => e.id != item.id).toList();
