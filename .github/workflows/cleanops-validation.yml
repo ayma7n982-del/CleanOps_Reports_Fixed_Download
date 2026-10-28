@@ -21,6 +21,15 @@ jobs:
         run: flutter analyze --no-fatal-infos --no-fatal-warnings
       - name: Build Android debug APK
         run: flutter build apk --debug
+      - name: Upload Android diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cleanops-android-diagnostics
+          path: |
+            build/reports/**
+            android/build/reports/**
+          if-no-files-found: ignore
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
@@ -41,3 +50,47 @@ jobs:
       - name: TypeScript build
         working-directory: functions
         run: npm run build
+
+  firebase-rules:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Validate Firestore rules syntax
+        run: |
+          npm install --no-save firebase-tools
+          npx firebase-tools --version
+          test -s firebase/firestore.rules
+          test -s firebase.json
+
+  firebase-deploy:
+    if: github.event_name == 'workflow_dispatch'
+    needs: [android, firebase-functions, firebase-rules]
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install Firebase CLI
+        run: npm install --global firebase-tools
+      - name: Install and compile functions
+        working-directory: functions
+        run: npm install && npm run build
+      - name: Deploy only functions and Firestore rules
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+          FIREBASE_PROJECT_ID: ${{ vars.FIREBASE_PROJECT_ID }}
+        run: |
+          if [ -z "$GOOGLE_APPLICATION_CREDENTIALS_JSON" ] || [ -z "$FIREBASE_PROJECT_ID" ]; then
+            echo "::error::Configure FIREBASE_SERVICE_ACCOUNT_JSON secret and FIREBASE_PROJECT_ID variable in the production environment."
+            exit 1
+          fi
+          printf '%s' "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > "$RUNNER_TEMP/firebase-service-account.json"
+          chmod 600 "$RUNNER_TEMP/firebase-service-account.json"
+          export GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/firebase-service-account.json"
+          firebase deploy --project "$FIREBASE_PROJECT_ID" --only functions:redirectCartAssignment,firestore:rules --non-interactive
+          rm -f "$RUNNER_TEMP/firebase-service-account.json"
