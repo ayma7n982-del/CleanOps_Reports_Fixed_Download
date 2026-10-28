@@ -1,0 +1,34 @@
+name: Production Firebase role smoke
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/production_firebase_security_smoke.mjs'
+      - '.github/workflows/firebase-production-smoke.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: firebase-production-role-smoke
+  cancel-in-progress: false
+
+jobs:
+  role-security-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: firebase-production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install isolated production test dependency
+        run: npm install --no-save firebase-admin@13
+      - name: Run temporary-account production security smoke test
+        env:
+          FIREBASE_PROJECT_ID: nrc-aid
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: node scripts/production_firebase_security_smoke.mjs
