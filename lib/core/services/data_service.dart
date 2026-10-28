@@ -380,7 +380,24 @@ class DataService extends ChangeNotifier {
           }
 
           completed++;
-          _applyLocalOperation(item.entity == 'attendance_checkout' ? 'attendance' : item.entity, item.operation, payload);
+          if (item.entity == 'cart_redirect') {
+            // The callable committed the real cart assignment. Refresh the scoped
+            // equipment cache instead of showing a synthetic local redirect record.
+            final uid = FirebaseAuth.instance.currentUser?.uid;
+            if (uid != null && payload['cartCollection'] == 'equipment') {
+              try {
+                final snapshot = await FirebaseFirestore.instance.collection('equipment')
+                    .where('municipalityCoordinatorId', isEqualTo: uid).limit(1000).get();
+                await store.saveCachedEquipmentCarts(uid, snapshot.docs.map((doc) => {
+                  ...doc.data(), 'id': doc.id, '_cartCollection': 'equipment', '_entity': 'equipment',
+                }).where((cart) => cart['isDeleted'] != true).toList());
+              } catch (error) {
+                debugPrint('Cart cache refresh deferred: $error');
+              }
+            }
+          } else {
+            _applyLocalOperation(item.entity == 'attendance_checkout' ? 'attendance' : item.entity, item.operation, payload);
+          }
           queue = queue.where((e) => e.id != item.id).toList();
           await store.saveQueue(queue);
         } catch (itemError) {
