@@ -368,12 +368,81 @@ class DataService extends ChangeNotifier {
               'updatedAt': FieldValue.serverTimestamp(),
             }, SetOptions(merge: true));
           } else if (item.entity == 'cart_redirect') {
-            await FirebaseFunctions.instance.httpsCallable('redirectCartAssignment').call(<String, dynamic>{
-              'requestId': docId,
-              'cartId': payload['cartId'],
-              'cartCollection': payload['cartCollection'],
-              'fromGroupId': payload['fromGroupId'],
-              'toGroupId': payload['toGroupId'],
+            final actorId = FirebaseAuth.instance.currentUser?.uid ?? '';
+            final cartId = '${payload['cartId'] ?? ''}'.trim();
+            final cartCollection = '${payload['cartCollection'] ?? ''}'.trim();
+            final fromGroupId = '${payload['fromGroupId'] ?? ''}'.trim();
+            final toGroupId = '${payload['toGroupId'] ?? ''}'.trim();
+            if (actorId.isEmpty || cartId.isEmpty ||
+                !const ['operations', 'equipment'].contains(cartCollection) ||
+                fromGroupId.isEmpty || toGroupId.isEmpty || fromGroupId == toGroupId) {
+              throw StateError('بيانات إعادة توجيه الكارة غير مكتملة.');
+            }
+            final db = FirebaseFirestore.instance;
+            final cartRef = db.collection(cartCollection).doc(cartId);
+            final fromRef = db.collection('operations').doc(fromGroupId);
+            final toRef = db.collection('operations').doc(toGroupId);
+            final logRef = db.collection('operations').doc(docId);
+            await db.runTransaction((tx) async {
+              final existing = await tx.get(logRef);
+              if (existing.exists) {
+                final data = existing.data();
+                final sameRequest = data?['_entity'] == 'cart_redirect' &&
+                    data?['cartId'] == cartId &&
+                    data?['fromGroupId'] == fromGroupId &&
+                    data?['toGroupId'] == toGroupId &&
+                    data?['requestedBy'] == actorId &&
+                    data?['status'] == 'applied';
+                if (!sameRequest) {
+                  throw StateError('معرّف طلب إعادة التوجيه مستخدم لعملية أخرى.');
+                }
+                return;
+              }
+
+              final snapshots = await Future.wait([
+                tx.get(cartRef),
+                tx.get(fromRef),
+                tx.get(toRef),
+              ]);
+              final cart = snapshots[0].data();
+              final fromGroup = snapshots[1].data();
+              final toGroup = snapshots[2].data();
+              if (cart == null || fromGroup == null || toGroup == null) {
+                throw StateError('تعذر العثور على الكارة أو إحدى المجموعتين.');
+              }
+              if (fromGroup['_entity'] != 'group' || toGroup['_entity'] != 'group' ||
+                  fromGroup['municipalityCoordinatorId'] != actorId ||
+                  toGroup['municipalityCoordinatorId'] != actorId ||
+                  cart['municipalityCoordinatorId'] != actorId ||
+                  cart['isDeleted'] == true) {
+                throw StateError('الكارة أو المجموعات خارج نطاق البلدية.');
+              }
+              if ('${cart['groupId'] ?? ''}' != fromGroupId) {
+                throw StateError('تغير تخصيص الكارة قبل المزامنة؛ حدّث البيانات وأعد المحاولة.');
+              }
+              final cartEntity = cartCollection == 'equipment'
+                  ? 'equipment'
+                  : '${cart['_entity'] ?? payload['cartEntity'] ?? ''}';
+              tx.update(cartRef, {
+                'groupId': toGroupId,
+                'updatedBy': actorId,
+                'updatedAt': FieldValue.serverTimestamp(),
+                'lastRedirectRequestId': docId,
+              });
+              tx.set(logRef, {
+                ...payload,
+                'id': docId,
+                '_entity': 'cart_redirect',
+                'cartId': cartId,
+                'cartEntity': cartEntity,
+                'cartCollection': cartCollection,
+                'fromGroupId': fromGroupId,
+                'toGroupId': toGroupId,
+                'municipalityCoordinatorId': actorId,
+                'requestedBy': actorId,
+                'status': 'applied',
+                'updatedAt': FieldValue.serverTimestamp(),
+              });
             });
           } else if (item.entity == 'attendance_checkout') {
             await FirebaseFunctions.instance.httpsCallable('recordAttendanceCheckout').call(<String, dynamic>{'attendanceId': docId});
@@ -425,7 +494,7 @@ class DataService extends ChangeNotifier {
                 !(entry['_entity'] == 'cart_redirect' && '${entry['id']}' == docId)).toList();
             await store.saveCachedOperations(operations.take(1000).toList());
             notifyListeners();
-            // The callable committed the real cart assignment. Refresh the scoped
+            // The Firestore transaction committed the real cart assignment. Refresh the scoped
             // equipment cache instead of showing a synthetic local redirect record.
             final uid = FirebaseAuth.instance.currentUser?.uid;
             if (uid != null && payload['cartCollection'] == 'equipment') {
