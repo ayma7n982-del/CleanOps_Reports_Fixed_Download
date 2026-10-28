@@ -49,16 +49,6 @@ class Level4UnicefScreen extends StatelessWidget {
                 builder:(_)=>const ReportsCenterScreen()))),
           ]),
           const SizedBox(height: 14),
-          CreativeShortcutGrid(
-            emphasize: true,
-            maxColumns: 2,
-            items: [
-              CreativeShortcut(title: 'بحث المعدات', subtitle: 'المعدات والآليات والمواقع', feature: 'operations', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const EquipmentSearchScreen()))),
-              CreativeShortcut(title: 'مركز الإدارة', subtitle: 'العمليات والتنبيهات والبحث', feature: 'dashboard', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const EnterpriseOperationsHubPage()))),
-              CreativeShortcut(title: 'إدارة المستخدمين', subtitle: 'الحسابات والصلاحيات', feature: 'users', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const UserManagementSettingsPage()))),
-              CreativeShortcut(title: 'التقارير', subtitle: 'الأداء والتحليلات التشغيلية', feature: 'reports', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ReportsCenterScreen()))),
-            ],
-          ),
           const SizedBox(height: 16),
           const _TemporarySimulationPanel(),
         ]),

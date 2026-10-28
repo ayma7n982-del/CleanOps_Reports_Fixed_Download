@@ -23,7 +23,8 @@ class WorkspaceAction {
 
 class WorkspaceOverview extends StatefulWidget {
   final List<WorkspaceAction> actions;
-  const WorkspaceOverview({super.key, required this.actions});
+  final VoidCallback? onEmergencyTap;
+  const WorkspaceOverview({super.key, required this.actions, this.onEmergencyTap});
   @override
   State<WorkspaceOverview> createState() => _WorkspaceOverviewState();
 }
@@ -93,8 +94,8 @@ class _WorkspaceOverviewState extends State<WorkspaceOverview> {
   void _openEmergency(AppUser user) {
     // The alert center reads the same permission-scoped records; it is not
     // a fake confirmation or a privileged action.
-    if (user.role == 'group_supervisor') {
-      _open(const GlobalSearchPage());
+    if (widget.onEmergencyTap != null) {
+      widget.onEmergencyTap!();
     } else {
       _open(const AlertsCenterPage());
     }

@@ -578,7 +578,8 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
               const SizedBox(height: 12),
               const OperationsOverviewStrip(),
               const SizedBox(height: 12),
-              WorkspaceOverview(actions: [
+              WorkspaceOverview(onEmergencyTap: () =>
+                _openAction(context, 'SOS / طوارئ', _emergency(config)), actions: [
                 if (user.can('attendance','create'))
                   WorkspaceAction('attendance','حضور مجموعتي',Icons.fact_check,
                     () => _openAction(context,'حضور مجموعتي',_attendance(config))),
@@ -593,25 +594,18 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
                   WorkspaceAction('emergency','SOS',Icons.warning_amber,
                     () => _openAction(context,'SOS / طوارئ',_emergency(config))),
               ]),
-              const SizedBox(height: 18),
-              GridView.count(
-                crossAxisCount: MediaQuery.sizeOf(context).width >= 700 ? 4 : 2,
-                crossAxisSpacing: 12,
-                mainAxisSpacing: 12,
-                childAspectRatio: MediaQuery.sizeOf(context).width >= 700 ? 1.08 : .96,
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                children: [
-                  if (user.can('attendance', 'create'))
-                    _SupervisorActionCard(icon: Icons.fact_check_rounded, title: 'حضور مجموعتي', subtitle: 'كشف الحضور وفحص السلامة', color: aiGreen, onTap: () => _openAction(context, 'حضور مجموعتي', _attendance(config))),
-                  if (user.can('trips', 'create'))
-                    _SupervisorActionCard(icon: Icons.local_shipping_rounded, title: 'تسجيل نقلة', subtitle: 'تسجيل الترحيل والكميات', color: aiCyan, onTap: () => _openAction(context, 'تسجيل نقلة', _trips(config))),
-                  if (user.can('containers', 'create') || user.can('containers', 'edit'))
-                    _SupervisorActionCard(icon: Icons.delete_sweep_rounded, title: 'إدخال حالة الحاويات', subtitle: 'تحديث حالة حاويات المجموعة', color: const Color(0xFF8B7CFF), onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ContainerManagementScreen()))),
-                  if (user.can('emergency', 'create'))
-                    _SupervisorActionCard(icon: Icons.warning_amber_rounded, title: 'SOS / طوارئ', subtitle: 'إبلاغ فوري مع الموقع', color: red, emergency: true, onTap: () => _openAction(context, 'SOS / طوارئ', _emergency(config))),
-                ],
-              ),
+              const SizedBox(height: 14),
+              // Red emergency entry remains prominent even after deduplicating
+              // the attendance/trip/container shortcuts already shown above.
+              if (user.can('emergency', 'create'))
+                SizedBox(height: 120, child: _SupervisorActionCard(
+                  icon: Icons.warning_amber_rounded,
+                  title: 'SOS / طوارئ',
+                  subtitle: 'إبلاغ فوري مع الموقع',
+                  color: red,
+                  emergency: true,
+                  onTap: () => _openAction(
+                    context, 'SOS / طوارئ', _emergency(config)))),
               const SizedBox(height: 16),
               AiSectionCard(
                 title: 'حالة التشغيل',
