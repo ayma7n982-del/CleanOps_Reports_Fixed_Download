@@ -9,6 +9,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
 import '../models/core_models.dart';
 import 'config_service.dart';
@@ -254,10 +255,30 @@ class DataService extends ChangeNotifier {
     return false;
   }
 
+  /// Camera and recorder paths may live in a temporary directory that the OS
+  /// clears before connectivity returns. Retain a durable copy for queued work.
+  Future<void> _preserveOfflineAttachment(
+      Map<String, dynamic> payload, String queueId) async {
+    final path = payload['localAttachmentPath']?.toString() ?? '';
+    if (path.isEmpty) return;
+    final source = File(path);
+    if (!await source.exists()) {
+      throw StateError('لا يمكن حفظ العملية: ملف المرفق غير موجود على الهاتف.');
+    }
+    final directory = Directory(
+        '${(await getApplicationSupportDirectory()).path}/offline_attachments');
+    await directory.create(recursive: true);
+    final extension = payload['attachmentType'] == 'audio' ? 'm4a' : 'jpg';
+    final stored = await source.copy('${directory.path}/$queueId.$extension');
+    payload['localAttachmentPath'] = stored.path;
+  }
+
   Future<void> enqueue(String entity, String operation, Map<String, dynamic> payload) async {
     final safePayload = Map<String, dynamic>.from(_toJsonSafe(payload) as Map);
+    final queueId = uuid.v4();
+    await _preserveOfflineAttachment(safePayload, queueId);
     final item = SyncItem(
-      id: uuid.v4(),
+      id: queueId,
       entity: entity,
       operation: operation,
       payload: jsonEncode(safePayload),
@@ -373,33 +394,33 @@ class DataService extends ChangeNotifier {
   }
 
   Future<void> _uploadAttachment(Map<String, dynamic> payload) async {
+    if ('${payload['attachmentUrl'] ?? ''}'.isNotEmpty) return;
     final localPath = '${payload['localAttachmentPath'] ?? ''}';
     if (localPath.isEmpty) return;
     final file = File(localPath);
     if (!await file.exists()) {
-      payload['attachmentWarning'] = 'ملف المرفق المحلي مفقود';
-      payload.remove('localAttachmentPath');
-      return;
+      throw StateError('المرفق المحلي مفقود؛ العملية محفوظة بانتظار استعادة الملف.');
     }
     final kind = '${payload['attachmentType'] ?? ''}';
     final userId = '${payload['userId'] ?? payload['reportedBy'] ?? 'unknown'}';
-    final operationId = '${payload['id'] ?? uuid.v4()}';
+    final operationId = '${payload['id'] ?? ''}';
+    if (operationId.isEmpty) {
+      throw StateError('لا يمكن رفع مرفق دون معرّف العملية.');
+    }
     late final String url;
     if (kind == 'audio') {
       final ref = FirebaseStorage.instance.ref('audio/$userId/$operationId/emergency.m4a');
       await ref.putFile(file, SettableMetadata(contentType: 'audio/mp4'));
       url = await ref.getDownloadURL();
     } else {
-      final ref = FirebaseStorage.instance.ref('photos/$userId/$operationId/${DateTime.now().millisecondsSinceEpoch}.jpg');
+      // A fixed object path makes retries idempotent instead of creating duplicates.
+      final ref = FirebaseStorage.instance.ref('photos/$userId/$operationId/attachment.jpg');
       await ref.putFile(file, SettableMetadata(contentType: 'image/jpeg'));
       url = await ref.getDownloadURL();
     }
     payload['attachmentUrl'] = url;
-    payload.remove('localAttachmentPath');
-    payload.remove('attachmentType');
-    try {
-      await file.delete();
-    } catch (_) {}
+    payload.remove('attachmentWarning');
+    // Keep localAttachmentPath until the Firestore write is confirmed.
   }
 
   Future<void> sync() async {
@@ -438,10 +459,21 @@ class DataService extends ChangeNotifier {
             continue;
           }
 
-          if (payload['localAttachmentPath'] != null &&
-              payload['localAttachmentPath'].toString().isNotEmpty) {
+          final attachmentPath = payload['localAttachmentPath']?.toString();
+          if (attachmentPath != null && attachmentPath.isNotEmpty) {
             await _uploadAttachment(payload);
+            // Persist the successful upload before attempting the Firestore write.
+            // After an app restart, retrying won't re-upload the same attachment.
+            queue = queue.map((queued) => queued.id == item.id
+                ? SyncItem(id: queued.id, entity: queued.entity,
+                    operation: queued.operation, payload: jsonEncode(payload),
+                    createdAt: queued.createdAt, retryCount: queued.retryCount)
+                : queued).toList();
+            await store.saveQueue(queue);
           }
+          final cloudPayload = Map<String, dynamic>.from(payload)
+            ..remove('localAttachmentPath')
+            ..remove('attachmentType');
 
           final collection = item.entity == 'audit' ? 'audit' : (item.entity == 'container' ? 'containers' : 'operations');
           final docId = payload['id']?.toString() ?? item.id;
@@ -449,7 +481,7 @@ class DataService extends ChangeNotifier {
 
           if (item.entity == 'audit') {
             await ref.set({
-              ...payload,
+              ...cloudPayload,
               'timestamp': FieldValue.serverTimestamp(),
               'immutable': true,
               '_entity': item.entity
@@ -458,7 +490,7 @@ class DataService extends ChangeNotifier {
             // Containers have their own Firestore collection and strict field-level rules.
             // Do not inject the generic _entity marker into this collection.
             await ref.set({
-              ...payload,
+              ...cloudPayload,
               'updatedAt': FieldValue.serverTimestamp(),
             }, SetOptions(merge: true));
           } else if (item.entity == 'cart_redirect') {
@@ -524,7 +556,7 @@ class DataService extends ChangeNotifier {
                 'lastRedirectRequestId': docId,
               });
               tx.set(logRef, {
-                ...payload,
+                ...cloudPayload,
                 'id': docId,
                 '_entity': 'cart_redirect',
                 'cartId': cartId,
@@ -546,18 +578,18 @@ class DataService extends ChangeNotifier {
             await FirebaseFunctions.instance.httpsCallable('saveOperationalReport').call(<String, dynamic>{
               'sourceEntity': item.entity,
               'operation': item.operation,
-              'report': <String, dynamic>{...payload, 'reportKind': item.entity},
+              'report': <String, dynamic>{...cloudPayload, 'reportKind': item.entity},
             });
           } else if (item.operation == 'delete') {
             await ref.set({
-              ...payload,
+              ...cloudPayload,
               'isDeleted': true,
               'updatedAt': FieldValue.serverTimestamp(),
               '_entity': item.entity
             }, SetOptions(merge: true));
           } else {
             await ref.set({
-              ...payload,
+              ...cloudPayload,
               'updatedAt': FieldValue.serverTimestamp(),
               '_entity': item.entity
             }, SetOptions(merge: true));
@@ -584,10 +616,18 @@ class DataService extends ChangeNotifier {
               }
             }
           } else {
-            _applyLocalOperation(item.entity == 'attendance_checkout' ? 'attendance' : item.entity, item.operation, payload);
+            _applyLocalOperation(item.entity == 'attendance_checkout' ? 'attendance' : item.entity, item.operation, cloudPayload);
           }
           queue = queue.where((e) => e.id != item.id).toList();
           await store.saveQueue(queue);
+          if (attachmentPath != null && attachmentPath.isNotEmpty) {
+            try {
+              final file = File(attachmentPath);
+              if (await file.exists()) await file.delete();
+            } catch (error) {
+              debugPrint('Unable to remove uploaded local attachment: $error');
+            }
+          }
         } catch (itemError) {
           debugPrint('تعذر مزامنة العنصر ${item.id}: $itemError');
         }
