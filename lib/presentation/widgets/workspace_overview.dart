@@ -1,0 +1,217 @@
+import 'dart:convert';
+import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
+import 'package:provider/provider.dart';
+import '../../core/models/core_models.dart';
+import '../../core/services/auth_service.dart';
+import '../../core/services/container_service.dart';
+import '../../core/services/data_service.dart';
+import '../screens/global_search.dart';
+import '../screens/live_operations_map.dart';
+import 'app_design.dart';
+
+/// Presentation-only workspace: does not modify Firebase rules or data writes.
+class WorkspaceAction {
+  final String id, title;
+  final IconData icon;
+  final VoidCallback onTap;
+  const WorkspaceAction(this.id, this.title, this.icon, this.onTap);
+}
+
+class WorkspaceOverview extends StatefulWidget {
+  final List<WorkspaceAction> actions;
+  const WorkspaceOverview({super.key, required this.actions});
+  @override
+  State<WorkspaceOverview> createState() => _WorkspaceOverviewState();
+}
+
+class _WorkspaceOverviewState extends State<WorkspaceOverview> {
+  String _loadedUid = '';
+  List<String> _order = [];
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final user = context.read<AuthService>().currentUser;
+    if (user == null || user.id == _loadedUid) return;
+    _loadedUid = user.id;
+    final raw = context.read<DataService>().store.box.get('workspace_order_${user.id}');
+    try {
+      final value = jsonDecode('${raw ?? '[]'}');
+      _order = value is List ? value.map((x) => '$x').toList() : [];
+    } catch (_) { _order = []; }
+  }
+
+  List<WorkspaceAction> get orderedActions {
+    final items = [...widget.actions];
+    items.sort((a,b) {
+      final ia = _order.indexOf(a.id), ib = _order.indexOf(b.id);
+      final aa = ia < 0 ? _order.length + widget.actions.indexOf(a) : ia;
+      final bb = ib < 0 ? _order.length + widget.actions.indexOf(b) : ib;
+      return aa.compareTo(bb);
+    });
+    return items;
+  }
+
+  void move(String id, int by) {
+    final ids = orderedActions.map((x) => x.id).toList();
+    final old = ids.indexOf(id), next = old + by;
+    if (old < 0 || next < 0 || next >= ids.length) return;
+    final value = ids.removeAt(old);
+    ids.insert(next,value);
+    setState(() => _order = ids);
+    final user = context.read<AuthService>().currentUser;
+    if (user != null) {
+      context.read<DataService>().store.box.put(
+        'workspace_order_${user.id}',jsonEncode(ids));
+    }
+  }
+
+  bool visibleOperation(Map<String,dynamic> x, AppUser user) {
+    if (x['isDeleted'] == true) return false;
+    if (user.role == 'donor_manager' || user.role == 'jsc_coordinator') return true;
+    if (user.role == 'municipality_coordinator') return
+      x['municipalityCoordinatorId'] == user.id ||
+      x['requestedBy'] == user.id || x['userId'] == user.id;
+    return (user.groupId != null && user.groupId!.isNotEmpty &&
+      x['groupId'] == user.groupId) ||
+      x['reportedBy'] == user.id || x['userId'] == user.id;
+  }
+
+  bool visibleContainer(ContainerItem x, AppUser user) {
+    if (user.role == 'donor_manager' || user.role == 'jsc_coordinator') return true;
+    if (user.role == 'municipality_coordinator') return x.municipalityId == user.id;
+    return user.groupId != null && x.groupId == user.groupId;
+  }
+
+  void openMap(AppUser user, List<ContainerItem> scoped) {
+    final screen = user.role == 'donor_manager' || user.role == 'jsc_coordinator'
+      ? const LiveOperationsMapScreen()
+      : _ScopedContainersMap(containers:scoped);
+    Navigator.push(context,MaterialPageRoute(builder:(_)=>screen));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final user = context.watch<AuthService>().currentUser;
+    if (user == null) return const SizedBox.shrink();
+    final service = context.watch<DataService>();
+    final scoped = context.watch<ContainerService>().containers
+      .where((x)=>visibleContainer(x,user)).toList();
+    final ops = service.operations.where((x)=>visibleOperation(x,user)).toList();
+    final emergencies = ops.where((x)=> x['_entity']=='emergency' &&
+      !['secured','closed','resolved'].contains(x['status'])).length;
+    final critical = scoped.where((x)=>x.status=='full' ||
+      x.issueStatus=='reported').length;
+    final pending = service.queue.where((x)=>x.ownerUid==user.id).length;
+    final dated = ops.where((x)=>x['createdAt'] is String &&
+      DateTime.tryParse(x['createdAt'])!=null).toList()
+      ..sort((a,b)=>'${b['createdAt']}'.compareTo('${a['createdAt']}'));
+    final now=DateTime.now();
+    final today = dated.where((x) {
+      final d=DateTime.tryParse('${x['createdAt']}')?.toLocal();
+      return d!=null && d.year==now.year && d.month==now.month && d.day==now.day;
+    }).length;
+    return Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
+      AiSectionCard(title:'يتطلب إجراءك',feature:'emergency',
+        subtitle:'بحسب السجلات المتاحة وصلاحيات حسابك',
+        child:Column(children:[
+          ListTile(leading:const Icon(Icons.warning_amber),
+            title:Text('بلاغات SOS مفتوحة: $emergencies')),
+          ListTile(leading:const Icon(Icons.delete_sweep),
+            title:Text('حاويات تحتاج متابعة: $critical')),
+          if(pending>0) ListTile(leading:const Icon(Icons.sync_problem),
+            title:Text('بانتظار تأكيد الخادم: $pending'),
+            subtitle:const Text('عمليات محفوظة محليًا ولم يتأكد تنفيذها')),
+        ])),
+      const SizedBox(height:12),
+      AiSectionCard(title:'البحث والأوامر',feature:'dashboard',
+        child:FilledButton.tonalIcon(icon:const Icon(Icons.search),
+          label:const Text('البحث الذكي في السجلات والعمليات'),
+          onPressed:()=>Navigator.push(context,MaterialPageRoute(
+            builder:(_)=>const GlobalSearchPage())))),
+      const SizedBox(height:12),
+      AiSectionCard(title:'اختصاراتي',feature:'operations',
+        subtitle:'يمكن ترتيب الاختصارات؛ يُحفظ الترتيب على الجهاز لكل مستخدم',
+        child:Column(children:[
+          Wrap(spacing:8,runSpacing:8,children:[
+            for(final action in orderedActions) ActionChip(
+              avatar:Icon(action.icon,size:18),label:Text(action.title),
+              onPressed:action.onTap),
+          ]),
+          ExpansionTile(title:const Text('تعديل ترتيب الاختصارات'),children:[
+            for(final action in orderedActions) ListTile(
+              title:Text(action.title),
+              trailing:Wrap(mainAxisSize:MainAxisSize.min,children:[
+                IconButton(icon:const Icon(Icons.arrow_upward),
+                  tooltip:'للأعلى',onPressed:()=>move(action.id,-1)),
+                IconButton(icon:const Icon(Icons.arrow_downward),
+                  tooltip:'للأسفل',onPressed:()=>move(action.id,1)),
+              ])),
+          ]),
+        ])),
+      const SizedBox(height:12),
+      AiSectionCard(title:'الخريطة التشغيلية',feature:'dumpsite',
+        child:ListTile(leading:const Icon(Icons.map_outlined),
+          title:const Text('عرض المواقع على خريطة جوية'),
+          subtitle:Text(user.role=='group_supervisor' ||
+            user.role=='municipality_coordinator'
+            ? 'حاويات نطاقك فقط، دون توسيع صلاحيات Firebase'
+            : 'الخريطة الحية وفق صلاحياتك'),
+          trailing:const Icon(Icons.chevron_left),
+          onTap:()=>openMap(user,scoped))),
+      const SizedBox(height:12),
+      AiSectionCard(title:'ملخص اليوم',feature:'reports',
+        subtitle:'عدد السجلات المؤرخة المتاحة محليًا اليوم',
+        child:Column(children:[
+          ListTile(title:Text('سجلات اليوم: $today'),
+            subtitle:Text('آخر جلب للبيانات: ${service.lastDataRefresh.isEmpty ? 'غير مؤكد' : service.lastDataRefresh}')),
+          ListTile(title:Text('عمليات معلقة: $pending'),
+            subtitle:Text(service.automaticSyncStatus)),
+        ])),
+      const SizedBox(height:12),
+      AiSectionCard(title:'آخر النشاط الحقيقي',feature:'operations',
+        subtitle:'من سجل العمليات المحفوظ، وليس بيانات تجريبية',
+        child:dated.isEmpty
+          ? const Text('لا توجد سجلات مؤرخة ضمن نطاق حسابك.')
+          : Column(children:[
+              for(final x in dated.take(5)) ListTile(dense:true,
+                leading:const Icon(Icons.history),
+                title:Text('${x['_entity'] ?? 'عملية'} • ${x['id'] ?? ''}'),
+                subtitle:Text('${x['createdAt']}')),
+            ])),
+    ]);
+  }
+}
+
+class _ScopedContainersMap extends StatelessWidget {
+  final List<ContainerItem> containers;
+  const _ScopedContainersMap({required this.containers});
+  @override
+  Widget build(BuildContext context) {
+    final valid=containers.where((c)=>c.latitude>=-90 && c.latitude<=90 &&
+      c.longitude>=-180 && c.longitude<=180 &&
+      (c.latitude!=0 || c.longitude!=0)).toList();
+    return Scaffold(appBar:AppBar(title:const Text('خريطة حاويات نطاقي')),
+      body:valid.isEmpty
+        ? const Center(child:Text('لا توجد حاويات بإحداثيات متاحة ضمن نطاقك'))
+        : FlutterMap(options:MapOptions(
+            initialCenter:LatLng(valid.first.latitude,valid.first.longitude),
+            initialZoom:12),
+          children:[
+            TileLayer(urlTemplate:'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+              userAgentPackageName:'com.solidwaste.solid_waste_operations'),
+            MarkerLayer(markers:[
+              for(final c in valid) Marker(
+                point:LatLng(c.latitude,c.longitude),width:46,height:46,
+                child:Tooltip(message:'${c.locationName} • ${c.status}',
+                  child:Icon(Icons.delete_rounded,size:35,
+                    color:c.status=='full'?Colors.red:Colors.green))),
+            ]),
+            RichAttributionWidget(attributions:[
+              TextSourceAttribution('Esri, Maxar, Earthstar Geographics and GIS User Community'),
+            ]),
+          ]));
+  }
+}
