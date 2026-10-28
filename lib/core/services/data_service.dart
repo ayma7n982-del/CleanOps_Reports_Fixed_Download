@@ -27,6 +27,7 @@ class DataService extends ChangeNotifier {
   bool online = false, syncing = false;
   String lastSync = 'لم تتم المزامنة بعد';
   String lastDataRefresh = '';
+  String? lastSyncError;
   StreamSubscription<List<ConnectivityResult>>? connectivitySub;
   Timer? automaticSyncTimer;
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? sosNotificationSub;
@@ -114,6 +115,9 @@ class DataService extends ChangeNotifier {
           : 'غير متصل • ' + queue.length.toString() + ' عملية محفوظة وستُزامن تلقائيًا';
     }
     if (syncing) return 'مزامنة تلقائية جارية';
+    if (queue.isNotEmpty && lastSyncError != null) {
+      return '${queue.length} عملية لم يؤكدها الخادم؛ ستُعاد المحاولة تلقائيًا';
+    }
     if (queue.isNotEmpty) {
       return queue.length.toString() + ' عملية بانتظار المزامنة التلقائية';
     }
@@ -467,6 +471,7 @@ class DataService extends ChangeNotifier {
         ? FirebaseAuth.instance.currentUser?.uid : null;
     if (_syncItemOverride == null && currentUid == null) return;
     syncing = true;
+    lastSyncError = null;
     notifyListeners();
     var completed = 0;
 
@@ -803,10 +808,12 @@ class DataService extends ChangeNotifier {
             }
           }
         } catch (itemError) {
+          lastSyncError = '$itemError';
           debugPrint('تعذر مزامنة العنصر ${item.id}: $itemError');
         }
       }
 
+      if (queue.isEmpty) lastSyncError = null;
       if (completed > 0) {
         lastSync = DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now());
         await store.saveLastSync(lastSync);
