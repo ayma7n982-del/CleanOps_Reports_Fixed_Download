@@ -279,6 +279,8 @@ class DataService extends ChangeNotifier {
     await _preserveOfflineAttachment(safePayload, queueId);
     final item = SyncItem(
       id: queueId,
+      ownerUid: Firebase.apps.isNotEmpty
+          ? FirebaseAuth.instance.currentUser?.uid : null,
       entity: entity,
       operation: operation,
       payload: jsonEncode(safePayload),
@@ -428,12 +430,19 @@ class DataService extends ChangeNotifier {
         (Firebase.apps.isEmpty && _syncItemOverride == null)) {
       return;
     }
+    // Signed-out devices must not upload queued records under a future account.
+    final currentUid = _syncItemOverride == null
+        ? FirebaseAuth.instance.currentUser?.uid : null;
+    if (_syncItemOverride == null && currentUid == null) return;
     syncing = true;
     notifyListeners();
     var completed = 0;
 
     try {
       for (final item in List.from(queue)) {
+        // Retain records for a different account; its own session will retry.
+        if (_syncItemOverride == null && item.ownerUid != null &&
+            item.ownerUid != currentUid) continue;
         try {
           final payload = Map<String, dynamic>.from(jsonDecode(item.payload));
 
@@ -467,7 +476,8 @@ class DataService extends ChangeNotifier {
             queue = queue.map((queued) => queued.id == item.id
                 ? SyncItem(id: queued.id, entity: queued.entity,
                     operation: queued.operation, payload: jsonEncode(payload),
-                    createdAt: queued.createdAt, retryCount: queued.retryCount)
+                    createdAt: queued.createdAt, retryCount: queued.retryCount,
+                    ownerUid: queued.ownerUid)
                 : queued).toList();
             await store.saveQueue(queue);
           }
