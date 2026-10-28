@@ -43,16 +43,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: npm install --global firebase-tools
-      - name: Deploy Firestore rules only
+      - name: Deploy Firestore rules through Firebase Rules REST API
         env:
-          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/firebase-service-account.json
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-        run: |
-          if [ -z "$FIREBASE_SERVICE_ACCOUNT" ]; then
-            echo "Missing FIREBASE_SERVICE_ACCOUNT secret" >&2
-            exit 1
-          fi
-          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$GOOGLE_APPLICATION_CREDENTIALS"
-          chmod 600 "$GOOGLE_APPLICATION_CREDENTIALS"
-          firebase deploy --project nrc-aid --only firestore:rules --non-interactive
+          FIREBASE_PROJECT_ID: nrc-aid
+        run: node scripts/deploy_firestore_rules_rest.mjs
