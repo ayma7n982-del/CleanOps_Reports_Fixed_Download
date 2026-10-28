@@ -15,6 +15,7 @@ import '../models/core_models.dart';
 import 'config_service.dart';
 import 'local_store.dart';
 import 'operations_cache_merge.dart';
+import 'sos_audience_policy.dart';
 
 class DataService extends ChangeNotifier {
   final LocalStore store;
@@ -31,6 +32,8 @@ class DataService extends ChangeNotifier {
   StreamSubscription<List<ConnectivityResult>>? connectivitySub;
   Timer? automaticSyncTimer;
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? sosNotificationSub;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? sosEmergencySub;
+  bool _sosInboxRefreshing = false;
   StreamSubscription<User?>? authNotificationSub;
   final Future<void> Function(SyncItem item, Map<String, dynamic> payload)?
       _syncItemOverride;
@@ -72,7 +75,10 @@ class DataService extends ChangeNotifier {
       final lastRefresh = DateTime.tryParse(lastDataRefresh);
       final stale = lastRefresh == null ||
           DateTime.now().difference(lastRefresh) >= const Duration(minutes: 3);
-      if (stale) unawaited(refreshOperations());
+      if (stale) {
+        unawaited(refreshOperations());
+        unawaited(refreshSosInbox());
+      }
     });
     notifyListeners();
     if (Firebase.apps.isNotEmpty) {
@@ -81,13 +87,24 @@ class DataService extends ChangeNotifier {
       authNotificationSub = FirebaseAuth.instance.authStateChanges().listen(
         (account) {
           final previous = sosNotificationSub;
+          final previousEmergency = sosEmergencySub;
           if (previous != null) unawaited(previous.cancel());
+          if (previousEmergency != null) unawaited(previousEmergency.cancel());
           sosNotificationSub = null;
+          sosEmergencySub = null;
           if (account == null) return;
           sosNotificationSub = FirebaseFirestore.instance.collection('operations')
               .where('_entity', isEqualTo: 'notification').snapshots().listen(
             (_) => unawaited(refreshSosInbox()),
             onError: (Object error) => debugPrint('SOS notification listener failed: $error'),
+          );
+          // Emergency records are independently readable by L2/L3/L4. These
+          // live updates also cover notifications whose optional target could
+          // not be resolved when a supervisor was offline.
+          sosEmergencySub = FirebaseFirestore.instance.collection('operations')
+              .where('_entity', isEqualTo: 'emergency').snapshots().listen(
+            (_) => unawaited(refreshSosInbox()),
+            onError: (Object error) => debugPrint('SOS emergency listener failed: $error'),
           );
           if (online) {
             // A queue created while signed out must retry immediately after the
@@ -135,6 +152,7 @@ class DataService extends ChangeNotifier {
     connectivitySub?.cancel();
     automaticSyncTimer?.cancel();
     sosNotificationSub?.cancel();
+    sosEmergencySub?.cancel();
     authNotificationSub?.cancel();
     super.dispose();
   }
@@ -211,27 +229,60 @@ class DataService extends ChangeNotifier {
   }
 
   Future<void> refreshSosInbox() async {
-    if (!online || Firebase.apps.isEmpty) return;
+    if (!online || Firebase.apps.isEmpty || _sosInboxRefreshing) return;
     final current = FirebaseAuth.instance.currentUser;
     if (current == null) return;
+    _sosInboxRefreshing = true;
     try {
-      final profile = await FirebaseFirestore.instance.collection('users').doc(current.uid).get();
-      final role = profile.data()?['role']?.toString();
-      if (profile.data()?['isActive'] == false || role == null) return;
-      if (!['municipality_coordinator', 'jsc_coordinator', 'donor_manager'].contains(role)) return;
-      final result = await FirebaseFirestore.instance.collection('operations')
-          .where('_entity', isEqualTo: 'notification').limit(300).get();
+      final db = FirebaseFirestore.instance;
+      final profile = await db.collection('users').doc(current.uid).get();
+      final role = profile.data()?['role']?.toString() ?? '';
+      if (profile.data()?['isActive'] == false ||
+          !SosAudiencePolicy.isManagementRole(role)) return;
       var changed = false;
-      for (final document in result.docs) {
+
+      // Preserve existing explicit, scoped notification delivery.
+      final notices = await db.collection('operations')
+          .where('_entity', isEqualTo: 'notification').limit(300).get();
+      for (final document in notices.docs) {
         final item = document.data();
-        if (item['sourceEntity'] != 'emergency' || item['targetRole'] != role) continue;
-        final recipient = item['targetUserId']?.toString();
-        if ((role == 'municipality_coordinator' || role == 'jsc_coordinator' || role == 'donor_manager') && (recipient == null || recipient.isEmpty || recipient != current.uid)) continue;
-        if (role != 'municipality_coordinator' && recipient != null && recipient.isNotEmpty && recipient != current.uid) continue;
+        if (item['sourceEntity'] != 'emergency' ||
+            item['targetRole'] != role ||
+            item['targetUserId'] != current.uid) continue;
         if (notifications.any((n) => n.id == document.id)) continue;
         notifications = [NotificationItem(
-          id: document.id, title: '${item['title'] ?? 'SOS'}',
-          body: '${item['body'] ?? ''}', level: 'urgent',
+          id: document.id,
+          title: '${item['title'] ?? 'SOS'}',
+          body: '${item['body'] ?? ''}',
+          level: 'urgent',
+          createdAt: '${item['createdAt'] ?? ''}',
+        ), ...notifications].take(100).toList();
+        changed = true;
+      }
+
+      // Also surface open emergency records directly to the responsible
+      // municipality, council and donor level. Never depend solely on a
+      // supervisor reading the coordinator's protected user document.
+      final emergencies = await db.collection('operations')
+          .where('_entity', isEqualTo: 'emergency').limit(300).get();
+      for (final doc in emergencies.docs) {
+        final item = doc.data();
+        if (!SosAudiencePolicy.canSeeEmergency(
+            role: role, uid: current.uid, emergency: item)) continue;
+        final inboxId = 'sos-emergency-${doc.id}';
+        if (notifications.any((n) =>
+            n.id == inboxId || n.id == '${doc.id}_L2' ||
+            n.id == '${doc.id}_L3' || n.id == '${doc.id}_UNICEF')) continue;
+        final location = '${item['street'] ?? 'موقع غير محدد'}';
+        final latitude = item['latitude'];
+        final longitude = item['longitude'];
+        final gps = latitude is num && longitude is num
+            ? ' • GPS: $latitude, $longitude' : '';
+        notifications = [NotificationItem(
+          id: inboxId,
+          title: 'بلاغ SOS عاجل',
+          body: 'الموقع: $location$gps • ${item['status'] ?? 'urgent'}',
+          level: 'urgent',
           createdAt: '${item['createdAt'] ?? ''}',
         ), ...notifications].take(100).toList();
         changed = true;
@@ -240,8 +291,10 @@ class DataService extends ChangeNotifier {
         await store.saveNotifications(notifications);
         notifyListeners();
       }
-    } catch (e) {
-      debugPrint('SOS inbox refresh failed: $e');
+    } catch (error) {
+      debugPrint('SOS inbox refresh failed; local inbox retained: $error');
+    } finally {
+      _sosInboxRefreshing = false;
     }
   }
 
