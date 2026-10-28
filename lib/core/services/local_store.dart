@@ -49,6 +49,10 @@ class LocalStore {
   String lastSync() => box.get('last_sync')?.toString() ?? 'لم تتم المزامنة بعد';
   Future<void> saveLastSync(String value) => box.put('last_sync', value);
 
+  String lastDataRefresh() => box.get('last_data_refresh')?.toString() ?? '';
+  Future<void> saveLastDataRefresh(String value) =>
+      box.put('last_data_refresh', value);
+
   Future<void> saveCachedUser(AppUser user) => box.put('cached_user', jsonEncode(user.toJson()));
 
   AppUser? cachedUser() {
