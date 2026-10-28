@@ -259,9 +259,10 @@ class AIService {
 
   List<String> _buildProactiveInsights(Map<String, dynamic> data) {
     final insights = <String>[];
-    final workers = data['activeWorkers'] as int? ?? 0;
-    final groups = data['activeGroups'] as int? ?? 0;
     final emergencies = data['activeSOSorEmergencies'] as int? ?? 0;
+    final uncoveredGroups = data['supervisedGroupsWithoutWorkers'] as int? ?? 0;
+    final assessableTrips = data['assessableTripDeadlines'] as int? ?? 0;
+    final overdueTrips = data['overdueTrips'] as int? ?? 0;
     final dumpsites = (data['dumpsites'] as List?) ?? const [];
     final criticalSites = dumpsites.where((site) {
       if (site is! Map) return false;
@@ -276,12 +277,19 @@ class AIService {
     if (criticalSites > 0) {
       insights.add('أولوية عالية: يوجد $criticalSites مكب بنسبة امتلاء 85% أو أكثر.');
     }
-    if (groups > 0 && workers == 0) {
-      insights.add('تنبيه موارد: توجد مجموعات نشطة دون عمال نشطين ضمن البيانات المقروءة.');
-    } else if (groups > 0 && workers < groups) {
-      insights.add('تنبيه موارد: عدد العمال النشطين ($workers) أقل من عدد المجموعات ($groups)؛ راجع توزيع القوى العاملة.');
+    if (overdueTrips > 0) {
+      insights.add('تنبيه ترحيلات: توجد $overdueTrips رحلة متأخرة وفق موعد مستهدف مسجل.');
+    } else if (assessableTrips > 0) {
+      insights.add('الترحيلات: لا توجد رحلات متأخرة ضمن $assessableTrips رحلة لها موعد مستهدف قابل للتقييم.');
+    } else {
+      insights.add('ملاحظة ترحيلات: لا توجد مواعيد مستهدفة كافية لتقييم التأخر بشكل موثوق.');
     }
-    insights.add('ملاحظة تشغيلية: تحديد تأخر الترحيلات يتطلب وقتًا مستهدفًا أو موعدًا مخططًا لكل رحلة؛ عدد الرحلات وحده لا يكفي.');
+    if (uncoveredGroups > 0) {
+      insights.add('تنبيه موارد: توجد $uncoveredGroups مجموعة بإشراف نشط دون عامل نشط مسجل.');
+    }
+    if (emergencies == 0 && criticalSites == 0 && overdueTrips == 0 && uncoveredGroups == 0) {
+      insights.add('لا تظهر مؤشرات تشغيلية حرجة ضمن البيانات المقروءة والقواعد الحالية.');
+    }
     return insights;
   }
 
