@@ -32,6 +32,8 @@ jobs:
         with:
           channel: stable
           cache: true
+      - name: Select Java 17 in Flutter
+        run: flutter config --jdk-dir="$JAVA_HOME"
       - name: Resolve dependencies
         run: flutter pub get
       - name: Set up Gradle 8.14
