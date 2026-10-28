@@ -97,10 +97,21 @@ class OperationalInsights {
   }
 
   static int alertPriority(Map<String, dynamic> record) {
-    final severity = '${record['statusLevel'] ?? record['level'] ?? ''}'.toLowerCase();
-    if (record['_entity'] == 'emergency' || severity == 'critical' ||
-        severity == 'urgent') return 0;
-    if (severity == 'high' || severity == 'warning') return 1;
+    final severity =
+        '${record['statusLevel'] ?? record['level'] ?? ''}'.toLowerCase().trim();
+    final status = '${record['status'] ?? ''}'.toLowerCase().trim();
+    if (severity == 'critical' || severity == 'urgent' ||
+        status == 'critical' || status == 'urgent') {
+      return 0;
+    }
+    if (severity == 'high' || severity == 'warning' ||
+        status == 'high' || status == 'warning' ||
+        status == 'delayed' || status == 'late' || status == 'overdue') {
+      return 1;
+    }
+    // An emergency without an explicit severity is important, but it must not
+    // be presented as "critical" unless the data actually says so.
+    if (record['_entity'] == 'emergency') return 1;
     return 2;
   }
 
