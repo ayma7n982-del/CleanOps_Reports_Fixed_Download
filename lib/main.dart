@@ -467,8 +467,8 @@ class AppDrawer extends StatelessWidget {
             if (visible('permissions')) _item(context, 'permissions', 'الصلاحيات الديناميكية', Icons.admin_panel_settings_outlined, () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PermissionsPage()))),
             if (visible('audit')) _item(context, 'audit', 'سجل التدقيق', Icons.security_outlined, () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AuditPage()))),
             if (user.role == 'donor_manager' || user.role == 'municipality_coordinator') _item(context, 'users', 'إدارة المستخدمين', Icons.manage_accounts_rounded, () => Navigator.push(context, MaterialPageRoute(builder: (_) => const UserManagementSettingsPage()))),
-            _item(context, 'operations', 'مركز الإدارة والتشغيل', Icons.hub_rounded, () => Navigator.push(context, MaterialPageRoute(builder: (_) => const EnterpriseOperationsHubPage()))),
-            _item(context, 'messages', 'مركز الرسائل', Icons.forum_outlined, () => Navigator.push(context, MaterialPageRoute(builder: (_) => const MessagesCenterScreen()))),
+            if (visible('operations')) _item(context, 'operations', 'مركز الإدارة والتشغيل', Icons.hub_rounded, () => Navigator.push(context, MaterialPageRoute(builder: (_) => const EnterpriseOperationsHubPage()))),
+            if (visible('messages')) _item(context, 'messages', 'مركز الرسائل', Icons.forum_outlined, () => Navigator.push(context, MaterialPageRoute(builder: (_) => const MessagesCenterScreen()))),
             if (user.role == 'donor_manager' || user.role == 'jsc_coordinator') _item(context, 'critical_areas', 'خريطة العمليات', Icons.map_outlined, () => Navigator.push(context, MaterialPageRoute(builder: (_) => const LiveOperationsMapScreen()))),
             const Divider(),
             ListTile(
