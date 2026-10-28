@@ -333,10 +333,26 @@ class MessagingService extends ChangeNotifier {
         'type': type,
         'isRead': false,
       }, SetOptions(merge: false));
+    } on FirebaseException catch (e) {
+      lastError = e.toString();
+      notifyListeners();
+      // Permission failures and invalid payloads are permanent, not offline
+      // retries. Never report them as successful delivery.
+      if (e.code == 'permission-denied' ||
+          e.code == 'unauthenticated' ||
+          e.code == 'invalid-argument' ||
+          e.code == 'failed-precondition') {
+        debugPrint('Message rejected by Firebase: $e');
+        rethrow;
+      }
+      // Keep the optimistic local copy for transient connectivity failures.
+      debugPrint('Message pending Firestore retry: $e');
     } catch (e) {
       lastError = e.toString();
-      debugPrint('Message write deferred; Firestore offline queue/cache will retry: $e');
       notifyListeners();
+      // Unexpected failures must be visible to the caller, not silently
+      // interpreted as confirmed server delivery.
+      rethrow;
     }
   }
 
