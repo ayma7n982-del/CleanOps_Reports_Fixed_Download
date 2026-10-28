@@ -130,10 +130,6 @@ class AIService {
         lines.add('• ${item['name']}: الامتلاء ${item['fillPercentage']}%');
       }
     }
-    if (summary && (data['activeGroups'] as int) > 0 && (data['activeWorkers'] as int) == 0) {
-      lines.add('تنبيه موارد: توجد مجموعات دون عمال نشطين ضمن البيانات المقروءة؛ راجع توزيع العمال.');
-    }
-    if (summary) lines.add('لا يمكن تحديد تأخر الترحيلات دون مواعيد مستهدفة معتمدة؛ عدد الرحلات وحده لا يثبت التأخر.');
     if (data['dataMayBeIncomplete'] == true) {
       lines.add('تنبيه دقة: وصلت إحدى القراءات إلى حد السجلات؛ الأعداد تخص العينة المقروءة وليست بالضرورة إجمالي النظام.');
     }
