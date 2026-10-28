@@ -302,4 +302,118 @@ test('cart redirect: offline equipment move persists and reconciles on reconnect
       await fixture.directory.delete(recursive: true);
     }
   });
+  test('JSC SOS actions persist offline and replay in the correct order', () async {
+    final fixture = await openStore('jsc_sos');
+    await fixture.store.saveCachedOperations([{
+      'id': 'sos-local-1',
+      '_entity': 'emergency',
+      'status': 'urgent',
+      'acknowledged': false,
+    }]);
+    final offline = DataService(fixture.store, ConfigService(fixture.store));
+    try {
+      offline.online = false;
+      offline.operations = fixture.store.cachedOperations();
+      await offline.enqueue('emergency', 'sos_acknowledge', {
+        'id': 'sos-local-1',
+        'acknowledged': true,
+        'acknowledgedBy': 'jsc',
+        'acknowledgedAt': '2026-10-28T09:00:00Z',
+        'status': 'acknowledged',
+      });
+      await offline.enqueue('emergency', 'sos_close', {
+        'id': 'sos-local-1',
+        'acknowledged': true,
+        'status': 'closed',
+        'closedBy': 'jsc',
+        'closedAt': '2026-10-28T10:00:00Z',
+        'resolutionNote': 'Coordinated safe closure',
+      });
+      expect(offline.queue.map((item) => item.operation),
+          ['sos_acknowledge', 'sos_close']);
+      expect(offline.operations.single['status'], 'closed');
+      await offline.sync();
+      expect(fixture.store.queue(), hasLength(2));
+      offline.dispose();
+
+      final uploaded = <String>[];
+      final resumed = DataService(
+        fixture.store,
+        ConfigService(fixture.store),
+        syncItemOverride: (item, payload) async {
+          expect(item.entity, 'emergency');
+          expect(payload['id'], 'sos-local-1');
+          uploaded.add(item.operation);
+        },
+      );
+      try {
+        resumed.queue = fixture.store.queue();
+        resumed.operations = fixture.store.cachedOperations();
+        resumed.online = true;
+        await resumed.sync();
+        expect(uploaded, ['sos_acknowledge', 'sos_close']);
+        expect(resumed.queue, isEmpty);
+        expect(fixture.store.queue(), isEmpty);
+        expect(resumed.operations.single['status'], 'closed');
+      } finally {
+        resumed.dispose();
+      }
+    } finally {
+      await fixture.box.close();
+      await fixture.directory.delete(recursive: true);
+    }
+  });
+
+  test('equipment dispatch stays pending without falsely reassigning a cart', () async {
+    final fixture = await openStore('jsc_machine');
+    final service = DataService(fixture.store, ConfigService(fixture.store));
+    try {
+      service.online = false;
+      await service.enqueue('equipment_dispatch', 'dispatch', {
+        'id': 'dispatch-local-1',
+        'equipmentId': 'loader-1',
+        'municipality': 'دير البلح',
+        'requestedBy': 'jsc',
+      });
+      expect(fixture.store.queue(), hasLength(1));
+      expect(service.operations.where(
+          (e) => e['_entity'] == 'equipment_dispatch'), isEmpty);
+      await service.sync();
+      expect(fixture.store.queue(), hasLength(1));
+    } finally {
+      service.dispose();
+      await fixture.box.close();
+      await fixture.directory.delete(recursive: true);
+    }
+  });
+
+  test('failed SOS replay reports pending confirmation, not success', () async {
+    final fixture = await openStore('jsc_reject');
+    final service = DataService(
+      fixture.store,
+      ConfigService(fixture.store),
+      syncItemOverride: (item, payload) async {
+        throw StateError('permission-denied');
+      },
+    );
+    try {
+      service.online = false;
+      await service.enqueue('emergency', 'sos_close', {
+        'id': 'sos-pending',
+        'status': 'closed',
+        'closedBy': 'jsc',
+        'resolutionNote': 'Submitted offline',
+      });
+      service.online = true;
+      await service.sync();
+      expect(service.queue, hasLength(1));
+      expect(service.automaticSyncStatus, contains('لم يؤكدها الخادم'));
+      expect(fixture.store.queue(), hasLength(1));
+    } finally {
+      service.dispose();
+      await fixture.box.close();
+      await fixture.directory.delete(recursive: true);
+    }
+  });
+
 }
