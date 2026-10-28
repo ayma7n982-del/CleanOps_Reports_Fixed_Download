@@ -1,0 +1,36 @@
+name: Process pending Firebase user deletions
+
+on:
+  schedule:
+    - cron: '17 */3 * * *'
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/process_user_deletion_requests.mjs'
+      - '.github/workflows/process-user-deletions.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: firebase-user-deletion-worker
+  cancel-in-progress: false
+
+jobs:
+  process:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: firebase-production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install Firebase Admin SDK
+        run: npm install --no-save firebase-admin@13
+      - name: Process pending deletion requests
+        env:
+          FIREBASE_PROJECT_ID: nrc-aid
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: node scripts/process_user_deletion_requests.mjs
