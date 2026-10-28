@@ -1,5 +1,9 @@
 class TripLifecycle {
   static const targetMinuteOptions = <int>[30, 60, 90, 120, 180, 240];
+  static const activeStatuses = <String>{
+    'pending', 'scheduled', 'assigned', 'active', 'open',
+    'in_progress', 'in-progress', 'delayed', 'late', 'overdue',
+  };
 
   static Map<String, dynamic> startFields({
     required DateTime startedAt,
@@ -37,7 +41,7 @@ class TripLifecycle {
   }) {
     if (trip['_entity'] != 'trip' || trip['isDeleted'] == true) return false;
     final status = '${trip['status'] ?? ''}'.trim().toLowerCase();
-    if (const {'completed', 'closed', 'cancelled'}.contains(status)) return false;
+    if (!activeStatuses.contains(status)) return false;
     final assignedGroup = '${trip['groupId'] ?? ''}'.trim();
     return supervisorId.trim().isNotEmpty &&
         groupId.trim().isNotEmpty &&
