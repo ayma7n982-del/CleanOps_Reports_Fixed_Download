@@ -99,13 +99,26 @@ class _WorkspaceOverviewState extends State<WorkspaceOverview> {
     final service = context.watch<DataService>();
     final scoped = context.watch<ContainerService>().containers
       .where((x)=>visibleContainer(x,user)).toList();
+    // The DataService cache also contains optimistic offline writes. A queued
+    // record is not server-confirmed and must not enter "real activity".
+    final pendingIds = <String>{};
+    for (final item in service.queue) {
+      if (item.ownerUid != user.id) continue;
+      try {
+        final payload = jsonDecode(item.payload);
+        if (payload is Map && payload['id'] != null) {
+          pendingIds.add('${payload['id']}');
+        }
+      } catch (_) { /* Queue diagnostics report malformed entries. */ }
+    }
     final ops = service.operations.where((x)=>visibleOperation(x,user)).toList();
+    final confirmed = ops.where((x)=> !pendingIds.contains('${x['id']}')).toList();
     final emergencies = ops.where((x)=> x['_entity']=='emergency' &&
       !['secured','closed','resolved'].contains(x['status'])).length;
     final critical = scoped.where((x)=>x.status=='full' ||
       x.issueStatus=='reported').length;
     final pending = service.queue.where((x)=>x.ownerUid==user.id).length;
-    final dated = ops.where((x)=>x['createdAt'] is String &&
+    final dated = confirmed.where((x)=>x['createdAt'] is String &&
       DateTime.tryParse(x['createdAt'])!=null).toList()
       ..sort((a,b)=>'${b['createdAt']}'.compareTo('${a['createdAt']}'));
     final now=DateTime.now();
