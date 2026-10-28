@@ -465,3 +465,25 @@ test('a JSC user cannot declare unacknowledged or unreferred SOS secured', async
     securityNote:'Verification',updatedAt:'t',
   }));
 });
+
+test('JSC cannot dispatch or return a cart under the machine workflow', async () => {
+  await env.withSecurityRulesDisabled(async ctx => {
+    await setDoc(doc(ctx.firestore(),'equipment','cart-blocked'), {
+      id:'cart-blocked',type:'cart',category:'cart',status:'available',
+      groupId:'group-a',municipalityCoordinatorId:'coordinator',isDeleted:false,
+      dispatchStatus:'dispatched',dispatchRequestId:'cart-source',
+    });
+  });
+  const jscDb = db('jsc');
+  const returnBatch = writeBatch(jscDb);
+  returnBatch.update(doc(jscDb,'equipment','cart-blocked'), {
+    dispatchStatus:'available',lastReturnRequestId:'cart-return',
+    returnedBy:'jsc',returnedAt:'t',returnNote:'No cart reassignment',
+  });
+  returnBatch.set(doc(jscDb,'operations','cart-return'), {
+    id:'cart-return',_entity:'equipment_return',
+    equipmentId:'cart-blocked',sourceDispatchRequestId:'cart-source',
+    requestedBy:'jsc',returnNote:'No cart reassignment',status:'applied',
+  });
+  await assertFails(returnBatch.commit());
+});

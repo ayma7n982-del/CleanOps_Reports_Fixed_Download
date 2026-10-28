@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:flutter/services.dart';
 import '../../core/localization.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -530,6 +531,22 @@ class _Level3JscState extends State<Level3JscScreen> with SingleTickerProviderSt
     return false;
   }
 
+  Future<void> _copyEmergencyDetails(Map<String, dynamic> emergency) async {
+    final latitude = emergency['latitude'] ?? emergency['lat'] ?? emergency['locationLat'];
+    final longitude = emergency['longitude'] ?? emergency['lng'] ?? emergency['locationLng'];
+    final location = latitude is num && longitude is num
+        ? 'https://www.google.com/maps/search/?api=1&query=$latitude,$longitude'
+        : 'إحداثيات GPS غير متوفرة';
+    final details = 'بلاغ طوارئ رقم ${emergency['id'] ?? ''}\\n'
+        'الموقع: ${emergency['street'] ?? 'غير محدد'}\\n'
+        'الإحداثيات: $latitude، $longitude\\n'
+        'خريطة الموقع: $location\\n'
+        'الحالة: ${emergency['status'] ?? 'urgent'}';
+    await Clipboard.setData(ClipboardData(text: details));
+    if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+      content: AppText('تم نسخ تفاصيل البلاغ والموقع للمشاركة مع الجهة المختصة.')));
+  }
+
   Future<void> _openSosLocation(num latitude, num longitude) async {
     final link = Uri.https('www.google.com', '/maps/search/', {
       'api': '1', 'query': '$latitude,$longitude',
@@ -663,6 +680,10 @@ class _Level3JscState extends State<Level3JscScreen> with SingleTickerProviderSt
                                       Wrap(
                                         spacing: 8, runSpacing: 8,
                                         children: [
+                                          OutlinedButton.icon(
+                                            onPressed: () => _copyEmergencyDetails(e),
+                                            icon: const Icon(Icons.copy_outlined),
+                                            label: const AppText('نسخ تفاصيل الإحالة')),
                                           if (latitude is num && longitude is num)
                                             OutlinedButton.icon(
                                               onPressed: () => _openSosLocation(latitude, longitude),

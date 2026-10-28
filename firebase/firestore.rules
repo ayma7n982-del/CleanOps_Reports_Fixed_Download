@@ -575,8 +575,8 @@ service cloud.firestore {
       return isL3()
         && resource.data.get('isDeleted', false) != true
         && resource.data.get('dispatchStatus', '') != 'dispatched'
-        && resource.data.get('type', '') != 'cart'
-        && resource.data.get('category', '') != 'cart'
+        && !(resource.data.get('type', '') in ['cart', 'كارة'])
+        && !(resource.data.get('category', '') in ['cart', 'كارة'])
         && !(resource.data.get('status', '') in ['maintenance', 'broken', 'out_of_service'])
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
           'dispatchStatus', 'dispatchMunicipality', 'dispatchRequestId',
@@ -620,6 +620,8 @@ service cloud.firestore {
       return isL3()
         && resource.data.get('isDeleted', false) != true
         && resource.data.get('dispatchStatus', '') == 'dispatched'
+        && !(resource.data.get('type', '') in ['cart', 'كارة'])
+        && !(resource.data.get('category', '') in ['cart', 'كارة'])
         && resource.data.dispatchRequestId is string
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
           'dispatchStatus', 'lastReturnRequestId', 'returnedBy', 'returnedAt', 'returnNote'
