@@ -618,6 +618,50 @@ class DataService extends ChangeNotifier {
                 'updatedAt': FieldValue.serverTimestamp(),
               });
             });
+          } else if (item.entity == 'emergency' &&
+              const ['sos_acknowledge', 'sos_close'].contains(item.operation)) {
+            // Update only fields permitted by validSosAcknowledgment in Firestore rules.
+            // Never merge an entire cached SOS document into the remote record.
+            final existing = await ref.get();
+            if (!existing.exists || existing.data()?['_entity'] != 'emergency') {
+              throw StateError('بلاغ SOS غير موجود على الخادم.');
+            }
+            final current = existing.data()!;
+            if (item.operation == 'sos_acknowledge') {
+              if (current['acknowledged'] == true &&
+                  current['acknowledgedBy'] == cloudPayload['acknowledgedBy']) {
+                // Already acknowledged by this coordinator.
+              } else if (current['status'] == 'urgent' &&
+                  current['acknowledged'] == false) {
+                await ref.update({
+                  'acknowledged': true,
+                  'acknowledgedBy': cloudPayload['acknowledgedBy'],
+                  'acknowledgedAt': cloudPayload['acknowledgedAt'],
+                  'status': 'acknowledged',
+                  'updatedAt': cloudPayload['updatedAt'],
+                });
+              } else {
+                throw StateError('تغيرت حالة بلاغ SOS قبل تأكيد الاستلام.');
+              }
+            } else {
+              if (current['status'] == 'closed' &&
+                  current['closedBy'] == cloudPayload['closedBy'] &&
+                  current['resolutionNote'] == cloudPayload['resolutionNote']) {
+                // Idempotent retry after a confirmed remote close.
+              } else if (current['acknowledged'] == true &&
+                  const ['acknowledged', 'resolved'].contains(current['status'])) {
+                await ref.update({
+                  'status': 'closed',
+                  'acknowledged': true,
+                  'closedBy': cloudPayload['closedBy'],
+                  'closedAt': cloudPayload['closedAt'],
+                  'resolutionNote': cloudPayload['resolutionNote'],
+                  'updatedAt': cloudPayload['updatedAt'],
+                });
+              } else {
+                throw StateError('لا يمكن إغلاق بلاغ SOS قبل تأكيد الاستلام.');
+              }
+            }
           } else if (item.entity == 'attendance_checkout') {
             await FirebaseFunctions.instance.httpsCallable('recordAttendanceCheckout').call(<String, dynamic>{'attendanceId': docId});
           } else if (item.entity == 'work_report' || item.entity == 'report_approval') {
