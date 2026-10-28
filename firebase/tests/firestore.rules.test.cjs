@@ -487,3 +487,28 @@ test('JSC cannot dispatch or return a cart under the machine workflow', async ()
   });
   await assertFails(returnBatch.commit());
 });
+
+test('municipality may acknowledge only SOS assigned to its account', async () => {
+  await env.withSecurityRulesDisabled(async ctx => {
+    await setDoc(doc(ctx.firestore(), 'operations', 'municipal-sos'), {
+      id:'municipal-sos', _entity:'emergency',
+      status:'urgent', acknowledged:false, groupId:'group-a',
+      municipalityCoordinatorId:'coordinator',
+    });
+    await setDoc(doc(ctx.firestore(), 'operations', 'foreign-sos'), {
+      id:'foreign-sos', _entity:'emergency',
+      status:'urgent', acknowledged:false, groupId:'group-b',
+      municipalityCoordinatorId:'coordinator-other',
+    });
+  });
+  await assertSucceeds(updateDoc(doc(db('coordinator'),'operations','municipal-sos'), {
+    acknowledged:true, acknowledgedBy:'coordinator',
+    acknowledgedAt:'2026-10-28T10:00:00Z',status:'acknowledged',
+    updatedAt:'2026-10-28T10:00:00Z',
+  }));
+  await assertFails(updateDoc(doc(db('coordinator'),'operations','foreign-sos'), {
+    acknowledged:true, acknowledgedBy:'coordinator',
+    acknowledgedAt:'2026-10-28T10:00:00Z',status:'acknowledged',
+    updatedAt:'2026-10-28T10:00:00Z',
+  }));
+});

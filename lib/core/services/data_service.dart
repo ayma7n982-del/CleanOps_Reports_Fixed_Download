@@ -249,7 +249,9 @@ class DataService extends ChangeNotifier {
         if (item['sourceEntity'] != 'emergency' ||
             item['targetRole'] != role ||
             item['targetUserId'] != current.uid) continue;
-        if (notifications.any((n) => n.id == document.id)) continue;
+        final sourceId = '${item['sourceId'] ?? ''}';
+        if (notifications.any((n) => n.id == document.id ||
+            (sourceId.isNotEmpty && n.id == 'sos-emergency-$sourceId'))) continue;
         notifications = [NotificationItem(
           id: document.id,
           title: '${item['title'] ?? 'SOS'}',

@@ -470,4 +470,27 @@ test('cart redirect: offline equipment move persists and reconciles on reconnect
     }
   });
 
+  test('L2 SOS acknowledgement persists offline before connection recovers', () async {
+    final fixture = await openStore('municipality_sos_ack');
+    final service = DataService(fixture.store, ConfigService(fixture.store));
+    try {
+      service.online = false;
+      await service.enqueue('emergency', 'sos_acknowledge', {
+        'id':'municipal-sos-a',
+        'status':'acknowledged',
+        'acknowledged':true,
+        'acknowledgedBy':'coordinator',
+        'acknowledgedAt':'2026-10-28T10:00:00Z',
+      });
+      expect(service.hasPendingEmergencyAction('municipal-sos-a'), isTrue);
+      expect(fixture.store.queue(), hasLength(1));
+      await service.sync();
+      expect(fixture.store.queue(), hasLength(1));
+    } finally {
+      service.dispose();
+      await fixture.box.close();
+      await fixture.directory.delete(recursive: true);
+    }
+  });
+
 }
