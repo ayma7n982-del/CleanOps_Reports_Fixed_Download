@@ -36,7 +36,7 @@ class ConfigService extends ChangeNotifier {
   String _apiKey = '';
   bool aiEnabled = false;
   String _aiApiKey = '';
-  String aiModel = 'gpt-5.6-luna';
+  String aiModel = 'gpt-4.1-mini';
   final FlutterSecureStorage _secureStorage = const FlutterSecureStorage();
 
   ConfigService(this.store);
@@ -239,7 +239,7 @@ class ConfigService extends ChangeNotifier {
     if (attachedRole != 'donor_manager' && attachedRole != 'jsc_coordinator') return;
     aiEnabled = enabled;
     if (apiKey.trim().isNotEmpty) _aiApiKey = apiKey.trim();
-    aiModel = model.trim().isEmpty ? 'gpt-5.6-luna' : model.trim();
+    aiModel = model.trim().isEmpty ? 'gpt-4.1-mini' : model.trim();
     await _persistLocal();
     notifyListeners();
   }
