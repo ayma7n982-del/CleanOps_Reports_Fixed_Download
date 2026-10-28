@@ -359,6 +359,22 @@ class DataService extends ChangeNotifier {
     payload['localAttachmentPath'] = stored.path;
   }
 
+  bool hasPendingEmergencyAction(String id) {
+    final uid = Firebase.apps.isNotEmpty
+        ? FirebaseAuth.instance.currentUser?.uid : null;
+    for (final item in queue) {
+      if (item.entity != 'emergency' ||
+          (item.ownerUid != null && item.ownerUid != uid)) continue;
+      try {
+        final payload = jsonDecode(item.payload);
+        if (payload is Map && '${payload['id']}' == id) return true;
+      } catch (_) {
+        // Invalid queued entries are left for explicit sync diagnostics.
+      }
+    }
+    return false;
+  }
+
   /// Prevent two locally pending, mutually exclusive machine assignments.
   bool hasPendingEquipmentDispatch(String equipmentId) {
     for (final item in queue) {

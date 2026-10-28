@@ -286,7 +286,10 @@ class _Level2MunicipalityScreenState extends State<Level2MunicipalityScreen> {
     if (user == null || user.role != 'municipality_coordinator') return;
     try {
       final now = DateTime.now().toIso8601String();
-      await FirebaseFirestore.instance.collection('operations').doc(id).update({
+      final service = context.read<DataService>();
+      if (service.hasPendingEmergencyAction(id)) return;
+      await service.enqueue('emergency', 'sos_acknowledge', {
+        'id': id,
         'acknowledged': true,
         'acknowledgedBy': user.id,
         'acknowledgedAt': now,
@@ -294,7 +297,7 @@ class _Level2MunicipalityScreenState extends State<Level2MunicipalityScreen> {
         'updatedAt': now,
       });
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: AppText('تم تأكيد استلام البلاغ.')));
+        const SnackBar(content: AppText('تم حفظ تأكيد الاستلام للمزامنة؛ لم يؤكد الخادم استلامه بعد.')));
     } catch (error) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('تعذر تأكيد الاستلام: $error')));
@@ -319,25 +322,41 @@ class _Level2MunicipalityScreenState extends State<Level2MunicipalityScreen> {
       stream: FirebaseFirestore.instance.collection('operations')
           .where('_entity', isEqualTo: 'emergency').snapshots(),
       builder: (context, snapshot) {
-        if (snapshot.hasError) return const ListTile(title: AppText('تعذر تحميل بلاغات الطوارئ.'));
-        if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
-        final cases = snapshot.data!.docs.where((doc) {
-          final item = doc.data();
-          return item['isDeleted'] != true
-              && item['acknowledged'] != true
-              && item['status'] == 'urgent'
-              && (item['municipalityCoordinatorId'] == user.id ||
-                  (assignments.data?.contains(doc.id) ?? false));
-        }).toList();
-        if (cases.isEmpty) return const ListTile(title: AppText('لا توجد بلاغات SOS جديدة موجهة إليك.'));
-        return Column(children: cases.take(15).map((doc) => ListTile(
-          title: AppText('بلاغ SOS — ${doc.data()['street'] ?? ''}'),
-          subtitle: AppText('بانتظار تأكيد الاستلام'),
-          trailing: FilledButton(
-            onPressed: () => _acknowledgeMunicipalitySos(doc.id),
-            child: const AppText('تأكيد الاستلام'),
-          ),
-        )).toList());
+        final service = context.watch<DataService>();
+        // When the server is temporarily unavailable, retain the locally
+        // cached SOS instead of hiding the entire municipality inbox.
+        final remoteCases = snapshot.hasData
+            ? snapshot.data!.docs.map((doc) => {'id': doc.id, ...doc.data()}).toList()
+            : <Map<String, dynamic>>[];
+        final source = snapshot.hasData ? remoteCases : service.operations;
+        final cases = source.where((item) =>
+            item['_entity'] == 'emergency' &&
+            item['isDeleted'] != true &&
+            item['acknowledged'] != true &&
+            item['status'] == 'urgent' &&
+            (item['municipalityCoordinatorId'] == user.id ||
+                (assignments.data?.contains('${item['id']}') ?? false)))
+            .take(15).toList();
+        if (cases.isEmpty) {
+          if (snapshot.hasError && !service.online) {
+            return const ListTile(title: AppText('أنت غير متصل؛ لا توجد بلاغات جديدة في الذاكرة المحلية.'));
+          }
+          return const ListTile(title: AppText('لا توجد بلاغات SOS جديدة موجهة إليك.'));
+        }
+        return Column(children: cases.map((item) {
+          final id = '${item['id']}';
+          final pending = service.hasPendingEmergencyAction(id);
+          return ListTile(
+            title: AppText('بلاغ SOS — ${item['street'] ?? ''}'),
+            subtitle: AppText(pending
+                ? 'تأكيد الاستلام محفوظ محليًا بانتظار الخادم'
+                : 'بانتظار تأكيد الاستلام'),
+            trailing: FilledButton(
+              onPressed: pending ? null : () => _acknowledgeMunicipalitySos(id),
+              child: const AppText('تأكيد الاستلام'),
+            ),
+          );
+        }).toList());
       },
     ));
   }
