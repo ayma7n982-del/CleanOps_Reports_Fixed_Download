@@ -22,7 +22,8 @@ class Level3JscScreen extends StatefulWidget {
   State<Level3JscScreen> createState() => _Level3JscState();
 }
 
-class _Level3JscState extends State<Level3JscScreen> {
+class _Level3JscState extends State<Level3JscScreen> with SingleTickerProviderStateMixin {
+  late final TabController _tabController;
   int tab = 0;
   double capacity = 0;
   bool loading = true;
@@ -31,7 +32,14 @@ class _Level3JscState extends State<Level3JscScreen> {
   @override
   void initState() {
     super.initState();
+    _tabController = TabController(length: 3, vsync: this);
     _loadOperationsState();
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadOperationsState() async {
@@ -198,7 +206,7 @@ class _Level3JscState extends State<Level3JscScreen> {
             IconButton(tooltip: tr('البحث الذكي'), onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const GlobalSearchPage())), icon: const Icon(Icons.search_rounded)),
             IconButton(onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ReportsCenterScreen())), icon: const Icon(Icons.analytics_outlined)),
           ],
-          bottom: TabBar(onTap: (i) => setState(() => tab = i), isScrollable: true, tabs: [Tab(text: tr('لوحة القيادة')), Tab(text: tr('الإدارة')), Tab(text: tr('التقارير والرسائل'))]),
+          bottom: TabBar(controller: _tabController, onTap: (i) => setState(() => tab = i), isScrollable: true, tabs: [Tab(text: tr('لوحة القيادة')), Tab(text: tr('الإدارة')), Tab(text: tr('التقارير والرسائل'))]),
         ),
         body: IndexedStack(index: tab, children: [_dashboardBody(), _managementBody(), _reportsBody()]),
       ),
