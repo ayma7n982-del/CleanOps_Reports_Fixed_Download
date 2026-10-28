@@ -315,6 +315,44 @@ class DataService extends ChangeNotifier {
     unawaited(store.saveCachedOperations(operations.take(1000).toList()));
   }
 
+  /// Reflect a server-confirmed cart move in local caches. Pending moves never
+  /// alter the assigned group, and no synthetic cart_redirect operation is shown.
+  Future<void> _applyConfirmedCartRedirect(
+    Map<String, dynamic> payload, {
+    required String? coordinatorId,
+  }) async {
+    final cartId = '${payload['cartId'] ?? ''}';
+    final destinationId = '${payload['toGroupId'] ?? ''}';
+    final collection = '${payload['cartCollection'] ?? ''}';
+    if (cartId.isEmpty || destinationId.isEmpty) {
+      throw StateError('Confirmed cart redirect has missing identifiers.');
+    }
+    if (collection == 'operations') {
+      operations = operations.map((entry) =>
+          '${entry['id']}' == cartId && entry['_entity'] != 'cart_redirect'
+              ? {...entry, 'groupId': destinationId}
+              : entry).toList();
+    } else if (collection == 'equipment') {
+      // Never write another coordinator's scoped cart cache on account changes.
+      if (coordinatorId != null &&
+          coordinatorId.isNotEmpty &&
+          coordinatorId == '${payload['municipalityCoordinatorId'] ?? ''}') {
+        final cached = store.cachedEquipmentCarts(coordinatorId);
+        await store.saveCachedEquipmentCarts(coordinatorId, cached.map((entry) =>
+            '${entry['id']}' == cartId
+                ? {...entry, 'groupId': destinationId}
+                : entry).toList());
+      }
+    } else {
+      throw StateError('Unknown cart collection in confirmed redirect.');
+    }
+    operations = operations.where((entry) =>
+        !(entry['_entity'] == 'cart_redirect' &&
+          '${entry['id']}' == '${payload['id']}')).toList();
+    await store.saveCachedOperations(operations.take(1000).toList());
+    notifyListeners();
+  }
+
   Future<void> _uploadAttachment(Map<String, dynamic> payload) async {
     final localPath = '${payload['localAttachmentPath'] ?? ''}';
     if (localPath.isEmpty) return;
@@ -364,11 +402,18 @@ class DataService extends ChangeNotifier {
           if (_syncItemOverride != null) {
             await _syncItemOverride!(item, payload);
             completed++;
-            _applyLocalOperation(
-              item.entity == 'attendance_checkout' ? 'attendance' : item.entity,
-              item.operation,
-              payload,
-            );
+            if (item.entity == 'cart_redirect') {
+              await _applyConfirmedCartRedirect(
+                payload,
+                coordinatorId: '${payload['municipalityCoordinatorId'] ?? ''}',
+              );
+            } else {
+              _applyLocalOperation(
+                item.entity == 'attendance_checkout' ? 'attendance' : item.entity,
+                item.operation,
+                payload,
+              );
+            }
             queue = queue.where((e) => e.id != item.id).toList();
             await store.saveQueue(queue);
             continue;
@@ -504,29 +549,10 @@ class DataService extends ChangeNotifier {
 
           completed++;
           if (item.entity == 'cart_redirect') {
-            // Commit is confirmed: update the local assignment immediately even if
-            // the subsequent equipment query cannot reach Firestore.
-            final cartId = '${payload['cartId'] ?? ''}';
-            final destinationId = '${payload['toGroupId'] ?? ''}';
-            if (payload['cartCollection'] == 'operations') {
-              operations = operations.map((entry) =>
-                '${entry['id']}' == cartId && entry['_entity'] != 'cart_redirect'
-                    ? {...entry, 'groupId': destinationId}
-                    : entry).toList();
-            } else {
-              final uid = FirebaseAuth.instance.currentUser?.uid;
-              if (uid != null) {
-                final cached = store.cachedEquipmentCarts(uid);
-                await store.saveCachedEquipmentCarts(uid, cached.map((entry) =>
-                    '${entry['id']}' == cartId
-                        ? {...entry, 'groupId': destinationId}
-                        : entry).toList());
-              }
-            }
-            operations = operations.where((entry) =>
-                !(entry['_entity'] == 'cart_redirect' && '${entry['id']}' == docId)).toList();
-            await store.saveCachedOperations(operations.take(1000).toList());
-            notifyListeners();
+            await _applyConfirmedCartRedirect(
+              payload,
+              coordinatorId: FirebaseAuth.instance.currentUser?.uid,
+            );
             // The Firestore transaction committed the real cart assignment. Refresh the scoped
             // equipment cache instead of showing a synthetic local redirect record.
             final uid = FirebaseAuth.instance.currentUser?.uid;
