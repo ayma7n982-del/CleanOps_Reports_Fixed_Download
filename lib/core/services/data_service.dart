@@ -27,6 +27,7 @@ class DataService extends ChangeNotifier {
   StreamSubscription<List<ConnectivityResult>>? connectivitySub;
   Timer? automaticSyncTimer;
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? sosNotificationSub;
+  StreamSubscription<User?>? authNotificationSub;
 
   DataService(this.store, this.config);
 
@@ -55,10 +56,22 @@ class DataService extends ChangeNotifier {
     });
     notifyListeners();
     if (Firebase.apps.isNotEmpty) {
-      sosNotificationSub = FirebaseFirestore.instance.collection('operations')
-          .where('_entity', isEqualTo: 'notification').snapshots().listen(
-        (_) => unawaited(refreshSosInbox()),
-        onError: (Object error) => debugPrint('SOS notification listener failed: $error'),
+      // Subscribe after authentication, including when sign-in happens after init.
+      // Reconnect after account changes so stale listeners do not outlive a session.
+      authNotificationSub = FirebaseAuth.instance.authStateChanges().listen(
+        (account) {
+          final previous = sosNotificationSub;
+          if (previous != null) unawaited(previous.cancel());
+          sosNotificationSub = null;
+          if (account == null) return;
+          sosNotificationSub = FirebaseFirestore.instance.collection('operations')
+              .where('_entity', isEqualTo: 'notification').snapshots().listen(
+            (_) => unawaited(refreshSosInbox()),
+            onError: (Object error) => debugPrint('SOS notification listener failed: $error'),
+          );
+          unawaited(refreshSosInbox());
+        },
+        onError: (Object error) => debugPrint('SOS auth listener failed: $error'),
       );
     }
     if (online) {
@@ -73,6 +86,7 @@ class DataService extends ChangeNotifier {
     connectivitySub?.cancel();
     automaticSyncTimer?.cancel();
     sosNotificationSub?.cancel();
+    authNotificationSub?.cancel();
     super.dispose();
   }
 
