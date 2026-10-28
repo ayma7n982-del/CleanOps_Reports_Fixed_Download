@@ -50,7 +50,7 @@ class _Level3JscState extends State<Level3JscScreen> with SingleTickerProviderSt
       var loadedCapacity = snapshot.landfillCapacity;
       final cases = <Map<String, dynamic>>[];
       final data = context.read<DataService>();
-      await data.refreshOperations();
+      if (data.online) await data.refreshOperations();
       for (final m in data.operations.where((e) => '${e['_entity'] ?? ''}' == 'emergency')) {
         if (m['isDeleted'] != true && m['status'] != 'closed') cases.add(Map.from(m));
       }
@@ -73,7 +73,7 @@ class _Level3JscState extends State<Level3JscScreen> with SingleTickerProviderSt
         !user.can('operations', 'create')) return;
     try {
       final snapshot = await FirebaseFirestore.instance
-          .collection('equipment').limit(300).get();
+          .collection('equipment').limit(300).get(const GetOptions(source: Source.serverAndCache));
       final available = snapshot.docs.where((doc) =>
           doc.data()['isDeleted'] != true).toList();
       if (!mounted) return;
