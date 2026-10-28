@@ -51,7 +51,17 @@ void main() {
     expect(defaultPolicy('donor_manager', 'containers').edit, isFalse);
   });
 
-  test('dynamic policies cannot exceed the role security ceiling', () {
+
+  test('report actions follow the backend role ceiling', () {
+    expect(defaultPolicy('worker', 'reports').create, isFalse);
+    expect(defaultPolicy('group_supervisor', 'reports').create, isTrue);
+    expect(defaultPolicy('municipality_coordinator', 'reports').create, isTrue);
+    expect(defaultPolicy('jsc_coordinator', 'reports').create, isTrue);
+    expect(defaultPolicy('donor_manager', 'reports').create, isTrue);
+    expect(defaultPolicy('jsc_coordinator', 'users').create, isFalse);
+  });
+
+test('dynamic policies cannot exceed the role security ceiling', () {
     final worker = AppUser(
       id: 'worker-a',
       username: 'worker-a',
