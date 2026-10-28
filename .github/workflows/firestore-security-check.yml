@@ -29,6 +29,6 @@ jobs:
           distribution: temurin
           java-version: '21'
       - name: Install Firebase CLI
-        run: npm install --no-save firebase-tools
-      - name: Compile rules and reject unauthorized requests in the emulator
+        run: npm install --no-save firebase-tools @firebase/rules-unit-testing firebase
+      - name: Compile rules and verify role-scoped operations access
         run: npx firebase emulators:exec --only firestore --project demo-cleanops "node scripts/verify_firestore_rules_ci.mjs"

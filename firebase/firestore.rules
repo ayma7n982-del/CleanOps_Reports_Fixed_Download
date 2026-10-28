@@ -47,6 +47,22 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/work_cycles/$(cycleId)).data.endDate <= request.time;
     }
 
+    function operationReadAllowed() {
+      return signedIn() && userDoc().isActive != false && (
+        isL2() || isL3() || isL4()
+        || ((role() == 'group_supervisor' || role() == 'worker')
+          && userDoc().groupId is string
+          && userDoc().groupId.size() > 0
+          && (
+            (resource.data.keys().hasAny(['groupId']) && resource.data.groupId == userDoc().groupId)
+            || (resource.data.keys().hasAny(['reportedBy']) && resource.data.reportedBy == request.auth.uid)
+            || (resource.data.keys().hasAny(['userId']) && resource.data.userId == request.auth.uid)
+            || (resource.data.keys().hasAny(['supervisorId']) && resource.data.supervisorId == request.auth.uid)
+            || (resource.data.keys().hasAny(['targetUserId']) && resource.data.targetUserId == request.auth.uid)
+          ))
+      );
+    }
+
     // ---------------- Internal messaging ----------------
     function activeMessenger() { return signedIn() && userDoc().isActive != false; }
     function supervisorOwnGroupTarget() {
@@ -389,7 +405,7 @@ service cloud.firestore {
     }
 
     match /operations/{id} {
-      allow read: if signedIn();
+      allow read: if operationReadAllowed();
       allow create: if signedIn() && (
         (isL4() && (request.resource.data._entity == 'report' || request.resource.data._entity == 'user'))
         || (isL2() && (request.resource.data._entity == 'group' || request.resource.data._entity == 'worker'))
