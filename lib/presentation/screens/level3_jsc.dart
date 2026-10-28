@@ -52,7 +52,7 @@ class _Level3JscState extends State<Level3JscScreen> with SingleTickerProviderSt
       final data = context.read<DataService>();
       await data.refreshOperations();
       for (final m in data.operations.where((e) => '${e['_entity'] ?? ''}' == 'emergency')) {
-        if (m['isDeleted'] != true) cases.add(Map.from(m));
+        if (m['isDeleted'] != true && m['status'] != 'closed') cases.add(Map.from(m));
       }
       cases.sort((a, b) => '${b['createdAt'] ?? ''}'.compareTo('${a['createdAt'] ?? ''}'));
       if (mounted) {
@@ -67,7 +67,86 @@ class _Level3JscState extends State<Level3JscScreen> with SingleTickerProviderSt
     }
   }
 
-  Future<void> _dispatch(String machine, String municipality) async {
+  Future<void> _chooseDispatch() async {
+    final user = context.read<AuthService>().currentUser;
+    if (user == null || user.role != 'jsc_coordinator' ||
+        !user.can('operations', 'create')) return;
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection('equipment').limit(300).get();
+      final available = snapshot.docs.where((doc) =>
+          doc.data()['isDeleted'] != true).toList();
+      if (!mounted) return;
+      if (available.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: AppText('لا توجد آليات مسجلة يمكن توجيهها.')));
+        return;
+      }
+      final municipalityController = TextEditingController();
+      String? selectedId = available.first.id;
+      final result = await showDialog<Map<String, String>>(
+        context: context,
+        builder: (dialogContext) => StatefulBuilder(
+          builder: (dialogContext, setDialogState) => AlertDialog(
+            title: const AppText('توجيه آلية مسجلة'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                DropdownButtonFormField<String>(
+                  value: selectedId,
+                  isExpanded: true,
+                  decoration: const InputDecoration(labelText: 'الآلية'),
+                  items: available.map((doc) {
+                    final item = doc.data();
+                    final label = '${item['name'] ?? item['equipmentName'] ?? item['type'] ?? doc.id}';
+                    return DropdownMenuItem(value: doc.id, child: Text(label,
+                        overflow: TextOverflow.ellipsis));
+                  }).toList(),
+                  onChanged: (value) => setDialogState(() => selectedId = value),
+                ),
+                TextField(
+                  controller: municipalityController,
+                  decoration: const InputDecoration(
+                    labelText: 'البلدية المستهدفة',
+                    hintText: 'أدخل اسم البلدية الفعلي',
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(dialogContext),
+                  child: const AppText('إلغاء')),
+              FilledButton(
+                onPressed: () {
+                  final municipality = municipalityController.text.trim();
+                  if (selectedId == null || municipality.isEmpty) return;
+                  Navigator.pop(dialogContext, {
+                    'equipmentId': selectedId!,
+                    'municipality': municipality,
+                  });
+                },
+                child: const AppText('تسجيل طلب التوجيه'),
+              ),
+            ],
+          ),
+        ),
+      );
+      municipalityController.dispose();
+      if (result == null || !mounted) return;
+      final equipment = available.firstWhere(
+          (doc) => doc.id == result['equipmentId']);
+      final record = equipment.data();
+      final name = '${record['name'] ?? record['equipmentName'] ?? record['type'] ?? equipment.id}';
+      await _dispatch(name, result['municipality']!,
+          equipmentId: equipment.id);
+    } catch (error) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('تعذر تحميل الآليات: $error')));
+    }
+  }
+
+  Future<void> _dispatch(String machine, String municipality,
+      {required String equipmentId}) async {
     final u = context.read<AuthService>().currentUser;
     if (u == null || u.role != 'jsc_coordinator' || !u.can('operations', 'create')) return;
     final d = context.read<DataService>();
@@ -75,6 +154,7 @@ class _Level3JscState extends State<Level3JscScreen> with SingleTickerProviderSt
     await d.enqueue('heavy_machinery', 'dispatch', {
       'id': id,
       'machine': machine,
+      'equipmentId': equipmentId,
       'municipality': municipality,
       'requestedBy': u.id,
       'hours': 4.0,
@@ -195,12 +275,9 @@ class _Level3JscState extends State<Level3JscScreen> with SingleTickerProviderSt
 
   @override
   Widget build(BuildContext context) {
-    final redLight = _capacityPercent >= .85;
     return Directionality(
       textDirection: context.watch<LocaleController>().isArabic ? TextDirection.rtl : TextDirection.ltr,
-      child: DefaultTabController(
-        length: 3,
-        child: Scaffold(
+      child: Scaffold(
         appBar: AppBar(
           title: const AppText('المستوى 3 — منسق مجلس الخدمات'),
           actions: [
@@ -212,7 +289,6 @@ class _Level3JscState extends State<Level3JscScreen> with SingleTickerProviderSt
         ),
         body: IndexedStack(index: tab, children: [_dashboardBody(), _managementBody(), _reportsBody()]),
         ),
-      ),
     );
   }
   Widget _dashboardBody() {
@@ -295,7 +371,7 @@ class _Level3JscState extends State<Level3JscScreen> with SingleTickerProviderSt
                                 margin: const EdgeInsets.only(bottom: 8),
                                 child: ListTile(
                                   title: AppText('بلاغ مخلفات حربية #$id'),
-                                  subtitle: AppText('${e['street'] ?? 'موقع غير محدد'} • ${e['status'] ?? 'urgent'}'),
+                                  subtitle: AppText('${e['street'] ?? 'موقع غير محدد'} • ${e['status'] ?? 'urgent'}\\nالإحداثيات: ${e['latitude'] ?? e['lat'] ?? e['locationLat'] ?? 'غير متوفرة'}، ${e['longitude'] ?? e['lng'] ?? e['locationLng'] ?? 'غير متوفرة'}'),
                                   trailing: Wrap(
                                     spacing: 6,
                                     children: [
@@ -316,7 +392,7 @@ class _Level3JscState extends State<Level3JscScreen> with SingleTickerProviderSt
 
   Widget _managementBody() => ListView(padding: const EdgeInsets.fromLTRB(14, 14, 14, 120), children: [
     CreativeShortcutGrid(emphasize: true, maxColumns: 2, items: [
-      CreativeShortcut(title: 'توجيه الآليات', subtitle: 'إرسال المعدات للمواقع', feature: 'operations', onTap: () => _dispatch('كباش', 'بلدية بني سهيلا')),
+      CreativeShortcut(title: 'توجيه الآليات', subtitle: 'إرسال المعدات للمواقع', feature: 'operations', onTap: _chooseDispatch),
       CreativeShortcut(title: 'الحاويات', subtitle: 'إدارة المواقع والحالات', feature: 'containers', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ContainerManagementScreen()))),
       CreativeShortcut(title: 'المكبات', subtitle: 'السعة والامتلاء والحالة', feature: 'dumpsite', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const OperationsManagementScreen(initialTab: 0)))),
       CreativeShortcut(title: 'التقارير', subtitle: 'تقارير البلديات والتشغيل', feature: 'reports', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ReportsCenterScreen()))),
