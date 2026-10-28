@@ -407,43 +407,25 @@ class OperationsAdminService {
         'delete_${actor}_${uid}_${DateTime.now().microsecondsSinceEpoch}';
     final userRef = _users.doc(uid);
     final requestRef = firestore.collection('admin_requests').doc(requestId);
-
-    await firestore.runTransaction((tx) async {
-      final target = await tx.get(userRef);
-      if (!target.exists) {
-        throw StateError('المستخدم غير موجود أو تم حذفه مسبقًا.');
-      }
-      final data = target.data() ?? const <String, dynamic>{};
-      if (data['isActive'] == false && data['status'] == 'pending_deletion') {
-        throw StateError('يوجد طلب حذف قيد التنفيذ لهذا المستخدم.');
-      }
-      tx.update(userRef, {
-        'isActive': false,
-        'status': 'pending_deletion',
-        'deletionRequestedBy': actor,
-        'deletionRequestedAt': FieldValue.serverTimestamp(),
-        'deletionRequestId': requestId,
-        'updatedBy': actor,
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
-      tx.set(requestRef, {
-        'id': requestId,
-        'type': 'delete_user',
-        'targetUserId': uid,
-        'requestedBy': actor,
-        'status': 'pending',
-        'createdAt': FieldValue.serverTimestamp(),
-      });
+    final batch = firestore.batch();
+    batch.update(userRef, {
+      'isActive': false,
+      'status': 'pending_deletion',
+      'deletionRequestedBy': actor,
+      'deletionRequestedAt': FieldValue.serverTimestamp(),
+      'deletionRequestId': requestId,
+      'updatedBy': actor,
+      'updatedAt': FieldValue.serverTimestamp(),
     });
-
-    final confirmation = await userRef.get(const GetOptions(source: Source.server));
-    final request = await requestRef.get(const GetOptions(source: Source.server));
-    if (!confirmation.exists ||
-        confirmation.data()?['status'] != 'pending_deletion' ||
-        !request.exists ||
-        request.data()?['status'] != 'pending') {
-      throw StateError('لم يتم تأكيد طلب الحذف على Firebase.');
-    }
+    batch.set(requestRef, {
+      'id': requestId,
+      'type': 'delete_user',
+      'targetUserId': uid,
+      'requestedBy': actor,
+      'status': 'pending',
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+    await batch.commit();
   }
 
   /// Level 4 only: activate / deactivate any account (blocks its next login).
