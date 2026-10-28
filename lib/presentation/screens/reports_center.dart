@@ -28,6 +28,7 @@ class _ReportsCenterState extends State<ReportsCenterScreen> {
   DateTime endDate = DateTime.now();
   String reportType = 'all';
   String exportLanguage = 'ar';
+  String periodPreset = 'custom';
   String? municipality, group, cycle;
 
   @override void initState() { super.initState(); _reload(); }
@@ -36,6 +37,45 @@ class _ReportsCenterState extends State<ReportsCenterScreen> {
     future = ReportService(data).load(days: days, startDate: startDate, endDate: endDate, user: user, municipality: municipality, group: group, cycle: cycle, reportType: reportType, reportId: _stableReportId(data));
   }
   void _refresh() => _reload();
+
+  void _applyPeriodPreset(String preset) {
+    final now = DateTime.now();
+    final range = preset == 'daily'
+        ? ReportPeriodPresets.daily(now)
+        : ReportPeriodPresets.weekly(now);
+    setState(() {
+      periodPreset = preset;
+      startDate = range.startDate;
+      endDate = range.endDate;
+    });
+    _refresh();
+  }
+
+  Future<void> _pickCustomPeriod() async {
+    final picked = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(DateTime.now().year + 5, 12, 31),
+      initialDateRange: DateTimeRange(start: startDate, end: endDate),
+      helpText: 'اختر فترة التقرير — يمكن أن تتجاوز 60 يومًا',
+      saveText: 'اعتماد الفترة',
+    );
+    if (picked == null || !mounted) return;
+    final range = ReportPeriodPresets.custom(picked.start, picked.end);
+    setState(() {
+      periodPreset = 'custom';
+      startDate = range.startDate;
+      endDate = range.endDate;
+    });
+    _refresh();
+  }
+
+  String _periodPresetLabel() {
+    if (periodPreset == 'daily') return 'تقرير يومي';
+    if (periodPreset == 'weekly') return 'تقرير أسبوعي';
+    final range = ReportPeriodPresets.custom(startDate, endDate);
+    return 'فترة مخصصة (${range.inclusiveDays} يوم)';
+  }
 
   String _stableReportId(DataService data) {
     String dateKey(DateTime d) => '${d.year}${d.month.toString().padLeft(2, '0')}${d.day.toString().padLeft(2, '0')}';
@@ -95,6 +135,7 @@ class _ReportsCenterState extends State<ReportsCenterScreen> {
       const AppText('مركز التقارير والتحليلات', style: TextStyle(color: cleanOpsSurface, fontSize: 24, fontWeight: FontWeight.w900)),
       AppText('بيانات فعلية من العمليات والحاويات والدورات', style: const TextStyle(color: cleanOpsMuted)),
       const SizedBox(height: 5), AppText(s.periodLabel, style: const TextStyle(color: gold)),
+      const SizedBox(height: 3), AppText(_periodPresetLabel(), style: const TextStyle(color: Colors.white70, fontSize: 11)),
     ])),
     IconButton(onPressed: _refresh, icon: const Icon(Icons.refresh, color: cleanOpsSurface)),
   ])));
@@ -110,8 +151,26 @@ class _ReportsCenterState extends State<ReportsCenterScreen> {
   Widget _filters(ReportSnapshot s) => Card(child: Padding(padding: const EdgeInsets.all(12), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
     const AppText('فلاتر التقرير', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900)), const SizedBox(height: 8),
     Wrap(spacing: 8, runSpacing: 8, children: [
-      _dateField('من تاريخ', startDate, (v) { if (v != null) { setState(() { startDate = v; if (endDate.isBefore(startDate)) endDate = startDate; }); _refresh(); } }),
-      _dateField('إلى تاريخ', endDate, (v) { if (v != null) { setState(() { endDate = v.isBefore(startDate) ? startDate : v; }); _refresh(); } }),
+      ChoiceChip(
+        label: const AppText('اليوم'),
+        selected: periodPreset == 'daily',
+        onSelected: (_) => _applyPeriodPreset('daily'),
+      ),
+      ChoiceChip(
+        label: const AppText('آخر 7 أيام'),
+        selected: periodPreset == 'weekly',
+        onSelected: (_) => _applyPeriodPreset('weekly'),
+      ),
+      ActionChip(
+        avatar: const Icon(Icons.date_range_rounded, size: 18),
+        label: AppText(_periodPresetLabel()),
+        onPressed: _pickCustomPeriod,
+      ),
+    ]),
+    const SizedBox(height: 8),
+    Wrap(spacing: 8, runSpacing: 8, children: [
+      _dateField('من تاريخ', startDate, (v) { if (v != null) { setState(() { periodPreset = 'custom'; startDate = v; if (endDate.isBefore(startDate)) endDate = startDate; }); _refresh(); } }),
+      _dateField('إلى تاريخ', endDate, (v) { if (v != null) { setState(() { periodPreset = 'custom'; endDate = v.isBefore(startDate) ? startDate : v; }); _refresh(); } }),
       _drop<String>('لغة التصدير', exportLanguage, const {'ar':'العربية','en':'English'}, (v){if(v!=null)setState(()=>exportLanguage=v);}),
       _drop<String>('البلدية', municipality, <String?,String>{null:'كل البلديات', ...{for(final x in s.municipalityNames) x:x}}, (v){setState(() { municipality=v; group=null; }); _refresh();}),
       _drop<String>('المجموعة', group, <String?,String>{null:'كل المجموعات', ...{for(final x in _availableGroups()) x:x}}, (v){setState(()=>group=v); _refresh();}),
@@ -251,6 +310,6 @@ class _ReportsCenterState extends State<ReportsCenterScreen> {
   Widget _rank(Map<String,int> map,String title,Color color){ final entries=map.entries.toList()..sort((a,b)=>b.value.compareTo(a.value)); return Padding(padding:const EdgeInsets.only(top:10),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[AppText(title,style:const TextStyle(fontWeight:FontWeight.w900)),...entries.take(7).map((e)=>ListTile(dense:true,leading:Icon(Icons.circle,size:10,color:color),title:AppText(e.key),trailing:AppText('${e.value}',style:TextStyle(fontWeight:FontWeight.w900,color:color))))])); }
   Widget _cycleSummary(ReportSnapshot s)=>ListTile(leading:const Icon(Icons.event_repeat),title:AppText('الدورات المتاحة: ${s.cycleCount}'),subtitle:AppText(s.cycles.isEmpty?'لا توجد بيانات دورات متاحة':'آخر دورة: ${s.cycles.first}'));
 
-  Widget _actions(ReportSnapshot s, AppUser u)=>_section('التصدير والاعتماد',Wrap(spacing:8,runSpacing:8,children:[OutlinedButton.icon(onPressed:()async{final bytes=await ReportService(context.read<DataService>()).buildOperationalPdfBytes(snapshot:s,user:u,title:'${_title()} — CleanOps', languageCode: exportLanguage);if(!mounted)return;Navigator.push(context,MaterialPageRoute(builder:(_)=>Scaffold(appBar:AppBar(title:const AppText('معاينة التقرير')),body:PdfPreview(build:(_)=>Uint8List.fromList(bytes)))));},icon:const Icon(Icons.preview_outlined),label:const AppText('معاينة / طباعة')),FilledButton.icon(onPressed:_canExportOfficial(s,u)?()async{try{final path=await ReportService(context.read<DataService>()).exportOperationalPdf(snapshot:s,user:u,title:'${_title()} — CleanOps', languageCode: exportLanguage);if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:AppText(path==null?'تعذر إنشاء PDF':'تم إنشاء PDF: $path')));}catch(e){if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:AppText('فشل إنشاء PDF: $e')));}}:null,icon:const Icon(Icons.picture_as_pdf),label:const AppText('تصدير PDF')),OutlinedButton.icon(onPressed:_canExportOfficial(s,u)?()async{try{final path=await ReportService(context.read<DataService>()).exportOperationalExcel(snapshot:s,user:u,languageCode:exportLanguage);if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:AppText(path==null?'تعذر إنشاء Excel':'تم إنشاء Excel: $path')));}catch(e){if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:AppText('فشل تصدير Excel: $e')));}}:null,icon:const Icon(Icons.table_view_outlined),label:const AppText('تصدير Excel')),OutlinedButton.icon(onPressed:_canExportOfficial(s,u)?()async{try{final path=await ReportService(context.read<DataService>()).exportOperationalCsv(snapshot:s,user:u,languageCode:exportLanguage);if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:AppText(path==null?'تعذر إنشاء CSV':'تم إنشاء CSV: $path')));}catch(e){if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:AppText('فشل تصدير CSV: $e')));}}:null,icon:const Icon(Icons.file_download_outlined),label:const AppText('تصدير CSV')),OutlinedButton.icon(onPressed:u.role == 'municipality_coordinator' ? ()async{final now=DateTime.now().toIso8601String();await context.read<DataService>().enqueue('report_approval','create',{'id':s.reportId,'title':_title(),'reportType':reportType,'period':s.periodLabel,'municipality':municipality,'group':group,'cycle':cycle,'requestedBy':u.id,'municipalityCoordinatorId':u.id,'municipalityName': municipality ?? (u.scope != 'assigned_only' ? u.scope : ''),'councilName': _councilForReport(municipality ?? u.scope),'snapshot': {'trips': s.trips, 'attendance': s.attendance, 'absence': s.absence, 'workers': s.workers, 'supervisors': s.supervisors, 'groups': s.groups, 'containers': s.containersTotal, 'emergencies': s.emergencies},'createdAt':now,'status':'submitted','isDeleted':false});await context.read<DataService>().writeAudit(actorId:u.id,operation:'REQUEST_REPORT_APPROVAL',targetId:s.reportId,after:{'reportType':reportType,'period':s.periodLabel,'status':'submitted','municipality':municipality,'group':group,'cycle':cycle});if(mounted){ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:AppText('تم إرسال التقرير إلى دورة المراجعة.')));Navigator.push(context,MaterialPageRoute(builder:(_)=>const ReportApprovalScreen()));}} : null,icon:const Icon(Icons.verified_outlined),label:const AppText('إرسال التقرير للمراجعة'))]));
+  Widget _actions(ReportSnapshot s, AppUser u)=>_section('التصدير والاعتماد',Wrap(spacing:8,runSpacing:8,children:[OutlinedButton.icon(onPressed:()async{final bytes=await ReportService(context.read<DataService>()).buildOperationalPdfBytes(snapshot:s,user:u,title:'${_title()} — CleanOps', languageCode: exportLanguage);if(!mounted)return;Navigator.push(context,MaterialPageRoute(builder:(_)=>Scaffold(appBar:AppBar(title:const AppText('معاينة التقرير')),body:PdfPreview(build:(_)=>Uint8List.fromList(bytes)))));},icon:const Icon(Icons.preview_outlined),label:const AppText('معاينة / طباعة')),FilledButton.icon(onPressed:_canExportOfficial(s,u)?()async{try{final path=await ReportService(context.read<DataService>()).exportOperationalPdf(snapshot:s,user:u,title:'${_title()} — CleanOps', languageCode: exportLanguage);if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:AppText(path==null?'تعذر إنشاء PDF':'تم إنشاء PDF: $path')));}catch(e){if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:AppText('فشل إنشاء PDF: $e')));}}:null,icon:const Icon(Icons.picture_as_pdf),label:const AppText('تصدير PDF')),OutlinedButton.icon(onPressed:_canExportOfficial(s,u)?()async{try{final path=await ReportService(context.read<DataService>()).exportOperationalExcel(snapshot:s,user:u,languageCode:exportLanguage);if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:AppText(path==null?'تعذر إنشاء Excel':'تم إنشاء Excel: $path')));}catch(e){if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:AppText('فشل تصدير Excel: $e')));}}:null,icon:const Icon(Icons.table_view_outlined),label:const AppText('تصدير Excel')),OutlinedButton.icon(onPressed:_canExportOfficial(s,u)?()async{try{final path=await ReportService(context.read<DataService>()).exportOperationalCsv(snapshot:s,user:u,languageCode:exportLanguage);if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:AppText(path==null?'تعذر إنشاء CSV':'تم إنشاء CSV: $path')));}catch(e){if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:AppText('فشل تصدير CSV: $e')));}}:null,icon:const Icon(Icons.file_download_outlined),label:const AppText('تصدير CSV')),OutlinedButton.icon(onPressed:u.role == 'municipality_coordinator' ? ()async{final now=DateTime.now().toIso8601String();await context.read<DataService>().enqueue('report_approval','create',{'id':s.reportId,'title':'${_periodPresetLabel()} — ${_title()}','reportType':reportType,'period':s.periodLabel,'municipality':municipality,'group':group,'cycle':cycle,'requestedBy':u.id,'municipalityCoordinatorId':u.id,'municipalityName': municipality ?? (u.scope != 'assigned_only' ? u.scope : ''),'councilName': _councilForReport(municipality ?? u.scope),'snapshot': {'trips': s.trips, 'attendance': s.attendance, 'absence': s.absence, 'workers': s.workers, 'supervisors': s.supervisors, 'groups': s.groups, 'containers': s.containersTotal, 'emergencies': s.emergencies},'createdAt':now,'status':'submitted','isDeleted':false});await context.read<DataService>().writeAudit(actorId:u.id,operation:'REQUEST_REPORT_APPROVAL',targetId:s.reportId,after:{'reportType':reportType,'period':s.periodLabel,'periodPreset':periodPreset,'status':'submitted','municipality':municipality,'group':group,'cycle':cycle});if(mounted){ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:AppText('تم إرسال التقرير إلى دورة المراجعة.')));Navigator.push(context,MaterialPageRoute(builder:(_)=>const ReportApprovalScreen()));}} : null,icon:const Icon(Icons.verified_outlined),label:const AppText('إرسال التقرير للمراجعة'))]));
   String _title()=>switch(reportType){'absence'=>'تقرير الغياب والحضور','containers'=>'تقرير الحاويات','work'=>'تقرير العمل والتشغيل','cycles'=>'تقرير الدورات','municipalities'=>'تقرير البلديات','groups'=>'تقرير المجموعات',_=>'التقرير التنفيذي الشامل'};
 }
