@@ -64,5 +64,10 @@ void main() {
       supervisorId: 'head-a',
       groupId: 'group-a',
     ), isFalse);
+    expect(TripLifecycle.canSupervisorComplete(
+      trip: {'_entity': 'trip', 'groupId': 'group-a'},
+      supervisorId: 'head-a',
+      groupId: 'group-a',
+    ), isFalse);
   });
 }
