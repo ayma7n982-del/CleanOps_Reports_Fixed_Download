@@ -84,6 +84,24 @@ class _LoadingCard extends StatelessWidget { const _LoadingCard(); @override Wid
 class AlertsCenterPage extends StatelessWidget {
   const AlertsCenterPage({super.key});
 
+  static DateTime _alertTime(Map<String, dynamic> data) {
+    final value = data['createdAt'] ?? data['timestamp'] ?? data['updatedAt'];
+    if (value is Timestamp) return value.toDate();
+    if (value is DateTime) return value;
+    return DateTime.tryParse('$value') ?? DateTime.fromMillisecondsSinceEpoch(0);
+  }
+
+  static String _priorityLabel(Map<String, dynamic> data) {
+    switch (OperationalInsights.alertPriority(data)) {
+      case 0:
+        return 'حرج';
+      case 1:
+        return 'مرتفع';
+      default:
+        return 'عادي';
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final user = context.watch<AuthService>().currentUser;
@@ -121,8 +139,7 @@ class AlertsCenterPage extends StatelessWidget {
             final priority = OperationalInsights.alertPriority(a.data())
                 .compareTo(OperationalInsights.alertPriority(b.data()));
             if (priority != 0) return priority;
-            return '${b.data()['createdAt'] ?? ''}'
-                .compareTo('${a.data()['createdAt'] ?? ''}');
+            return _alertTime(b.data()).compareTo(_alertTime(a.data()));
           });
         final seen = <String>{};
         final unique = selected.where((doc) =>
@@ -133,8 +150,16 @@ class AlertsCenterPage extends StatelessWidget {
         return Column(children: [
           AppText('البلاغات الفعالة: ${unique.length} — مرتبة حسب الأولوية، دون تكرار البلاغ نفسه.',
               style: const TextStyle(fontSize: 11, color: cleanOpsMuted)),
-          ...unique.map((doc) => _OperationTile(
-            doc, critical: OperationalInsights.alertPriority(doc.data()) == 0)),
+          ...unique.map((doc) {
+            final data = doc.data();
+            final time = _alertTime(data);
+            final hasTime = time.millisecondsSinceEpoch > 0;
+            return _OperationTile(
+              doc,
+              critical: OperationalInsights.alertPriority(data) == 0,
+              alertMeta: '${_priorityLabel(data)}${hasTime ? ' • ${time.year.toString().padLeft(4, '0')}-${time.month.toString().padLeft(2, '0')}-${time.day.toString().padLeft(2, '0')} ${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}' : ''}',
+            );
+          }),
         ]);
       },
     );
@@ -154,7 +179,8 @@ class _OpsStreamPage extends StatelessWidget {
 class _OperationTile extends StatelessWidget {
   final QueryDocumentSnapshot<Map<String, dynamic>> doc;
   final bool critical;
-  const _OperationTile(this.doc, {this.critical = false});
+  final String? alertMeta;
+  const _OperationTile(this.doc, {this.critical = false, this.alertMeta});
 
   @override
   Widget build(BuildContext context) {
@@ -175,9 +201,12 @@ class _OperationTile extends StatelessWidget {
           supervisorId: user.id,
           groupId: user.groupId ?? '',
         );
-    final displayDetail = overdue
+    final baseDetail = overdue
         ? 'متأخرة عن الموعد المستهدف • ${detail.isEmpty ? 'قيد التنفيذ' : detail}'
         : detail;
+    final displayDetail = alertMeta == null || alertMeta!.isEmpty
+        ? baseDetail
+        : '$alertMeta${baseDetail.isEmpty ? '' : ' • $baseDetail'}';
     final fields = <String, Object?>{
       'معرّف السجل': doc.id,
       'الحالة': record['status'],
