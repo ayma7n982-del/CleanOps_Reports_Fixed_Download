@@ -476,7 +476,8 @@ class OperationsAdminService {
     var criticalDumpsites = 0;
     for (final d in dumpsSnap.docs) {
       final x = d.data();
-      if (x['isActive'] == true) activeDumpsites++;
+      if (x['isActive'] != true || x['isDeleted'] == true) continue;
+      activeDumpsites++;
       final fill = x['fillPercentage'];
       final value = fill is num ? fill.toDouble() : double.tryParse('$fill') ?? 0;
       if (value >= 85) criticalDumpsites++;
