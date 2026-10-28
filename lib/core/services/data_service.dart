@@ -235,6 +235,25 @@ class DataService extends ChangeNotifier {
     return value.toString();
   }
 
+  /// Block competing offline redirects of the same cart until the first move
+  /// is confirmed by Firestore. Separate collections may reuse document IDs.
+  bool hasPendingCartRedirect(String cartId, String cartCollection) {
+    for (final item in queue) {
+      if (item.entity != 'cart_redirect') continue;
+      try {
+        final value = jsonDecode(item.payload);
+        if (value is Map &&
+            '${value['cartId'] ?? ''}' == cartId &&
+            '${value['cartCollection'] ?? ''}' == cartCollection) {
+          return true;
+        }
+      } catch (_) {
+        // A malformed unrelated queued record must not block this cart.
+      }
+    }
+    return false;
+  }
+
   Future<void> enqueue(String entity, String operation, Map<String, dynamic> payload) async {
     final safePayload = Map<String, dynamic>.from(_toJsonSafe(payload) as Map);
     final item = SyncItem(
