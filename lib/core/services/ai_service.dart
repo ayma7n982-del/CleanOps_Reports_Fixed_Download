@@ -15,6 +15,11 @@ class AIService {
     if (user.role != 'donor_manager' && user.role != 'jsc_coordinator') {
       throw StateError('المساعد الذكي متاح للمستوى 3 والمستوى 4 فقط.');
     }
+    final localAnswer = await _answerLocally(user, question);
+    if (localAnswer != null) return localAnswer;
+    if (!config.aiEnabled || config.aiApiKey.trim().isEmpty) {
+      return 'المساعد المحلي متاح دون مفتاح API. اسأل عن ملخص اليوم أو العمال أو المجموعات أو الترحيلات أو الطوارئ أو المكبات.';
+    }
     if (!config.aiEnabled) {
       throw StateError('المساعد الذكي غير مفعّل. يمكن للمستوى 3 أو 4 تفعيله وإضافة مفتاح API من الإعدادات.');
     }
@@ -67,6 +72,33 @@ class AIService {
       }
     }
     throw StateError('لم تُرجع خدمة الذكاء الاصطناعي نصًا صالحًا.');
+  }
+
+  Future<String?> _answerLocally(AppUser user, String question) async {
+    final q = question.trim().toLowerCase();
+    final summary = q.contains('ملخص') || q.contains('اليوم') || q.contains('تقرير') || q.contains('summary');
+    final workers = q.contains('عمال') || q.contains('عامل') || q.contains('worker');
+    final groups = q.contains('مجموعة') || q.contains('مجموعات') || q.contains('group');
+    final trips = q.contains('ترحيل') || q.contains('ترحيلات') || q.contains('رحلات') || q.contains('trip');
+    final alerts = q.contains('طوارئ') || q.contains('تنبيه') || q.contains('sos') || q.contains('emergency');
+    final sites = q.contains('مكب') || q.contains('مكبات') || q.contains('امتلاء') || q.contains('dumpsite');
+    if (!(summary || workers || groups || trips || alerts || sites)) return null;
+    final data = await _fetchOperationalContext(user);
+    final lines = <String>[];
+    if (summary) lines.add('ملخص التشغيل بتاريخ ${data['date']}:');
+    if (summary || workers) lines.add('العمال النشطون: ${data['activeWorkers']}، المشرفون: ${data['activeGroupSupervisors']}');
+    if (summary || groups) lines.add('المجموعات النشطة: ${data['activeGroups']}');
+    if (summary || trips) lines.add('الترحيلات اليوم: ${data['loadsTransferredToday']}');
+    if (summary || alerts) lines.add('حالات الطوارئ غير المغلقة: ${data['activeSOSorEmergencies']}');
+    if (summary || sites) {
+      lines.add('المكبات النشطة: ${data['activeDumpsites']}');
+      final items = data['dumpsites'] as List;
+      for (final item in items.take(12)) {
+        lines.add('• ${item['name']}: الامتلاء ${item['fillPercentage']}%');
+      }
+    }
+    lines.add('المصدر: بيانات Firestore المتاحة؛ قد تكون مخزنة مؤقتًا عند عدم الاتصال.');
+    return lines.join('\\n');
   }
 
   Future<String> _buildPrompt(AppUser user, String question) async {
