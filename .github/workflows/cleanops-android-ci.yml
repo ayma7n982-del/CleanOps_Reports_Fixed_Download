@@ -77,6 +77,8 @@ jobs:
           chmod +x gradlew
       - name: Check Dart compilation
         run: flutter analyze --no-fatal-infos --no-fatal-warnings
+      - name: Run Flutter tests
+        run: flutter test
       - name: Build Android debug APK
         env:
           GRADLE_OPTS: -Dorg.gradle.daemon=false -Dorg.gradle.parallel=false -Dorg.gradle.caching=false -Dkotlin.incremental=false
