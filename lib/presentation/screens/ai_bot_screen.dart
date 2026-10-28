@@ -103,7 +103,12 @@ class _AIBotScreenState extends State<AIBotScreen> with TickerProviderStateMixin
     try {
       final service = AIService(config: context.read<ConfigService>());
       final answer = await service.answer(user: user, question: question);
-      final links = await _loadLinkedRecords(user, question);
+      var links = const <_LinkedOperationalRecord>[];
+      try {
+        links = await _loadLinkedRecords(user, question);
+      } on FirebaseException {
+        links = const <_LinkedOperationalRecord>[];
+      }
       if (!mounted) return;
       setState(() {
         messages.add(_ChatMessage(answer, fromUser: false));
