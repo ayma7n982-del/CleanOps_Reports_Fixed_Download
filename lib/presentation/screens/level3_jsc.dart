@@ -537,10 +537,10 @@ class _Level3JscState extends State<Level3JscScreen> with SingleTickerProviderSt
     final location = latitude is num && longitude is num
         ? 'https://www.google.com/maps/search/?api=1&query=$latitude,$longitude'
         : 'إحداثيات GPS غير متوفرة';
-    final details = 'بلاغ طوارئ رقم ${emergency['id'] ?? ''}\\n'
-        'الموقع: ${emergency['street'] ?? 'غير محدد'}\\n'
-        'الإحداثيات: $latitude، $longitude\\n'
-        'خريطة الموقع: $location\\n'
+    final details = 'بلاغ طوارئ رقم ${emergency['id'] ?? ''}\n'
+        'الموقع: ${emergency['street'] ?? 'غير محدد'}\n'
+        'الإحداثيات: $latitude، $longitude\n'
+        'خريطة الموقع: $location\n'
         'الحالة: ${emergency['status'] ?? 'urgent'}';
     await Clipboard.setData(ClipboardData(text: details));
     if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
