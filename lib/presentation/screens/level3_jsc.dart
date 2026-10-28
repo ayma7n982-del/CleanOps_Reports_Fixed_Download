@@ -198,7 +198,9 @@ class _Level3JscState extends State<Level3JscScreen> with SingleTickerProviderSt
     final redLight = _capacityPercent >= .85;
     return Directionality(
       textDirection: context.watch<LocaleController>().isArabic ? TextDirection.rtl : TextDirection.ltr,
-      child: Scaffold(
+      child: DefaultTabController(
+        length: 3,
+        child: Scaffold(
         appBar: AppBar(
           title: const AppText('المستوى 3 — منسق مجلس الخدمات'),
           actions: [
@@ -209,6 +211,7 @@ class _Level3JscState extends State<Level3JscScreen> with SingleTickerProviderSt
           bottom: TabBar(controller: _tabController, onTap: (i) => setState(() => tab = i), isScrollable: true, tabs: [Tab(text: tr('لوحة القيادة')), Tab(text: tr('الإدارة')), Tab(text: tr('التقارير والرسائل'))]),
         ),
         body: IndexedStack(index: tab, children: [_dashboardBody(), _managementBody(), _reportsBody()]),
+        ),
       ),
     );
   }
