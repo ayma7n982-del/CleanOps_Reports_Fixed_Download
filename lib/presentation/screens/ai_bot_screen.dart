@@ -126,6 +126,27 @@ class _AIBotScreenState extends State<AIBotScreen> with TickerProviderStateMixin
               if (!allowed)
                 const _AccessNotice()
               else ...[
+                Builder(builder: (context) {
+                  final settings = context.watch<ConfigService>();
+                  final ready = settings.aiEnabled && settings.aiApiKey.trim().isNotEmpty;
+                  if (ready) return const SizedBox.shrink();
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: AiGlassCard(
+                      padding: const EdgeInsets.all(12),
+                      child: Row(children: [
+                        const Icon(Icons.info_outline_rounded, color: Colors.orange),
+                        const SizedBox(width: 10),
+                        Expanded(child: AppText(
+                          !settings.aiEnabled
+                              ? 'المساعد غير مفعّل. فعّله من إعدادات الذكاء الاصطناعي.'
+                              : 'مفتاح API غير مضبوط. أضفه من إعدادات الذكاء الاصطناعي.',
+                          style: const TextStyle(color: cleanOpsText, fontSize: 12),
+                        )),
+                      ]),
+                    ),
+                  );
+                }),
                 FutureBuilder<Map<String, dynamic>>(
                   future: context.read<OperationsAdminService>().liveOperationalSnapshot(user!),
                   builder: (context, snap) {
