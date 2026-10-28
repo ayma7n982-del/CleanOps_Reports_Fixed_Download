@@ -2,14 +2,15 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     function signedIn() { return request.auth != null; }
+    function activeSignedIn() { return signedIn() && userDoc().isActive != false; }
     function userDoc() {
       return signedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid))
         ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data : {};
     }
     function role() { return userDoc().role != null ? userDoc().role : ''; }
-    function isL4() { return role() == 'donor_manager'; }
-    function isL3() { return role() == 'jsc_coordinator'; }
-    function isL2() { return role() == 'municipality_coordinator'; }
+    function isL4() { return role() == 'donor_manager' && userDoc().isActive != false; }
+    function isL3() { return role() == 'jsc_coordinator' && userDoc().isActive != false; }
+    function isL2() { return role() == 'municipality_coordinator' && userDoc().isActive != false; }
     function isL2OrL3() { return isL2() || isL3(); }
     function isL3OrL4() { return isL3() || isL4(); }
     function isWorkforceRole(r) { return r == 'worker' || r == 'group_supervisor'; }
@@ -193,9 +194,30 @@ service cloud.firestore {
           && request.resource.data.username == resource.data.username
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
             'name','phone','scope','employeeId','jobTitle','notes','isActive','status',
-            'deactivatedAt','deactivatedBy','updatedAt','updatedBy'
+            'deactivatedAt','deactivatedBy','deletionRequestedBy','deletionRequestedAt',
+            'deletionRequestId','updatedAt','updatedBy'
           ])
           && (uid != request.auth.uid || request.resource.data.isActive != false)
+        )
+        || (
+          isL2()
+          && workforceManagedByL2()
+          && requestedWorkforceManagedByL2()
+          && resource.data.isActive != false
+          && request.resource.data.isActive == false
+          && request.resource.data.status == 'pending_deletion'
+          && request.resource.data.deletionRequestedBy == request.auth.uid
+          && request.resource.data.deletionRequestId is string
+          && request.resource.data.deletionRequestId.size() > 0
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'isActive','status','deletionRequestedBy','deletionRequestedAt',
+            'deletionRequestId','updatedAt','updatedBy'
+          ])
+          && existsAfter(/databases/$(database)/documents/admin_requests/$(request.resource.data.deletionRequestId))
+          && getAfter(/databases/$(database)/documents/admin_requests/$(request.resource.data.deletionRequestId)).data.type == 'delete_user'
+          && getAfter(/databases/$(database)/documents/admin_requests/$(request.resource.data.deletionRequestId)).data.targetUserId == uid
+          && getAfter(/databases/$(database)/documents/admin_requests/$(request.resource.data.deletionRequestId)).data.requestedBy == request.auth.uid
+          && getAfter(/databases/$(database)/documents/admin_requests/$(request.resource.data.deletionRequestId)).data.status == 'pending'
         )
         || (
           isL2()
@@ -222,7 +244,7 @@ service cloud.firestore {
 
     // ---------------- Work cycles: Level 4 write only ----------------
     match /work_cycles/{id} {
-      allow read: if signedIn();
+      allow read: if activeSignedIn();
       allow create: if isL4()
         && request.resource.data.status == 'active'
         && request.resource.data.startDate is timestamp
@@ -239,7 +261,7 @@ service cloud.firestore {
 
     // ---------------- Smart dumpsites: Level 2/3 ----------------
     match /dumpsites/{id} {
-      allow read: if signedIn();
+      allow read: if activeSignedIn();
       allow create: if isL2OrL3()
         && request.resource.data.nameAr is string
         && request.resource.data.nameEn is string
@@ -392,6 +414,58 @@ service cloud.firestore {
         && (resource.data.status != 'resolved' || request.resource.data.status in ['resolved', 'closed']);
     }
 
+    function validEquipmentCartAssignmentUpdate(cartId) {
+      return isL2()
+        && resource.data.municipalityCoordinatorId == request.auth.uid
+        && request.resource.data.municipalityCoordinatorId == resource.data.municipalityCoordinatorId
+        && resource.data.groupId is string
+        && request.resource.data.groupId is string
+        && resource.data.groupId != request.resource.data.groupId
+        && groupManagedByL2(resource.data.groupId)
+        && groupManagedByL2(request.resource.data.groupId)
+        && request.resource.data.updatedBy == request.auth.uid
+        && request.resource.data.lastRedirectRequestId is string
+        && request.resource.data.lastRedirectRequestId.size() > 0
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'groupId','updatedAt','updatedBy','lastRedirectRequestId'
+        ])
+        && existsAfter(/databases/$(database)/documents/operations/$(request.resource.data.lastRedirectRequestId))
+        && getAfter(/databases/$(database)/documents/operations/$(request.resource.data.lastRedirectRequestId)).data._entity == 'cart_redirect'
+        && getAfter(/databases/$(database)/documents/operations/$(request.resource.data.lastRedirectRequestId)).data.cartId == cartId
+        && getAfter(/databases/$(database)/documents/operations/$(request.resource.data.lastRedirectRequestId)).data.cartCollection == 'equipment'
+        && getAfter(/databases/$(database)/documents/operations/$(request.resource.data.lastRedirectRequestId)).data.fromGroupId == resource.data.groupId
+        && getAfter(/databases/$(database)/documents/operations/$(request.resource.data.lastRedirectRequestId)).data.toGroupId == request.resource.data.groupId
+        && getAfter(/databases/$(database)/documents/operations/$(request.resource.data.lastRedirectRequestId)).data.requestedBy == request.auth.uid
+        && getAfter(/databases/$(database)/documents/operations/$(request.resource.data.lastRedirectRequestId)).data.status == 'applied';
+    }
+
+    function validOperationsCartAssignmentUpdate(cartId) {
+      return isL2()
+        && resource.data._entity in ['cart','equipment','heavy_machinery']
+        && request.resource.data._entity == resource.data._entity
+        && resource.data.municipalityCoordinatorId == request.auth.uid
+        && request.resource.data.municipalityCoordinatorId == resource.data.municipalityCoordinatorId
+        && resource.data.groupId is string
+        && request.resource.data.groupId is string
+        && resource.data.groupId != request.resource.data.groupId
+        && groupManagedByL2(resource.data.groupId)
+        && groupManagedByL2(request.resource.data.groupId)
+        && request.resource.data.updatedBy == request.auth.uid
+        && request.resource.data.lastRedirectRequestId is string
+        && request.resource.data.lastRedirectRequestId.size() > 0
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'groupId','updatedAt','updatedBy','lastRedirectRequestId'
+        ])
+        && existsAfter(/databases/$(database)/documents/operations/$(request.resource.data.lastRedirectRequestId))
+        && getAfter(/databases/$(database)/documents/operations/$(request.resource.data.lastRedirectRequestId)).data._entity == 'cart_redirect'
+        && getAfter(/databases/$(database)/documents/operations/$(request.resource.data.lastRedirectRequestId)).data.cartId == cartId
+        && getAfter(/databases/$(database)/documents/operations/$(request.resource.data.lastRedirectRequestId)).data.cartCollection == 'operations'
+        && getAfter(/databases/$(database)/documents/operations/$(request.resource.data.lastRedirectRequestId)).data.fromGroupId == resource.data.groupId
+        && getAfter(/databases/$(database)/documents/operations/$(request.resource.data.lastRedirectRequestId)).data.toGroupId == request.resource.data.groupId
+        && getAfter(/databases/$(database)/documents/operations/$(request.resource.data.lastRedirectRequestId)).data.requestedBy == request.auth.uid
+        && getAfter(/databases/$(database)/documents/operations/$(request.resource.data.lastRedirectRequestId)).data.status == 'applied';
+    }
+
     // A redirect is a request, not a direct reassignment of equipment.
     function validCartRedirect() {
       return isL2()
@@ -407,6 +481,7 @@ service cloud.firestore {
         && request.resource.data.toGroupId is string
         && request.resource.data.cartId is string
         && request.resource.data.fromGroupId != request.resource.data.toGroupId
+        && request.resource.data.status == 'applied'
         && request.resource.data.cartEntity in ['cart', 'equipment', 'heavy_machinery']
         && request.resource.data.cartCollection in ['operations', 'equipment']
         && groupManagedByL2(request.resource.data.fromGroupId)
@@ -415,41 +490,67 @@ service cloud.firestore {
           (request.resource.data.cartCollection == 'operations'
             && exists(/databases/$(database)/documents/operations/$(request.resource.data.cartId))
             && get(/databases/$(database)/documents/operations/$(request.resource.data.cartId)).data._entity == request.resource.data.cartEntity
-            && get(/databases/$(database)/documents/operations/$(request.resource.data.cartId)).data.municipalityCoordinatorId == request.auth.uid)
+            && get(/databases/$(database)/documents/operations/$(request.resource.data.cartId)).data.municipalityCoordinatorId == request.auth.uid
+            && get(/databases/$(database)/documents/operations/$(request.resource.data.cartId)).data.groupId == request.resource.data.fromGroupId
+            && getAfter(/databases/$(database)/documents/operations/$(request.resource.data.cartId)).data.groupId == request.resource.data.toGroupId
+            && getAfter(/databases/$(database)/documents/operations/$(request.resource.data.cartId)).data.lastRedirectRequestId == request.resource.data.id)
           ||
           (request.resource.data.cartCollection == 'equipment'
             && request.resource.data.cartEntity == 'equipment'
             && exists(/databases/$(database)/documents/equipment/$(request.resource.data.cartId))
-            && get(/databases/$(database)/documents/equipment/$(request.resource.data.cartId)).data.municipalityCoordinatorId == request.auth.uid)
+            && get(/databases/$(database)/documents/equipment/$(request.resource.data.cartId)).data.municipalityCoordinatorId == request.auth.uid
+            && get(/databases/$(database)/documents/equipment/$(request.resource.data.cartId)).data.groupId == request.resource.data.fromGroupId
+            && getAfter(/databases/$(database)/documents/equipment/$(request.resource.data.cartId)).data.groupId == request.resource.data.toGroupId
+            && getAfter(/databases/$(database)/documents/equipment/$(request.resource.data.cartId)).data.lastRedirectRequestId == request.resource.data.id)
         );
     }
 
-    // Equipment records are read by the municipality coordinator who owns them.
-    // Assignment changes are performed only by the trusted Cloud Function.
+    // Equipment remains municipality-scoped. Cart assignment changes are
+    // atomic client transactions validated by the matching cart_redirect log.
     match /equipment/{id} {
-      allow read: if signedIn() && (
+      allow read: if activeSignedIn() && (
         isL3OrL4() ||
         (isL2() && resource.data.municipalityCoordinatorId == request.auth.uid)
       );
-      allow create, update, delete: if false;
+      allow update: if validEquipmentCartAssignmentUpdate(id);
+      allow create, delete: if false;
     }
 
     match /operations/{id} {
       allow read: if operationReadAllowed();
       allow create: if signedIn() && (
         (isL4() && (request.resource.data._entity == 'report' || request.resource.data._entity == 'user'))
-        || (isL2() && (request.resource.data._entity == 'group' || request.resource.data._entity == 'worker'))
+        || (isL2() && (request.resource.data._entity == 'group' || request.resource.data._entity == 'worker' || validCartRedirect()))
         || (isL3() && (request.resource.data._entity == 'heavy_machinery' || request.resource.data._entity == 'emergency' || request.resource.data._entity == 'notification' || request.resource.data._entity == 'report'))
         || (role() == 'group_supervisor' && (validSupervisorTripCreate() || request.resource.data._entity == 'trip_photo' || (request.resource.data._entity == 'attendance' && userDoc().isActive != false && userDoc().groupId is string && userDoc().groupId.size() > 0 && request.resource.data.groupId == userDoc().groupId && request.resource.data.reportedBy == request.auth.uid && request.resource.data.status in ['present','absent','leave','permission','excused_absence','unexcused_absence','external_task']) || request.resource.data._entity == 'street_photo' || (request.resource.data._entity == 'emergency' && validSupervisorSosCreate()) || request.resource.data._entity == 'notification' || request.resource.data._entity == 'report'))
       );
       allow update: if signedIn() && (
         validSosAcknowledgment()
         || (isL4() && (resource.data._entity == 'report' || resource.data._entity == 'user'))
-        || (isL2() && (resource.data._entity == 'group' || resource.data._entity == 'worker'))
+        || (isL2() && (resource.data._entity == 'group' || resource.data._entity == 'worker' || validOperationsCartAssignmentUpdate(id)))
         || (isL3() && (resource.data._entity == 'heavy_machinery' || resource.data._entity == 'notification' || resource.data._entity == 'report'))
         || (role() == 'group_supervisor' && (validSupervisorTripUpdate() || resource.data._entity == 'trip_photo' || (resource.data._entity == 'attendance' && userDoc().isActive != false && resource.data.groupId == userDoc().groupId && request.resource.data.groupId == resource.data.groupId && request.resource.data.workerId == resource.data.workerId && request.resource.data.reportedBy == resource.data.reportedBy && resource.data.reportedBy == request.auth.uid && request.resource.data.status in ['present','absent','leave','permission','excused_absence','unexcused_absence','external_task']) || resource.data._entity == 'street_photo' || resource.data._entity == 'notification' || resource.data._entity == 'report'))
       );
       allow delete: if isL2() && resource.data._entity == 'group';
+    }
+
+    match /admin_requests/{id} {
+      allow read: if isL4() || (isL2() && resource.data.requestedBy == request.auth.uid);
+      allow create: if activeSignedIn()
+        && request.resource.data.type == 'delete_user'
+        && request.resource.data.requestedBy == request.auth.uid
+        && request.resource.data.targetUserId is string
+        && request.resource.data.targetUserId.size() > 0
+        && request.resource.data.status == 'pending'
+        && request.resource.data.id == id
+        && exists(/databases/$(database)/documents/users/$(request.resource.data.targetUserId))
+        && (
+          isL4()
+          || (isL2()
+            && isWorkforceRole(get(/databases/$(database)/documents/users/$(request.resource.data.targetUserId)).data.role)
+            && get(/databases/$(database)/documents/users/$(request.resource.data.targetUserId)).data.municipalityCoordinatorId == request.auth.uid)
+        );
+      allow update, delete: if false;
     }
 
     match /user_provisioning_requests/{id} {
@@ -459,17 +560,17 @@ service cloud.firestore {
     }
     match /audit/{id} {
       allow read: if isL4();
-      allow create: if signedIn() && request.resource.data.actorId == request.auth.uid;
+      allow create: if activeSignedIn() && request.resource.data.actorId == request.auth.uid;
       allow update, delete: if false;
     }
     match /ai_state/{document=**} {
-      allow read: if signedIn();
+      allow read: if activeSignedIn();
       allow write: if false;
     }
 
     // ---------------- Feature flags: editable only by Level 3/4 ----------------
     match /config/global {
-      allow read: if signedIn();
+      allow read: if activeSignedIn();
       allow update: if isL4()
         || (isL3()
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
@@ -484,7 +585,7 @@ service cloud.firestore {
       allow delete: if false;
     }
     match /config/{document=**} {
-      allow read: if signedIn();
+      allow read: if activeSignedIn();
       allow write: if isL4();
     }
   }
