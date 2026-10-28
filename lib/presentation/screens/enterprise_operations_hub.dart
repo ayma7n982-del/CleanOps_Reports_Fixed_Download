@@ -161,6 +161,7 @@ class _OperationTile extends StatelessWidget {
     final record = doc.data();
     final user = context.watch<AuthService>().currentUser;
     final entity = '${record['_entity'] ?? ''}';
+    final activeUserId = user?.id ?? '';
     final title = '${record['title'] ?? record['name'] ?? record['operation'] ?? entity}';
     final detail = '${record['body'] ?? record['detail'] ?? record['description'] ?? record['status'] ?? ''}';
     final tripReview = entity == 'trip'
@@ -223,7 +224,7 @@ class _OperationTile extends StatelessWidget {
               FilledButton.icon(
                 onPressed: () async {
                   final current = context.read<AuthService>().currentUser;
-                  if (current == null || current.id != user.id) return;
+                  if (current == null || current.id != activeUserId) return;
                   final fields = TripLifecycle.completionFields(
                     completedAt: DateTime.now(),
                     completedBy: current.id,
