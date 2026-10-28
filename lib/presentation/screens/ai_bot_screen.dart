@@ -7,6 +7,8 @@ import '../../core/models/core_models.dart';
 import '../../core/services/ai_service.dart';
 import '../../core/services/auth_service.dart';
 import '../../core/services/config_service.dart';
+import '../../core/services/data_service.dart';
+import '../../core/services/report_service.dart';
 import '../../core/services/operations_admin_service.dart';
 import 'enterprise_operations_hub.dart';
 import '../widgets/app_design.dart';
@@ -35,6 +37,7 @@ class _AIBotScreenState extends State<AIBotScreen> with TickerProviderStateMixin
   final ScrollController chatScroll = ScrollController();
   final List<_ChatMessage> messages = [];
   bool loading = false;
+  bool exportingPdf = false;
 
   @override
   void initState() {
@@ -90,6 +93,48 @@ class _AIBotScreenState extends State<AIBotScreen> with TickerProviderStateMixin
         setState(() => loading = false);
         _scrollToBottom();
       }
+    }
+  }
+
+  Future<void> _exportPeriodPdf() async {
+    if (exportingPdf) return;
+    final user = context.read<AuthService>().currentUser;
+    if (user == null || !user.can('reports', 'export')) return;
+    final today = DateTime.now();
+    final period = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(today.year + 5, 12, 31),
+      initialDateRange: DateTimeRange(
+        start: today.subtract(const Duration(days: 6)),
+        end: today,
+      ),
+      helpText: 'فترة التقرير التشغيلي (يمكن اختيار أكثر من 60 يومًا)',
+      saveText: 'اعتماد الفترة',
+    );
+    if (period == null || !mounted) return;
+    setState(() => exportingPdf = true);
+    try {
+      final reports = ReportService(context.read<DataService>());
+      final snapshot = await reports.load(
+        user: user, startDate: period.start, endDate: period.end,
+      );
+      final result = await reports.exportOperationalPdf(
+        snapshot: snapshot, user: user, title: 'تقرير CleanOps التشغيلي',
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: AppText(result == null
+            ? 'تعذر حفظ ملف PDF.'
+            : 'تم إعداد ملف PDF للفترة المحددة: $result'),
+      ));
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: AppText('تعذر تصدير التقرير: $error'),
+      ));
+    } finally {
+      if (mounted) setState(() => exportingPdf = false);
     }
   }
 
@@ -188,6 +233,8 @@ class _AIBotScreenState extends State<AIBotScreen> with TickerProviderStateMixin
                       _BotAction(icon: Icons.notification_important_rounded, title: 'مركز التنبيهات', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AlertsCenterPage()))),
                     if (user.can('reports', 'view'))
                       _BotAction(icon: Icons.description_rounded, title: 'التقارير', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ReportsCenterScreen()))),
+                    if (user.can('reports', 'export'))
+                      _BotAction(icon: Icons.picture_as_pdf_rounded, title: exportingPdf ? 'جاري تجهيز PDF' : 'تقرير PDF لفترة محددة', onTap: _exportPeriodPdf),
                     if (user.role == 'jsc_coordinator')
                       _BotAction(icon: Icons.location_on_rounded, title: 'المكبات', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const OperationsManagementScreen(initialTab: 0)))),
                     if (context.watch<ConfigService>().liveOperationsMapEnabled)
