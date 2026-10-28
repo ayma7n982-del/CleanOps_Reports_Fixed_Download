@@ -409,3 +409,59 @@ test('JSC cannot return machine without a matching log or wrong source dispatch'
     requestedBy:'jsc',returnNote:'Mission complete',status:'applied',
   }));
 });
+
+// Specialist clearance is documented by JSC with a nonempty reference; this
+// emulator test does not establish that an external authority actually signed it.
+test('JSC can record specialist clearance only after acknowledged referral, then reopen and close', async () => {
+  await env.withSecurityRulesDisabled(async ctx => {
+    await setDoc(doc(ctx.firestore(),'operations','sos-clear'), {
+      id:'sos-clear', _entity:'emergency', status:'acknowledged',
+      acknowledged:true, acknowledgedBy:'jsc', acknowledgedAt:'2026-10-28T10:00:00Z',
+      referralDestination:'هندسة المتفجرات',
+      referredBy:'jsc', referredAt:'2026-10-28T10:01:00Z',
+      street:'شارع تجريبي',latitude:31.4,longitude:34.3,
+    });
+  });
+  const jscDb = db('jsc');
+  const record = doc(jscDb, 'operations','sos-clear');
+  await assertFails(updateDoc(record, {
+    status:'secured',securedBy:'jsc',securedAt:'2026-10-28T10:10:00Z',
+    eodOfficer:'',eodReference:'',securityNote:'',
+  }));
+  await assertFails(updateDoc(doc(db('head-a'),'operations','sos-clear'), {
+    status:'secured',securedBy:'head-a',securedAt:'2026-10-28T10:10:00Z',
+    eodOfficer:'EOD',eodReference:'ref',securityNote:'ok',
+  }));
+  await assertSucceeds(updateDoc(record, {
+    status:'secured',securedBy:'jsc',securedAt:'2026-10-28T10:11:00Z',
+    eodOfficer:'EOD representative',eodReference:'EOD-2026-100',
+    securityNote:'Specialist written clearance recorded',
+    updatedAt:'2026-10-28T10:11:00Z',
+  }));
+  await assertSucceeds(updateDoc(record, {
+    status:'reopened',reopenedBy:'jsc',reopenedAt:'2026-10-28T10:15:00Z',
+    updatedAt:'2026-10-28T10:15:00Z',
+  }));
+  await assertSucceeds(updateDoc(record, {
+    status:'closed',closedBy:'jsc',closedAt:'2026-10-28T10:30:00Z',
+    resolutionNote:'Administrative closure after clearance',
+    updatedAt:'2026-10-28T10:30:00Z',
+  }));
+  const saved = await getDoc(record);
+  assert.equal(saved.data().status, 'closed');
+  assert.equal(saved.data().latitude, 31.4);
+});
+
+test('a JSC user cannot declare unacknowledged or unreferred SOS secured', async () => {
+  await env.withSecurityRulesDisabled(async ctx => {
+    await setDoc(doc(ctx.firestore(),'operations','sos-unreferred'), {
+      id:'sos-unreferred',_entity:'emergency',status:'acknowledged',
+      acknowledged:true,acknowledgedBy:'jsc',acknowledgedAt:'t',
+    });
+  });
+  await assertFails(updateDoc(doc(db('jsc'),'operations','sos-unreferred'), {
+    status:'secured',securedBy:'jsc',securedAt:'t',
+    eodOfficer:'Specialist',eodReference:'EOD-123',
+    securityNote:'Verification',updatedAt:'t',
+  }));
+});

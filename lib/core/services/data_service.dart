@@ -644,7 +644,7 @@ class DataService extends ChangeNotifier {
               });
             });
           } else if (item.entity == 'emergency' &&
-              const ['sos_acknowledge', 'sos_close', 'sos_refer', 'sos_reopen'].contains(item.operation)) {
+              const ['sos_acknowledge', 'sos_close', 'sos_refer', 'sos_secure', 'sos_reopen'].contains(item.operation)) {
             // Update only fields permitted by validSosAcknowledgment in Firestore rules.
             // Never merge an entire cached SOS document into the remote record.
             final existing = await ref.get(const GetOptions(source: Source.server));
@@ -674,7 +674,7 @@ class DataService extends ChangeNotifier {
                   current['resolutionNote'] == cloudPayload['resolutionNote']) {
                 // Idempotent retry after a confirmed remote close.
               } else if (current['acknowledged'] == true &&
-                  const ['acknowledged', 'resolved'].contains(current['status'])) {
+                  const ['acknowledged', 'resolved', 'reopened'].contains(current['status'])) {
                 await ref.update({
                   'status': 'closed',
                   'acknowledged': true,
@@ -700,6 +700,33 @@ class DataService extends ChangeNotifier {
                 });
               } else {
                 throw StateError('حالة بلاغ SOS لا تسمح بإحالته.');
+              }
+            } else if (item.operation == 'sos_secure') {
+              if (current['status'] == 'secured' &&
+                  current['eodReference'] == cloudPayload['eodReference'] &&
+                  current['securedBy'] == cloudPayload['securedBy']) {
+                // Idempotent retry after a confirmed server write.
+              } else if (current['acknowledged'] == true &&
+                  const ['acknowledged', 'resolved'].contains(current['status']) &&
+                  current['referralDestination'] == 'هندسة المتفجرات') {
+                final eodOfficer = '${cloudPayload['eodOfficer'] ?? ''}'.trim();
+                final eodReference = '${cloudPayload['eodReference'] ?? ''}'.trim();
+                final securityNote = '${cloudPayload['securityNote'] ?? ''}'.trim();
+                if (eodOfficer.isEmpty || eodReference.isEmpty ||
+                    securityNote.isEmpty) {
+                  throw StateError('إفادة الجهة المختصة غير مكتملة.');
+                }
+                await ref.update({
+                  'status': 'secured',
+                  'securedBy': cloudPayload['securedBy'],
+                  'securedAt': cloudPayload['securedAt'],
+                  'eodOfficer': eodOfficer,
+                  'eodReference': eodReference,
+                  'securityNote': securityNote,
+                  'updatedAt': cloudPayload['updatedAt'],
+                });
+              } else {
+                throw StateError('لا يجوز اعتبار الموقع مؤمنًا دون إفادة الجهة المختصة وإحالة موثقة.');
               }
             } else if (item.operation == 'sos_reopen') {
               if (current['status'] == 'reopened' &&

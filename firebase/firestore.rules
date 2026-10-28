@@ -441,6 +441,44 @@ service cloud.firestore {
         && request.resource.data.reopenedAt.size() > 0;
     }
 
+    function validJscSosSecure() {
+      return isL3()
+        && resource.data._entity == 'emergency'
+        && resource.data.acknowledged == true
+        && resource.data.status in ['acknowledged', 'resolved']
+        && resource.data.get('referralDestination', '') == 'هندسة المتفجرات'
+        && request.resource.data.status == 'secured'
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'status', 'securedBy', 'securedAt', 'eodOfficer',
+          'eodReference', 'securityNote', 'updatedAt'
+        ])
+        && request.resource.data.securedBy == request.auth.uid
+        && request.resource.data.securedAt is string
+        && request.resource.data.securedAt.size() > 0
+        && request.resource.data.eodOfficer is string
+        && request.resource.data.eodOfficer.size() > 0
+        && request.resource.data.eodReference is string
+        && request.resource.data.eodReference.size() > 0
+        && request.resource.data.securityNote is string
+        && request.resource.data.securityNote.size() > 0;
+    }
+
+    function validJscSosCloseAfterReopen() {
+      return isL3()
+        && resource.data._entity == 'emergency'
+        && resource.data.status == 'reopened'
+        && resource.data.acknowledged == true
+        && request.resource.data.status == 'closed'
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'status', 'closedBy', 'closedAt', 'resolutionNote', 'updatedAt'
+        ])
+        && request.resource.data.closedBy == request.auth.uid
+        && request.resource.data.closedAt is string
+        && request.resource.data.closedAt.size() > 0
+        && request.resource.data.resolutionNote is string
+        && request.resource.data.resolutionNote.size() > 0;
+    }
+
     function validEquipmentCartAssignmentUpdate(cartId) {
       return isL2()
         && resource.data.municipalityCoordinatorId == request.auth.uid
@@ -651,6 +689,8 @@ service cloud.firestore {
         validSosAcknowledgment()
         || validJscSosReferral()
         || validJscSosReopen()
+        || validJscSosSecure()
+        || validJscSosCloseAfterReopen()
         || (isL4() && (resource.data._entity == 'report' || resource.data._entity == 'user'))
         || (isL2() && (resource.data._entity == 'group' || resource.data._entity == 'worker' || validOperationsCartAssignmentUpdate(id)))
         || (isL3() && (resource.data._entity == 'heavy_machinery' || resource.data._entity == 'notification' || resource.data._entity == 'report'))

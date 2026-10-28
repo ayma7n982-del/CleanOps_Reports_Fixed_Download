@@ -333,7 +333,7 @@ class _Level3JscState extends State<Level3JscScreen> with SingleTickerProviderSt
     if (user == null || user.role != 'jsc_coordinator') return;
     final record = emergencies.where((e) => '${e['id']}' == id).toList();
     if (record.isEmpty || record.first['acknowledged'] != true ||
-        !const ['acknowledged', 'resolved'].contains(record.first['status'])) {
+        !const ['acknowledged', 'resolved', 'reopened'].contains(record.first['status'])) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
         content: AppText('يجب تأكيد استلام البلاغ قبل إغلاقه.')));
       return;
@@ -399,6 +399,93 @@ class _Level3JscState extends State<Level3JscScreen> with SingleTickerProviderSt
     } catch (error) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('تعذر حفظ إحالة البلاغ: $error')));
+    }
+  }
+
+  /// Records a specialist's documented clearance. This is not a technical
+  /// confirmation that unexploded ordnance is safe; physical clearance remains
+  /// the responsibility of the specialist authority.
+  Future<void> _recordSecuredSite(String id) async {
+    final user = context.read<AuthService>().currentUser;
+    if (user == null || user.role != 'jsc_coordinator') return;
+    final reports = emergencies.where((item) => '${item['id']}' == id).toList();
+    if (reports.isEmpty || reports.first['acknowledged'] != true ||
+        !const ['acknowledged', 'resolved'].contains(reports.first['status']) ||
+        reports.first['referralDestination'] != 'هندسة المتفجرات') {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: AppText('لا يمكن تسجيل تأمين الموقع قبل تأكيد الاستلام وتوثيق الإحالة للجهة المختصة.')));
+      return;
+    }
+    final officer = TextEditingController();
+    final reference = TextEditingController();
+    final note = TextEditingController();
+    final result = await showDialog<Map<String, String>>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const AppText('توثيق إفادة تأمين الموقع'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const AppText(
+                'أدخل بيانات إفادة رسمية صادرة عن جهة مختصة. هذا التسجيل الإداري ليس فحص سلامة للموقع.'),
+              TextField(
+                controller: officer,
+                decoration: const InputDecoration(labelText: 'اسم المختص أو الجهة المصدرة للإفادة'),
+              ),
+              TextField(
+                controller: reference,
+                decoration: const InputDecoration(labelText: 'رقم المرجع أو المحضر الرسمي'),
+              ),
+              TextField(
+                controller: note, maxLines: 3,
+                decoration: const InputDecoration(labelText: 'ملخص ما أكدتْه الجهة المختصة'),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const AppText('إلغاء'),
+          ),
+          FilledButton(
+            onPressed: () {
+              if (officer.text.trim().isEmpty ||
+                  reference.text.trim().isEmpty || note.text.trim().isEmpty) {
+                return;
+              }
+              Navigator.pop(dialogContext, {
+                'eodOfficer': officer.text.trim(),
+                'eodReference': reference.text.trim(),
+                'securityNote': note.text.trim(),
+              });
+            },
+            child: const AppText('حفظ بيانات الإفادة'),
+          ),
+        ],
+      ),
+    );
+    officer.dispose();
+    reference.dispose();
+    note.dispose();
+    if (result == null || !mounted) return;
+    try {
+      final now = DateTime.now().toIso8601String();
+      await context.read<DataService>().enqueue('emergency', 'sos_secure', {
+        'id': id,
+        'status': 'secured',
+        'securedBy': user.id,
+        'securedAt': now,
+        ...result,
+        'updatedAt': now,
+      });
+      await _loadOperationsState();
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: AppText('حُفظت إفادة التأمين محليًا؛ ستتحقق قواعد Firebase من انتقال الحالة عند المزامنة.')));
+    } catch (error) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('تعذر تسجيل إفادة تأمين الموقع: $error')));
     }
   }
 
@@ -583,23 +670,30 @@ class _Level3JscState extends State<Level3JscScreen> with SingleTickerProviderSt
                                               label: const AppText('فتح الموقع')),
                                           if (e['acknowledged'] != true && e['status'] == 'urgent')
                                             OutlinedButton.icon(
-                                              onPressed: () => _acknowledgeEmergency(id),
+                                              onPressed: pending ? null : () => _acknowledgeEmergency(id),
                                               icon: const Icon(Icons.check_circle_outline),
                                               label: const AppText('تأكيد الاستلام')),
                                           if (e['acknowledged'] == true &&
-                                              const ['acknowledged', 'resolved'].contains(e['status']))
+                                              const ['acknowledged', 'resolved', 'reopened'].contains(e['status']))
                                             FilledButton(
-                                              onPressed: () => _closeSos(id),
+                                              onPressed: pending ? null : () => _closeSos(id),
                                               child: const AppText('إغلاق SOS')),
                                           if (!secured && !const ['reopened', 'closed'].contains(e['status']) &&
                                               e['referredBy'] == null)
                                             OutlinedButton.icon(
-                                              onPressed: () => _referEmergency(id),
+                                              onPressed: pending ? null : () => _referEmergency(id),
                                               icon: const Icon(Icons.forward),
                                               label: const AppText('إحالة')),
+                                          if (e['acknowledged'] == true &&
+                                              const ['acknowledged', 'resolved'].contains(e['status']) &&
+                                              e['referralDestination'] == 'هندسة المتفجرات')
+                                            OutlinedButton.icon(
+                                              onPressed: pending ? null : () => _recordSecuredSite(id),
+                                              icon: const Icon(Icons.verified_user_outlined),
+                                              label: const AppText('توثيق تأمين الموقع')),
                                           if (secured && e['acknowledged'] == true)
                                             OutlinedButton.icon(
-                                              onPressed: () => _reopenStreet(id),
+                                              onPressed: pending ? null : () => _reopenStreet(id),
                                               icon: const Icon(Icons.lock_open),
                                               label: const AppText('إعادة فتح')),
                                         ],

@@ -438,4 +438,36 @@ test('cart redirect: offline equipment move persists and reconciles on reconnect
     }
   });
 
+  test('SOS clearance, reopening and closure stay in deterministic offline order', () async {
+    final fixture = await openStore('jsc_sos_clear');
+    final offline = DataService(fixture.store, ConfigService(fixture.store));
+    try {
+      offline.online = false;
+      for (final action in ['sos_secure','sos_reopen','sos_close']) {
+        await offline.enqueue('emergency', action, {
+          'id':'sos-clear-1','updatedAt':'2026-10-28T11:00:00Z',
+        });
+      }
+      await offline.sync();
+      expect(fixture.store.queue(), hasLength(3));
+      offline.dispose();
+      final seen = <String>[];
+      final resumed = DataService(fixture.store, ConfigService(fixture.store),
+        syncItemOverride: (item, payload) async => seen.add(item.operation));
+      try {
+        resumed.queue = fixture.store.queue();
+        resumed.operations = fixture.store.cachedOperations();
+        resumed.online = true;
+        await resumed.sync();
+        expect(seen, ['sos_secure','sos_reopen','sos_close']);
+        expect(resumed.queue, isEmpty);
+      } finally {
+        resumed.dispose();
+      }
+    } finally {
+      await fixture.box.close();
+      await fixture.directory.delete(recursive:true);
+    }
+  });
+
 }
