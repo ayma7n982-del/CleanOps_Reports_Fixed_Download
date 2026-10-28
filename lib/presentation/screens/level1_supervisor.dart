@@ -704,7 +704,7 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
         'municipalityName': u.scope == 'assigned_only' ? (w['municipalityName'] ?? '') : u.scope,
         'municipalityCoordinatorId': u.municipalityCoordinatorId ?? '',
         'status': attendanceStatus[w['id'] ?? ''] ?? 'unset',
-        if ((attendanceStatus[workerId] ?? 'unset') == 'present') 'checkInAt': DateTime.now().toIso8601String(),
+        if ((attendanceStatus[w['id'] ?? ''] ?? 'unset') == 'present') 'checkInAt': DateTime.now().toIso8601String(),
         'ppeComplete': state.length == 5 && state.values.every((v) => v),
         'ppe': state,
         'reportedBy': u.id,
