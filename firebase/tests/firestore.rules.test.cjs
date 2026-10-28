@@ -119,3 +119,43 @@ test('operations: management roles retain operational oversight', async () => {
   }
 });
 
+
+test('operations: supervisor creates trips only for own group and identity', async () => {
+  const ownTrip = {
+    _entity:'trip', groupId:'group-a', supervisorId:'head-a',
+    status:'in_progress', createdAt:'2026-10-28T08:00:00.000Z',
+  };
+  await assertSucceeds(setDoc(doc(db('head-a'),'operations','trip-own-create'), ownTrip));
+  await assertFails(setDoc(doc(db('head-a'),'operations','trip-other-create'), {
+    ...ownTrip, groupId:'group-b',
+  }));
+  await assertFails(setDoc(doc(db('head-a'),'operations','trip-spoof-create'), {
+    ...ownTrip, supervisorId:'head-b',
+  }));
+});
+
+test('operations: supervisor may complete own-group trip but cannot mutate or close another group', async () => {
+  await env.withSecurityRulesDisabled(async ctx => {
+    const admin = ctx.firestore();
+    await setDoc(doc(admin,'operations','trip-own-update'), {
+      _entity:'trip', groupId:'group-a', supervisorId:'head-a',
+      status:'in_progress', createdAt:'2026-10-28T08:00:00.000Z',
+    });
+    await setDoc(doc(admin,'operations','trip-other-update'), {
+      _entity:'trip', groupId:'group-b', supervisorId:'head-b',
+      status:'in_progress', createdAt:'2026-10-28T08:00:00.000Z',
+    });
+  });
+  await assertSucceeds(updateDoc(doc(db('head-a'),'operations','trip-own-update'), {
+    status:'completed', completedBy:'head-a',
+    completedAt:'2026-10-28T09:00:00.000Z',
+  }));
+  await assertFails(updateDoc(doc(db('head-a'),'operations','trip-other-update'), {
+    status:'completed', completedBy:'head-a',
+    completedAt:'2026-10-28T09:00:00.000Z',
+  }));
+  await assertFails(updateDoc(doc(db('head-a'),'operations','trip-own-update'), {
+    landfill:'unauthorized-change',
+  }));
+});
+
