@@ -148,7 +148,32 @@ void main() {
     }
   });
 
-  test('cart redirect: offline equipment move persists and reconciles on reconnect',
+
+  test('offline status explains automatic retry without manual sync', () async {
+    final fixture = await openStore('status');
+    final service = DataService(
+      fixture.store,
+      ConfigService(fixture.store),
+    );
+    try {
+      service.online = false;
+      await service.enqueue('trip', 'create', {
+        'id': 'offline-status-trip',
+        'groupId': 'g1',
+      });
+
+      expect(service.automaticSyncStatus, contains('ستُزامن تلقائيًا'));
+
+      service.online = true;
+      expect(service.automaticSyncStatus, contains('بانتظار المزامنة التلقائية'));
+    } finally {
+      service.dispose();
+      await fixture.box.close();
+      await fixture.directory.delete(recursive: true);
+    }
+  });
+
+test('cart redirect: offline equipment move persists and reconciles on reconnect',
       () async {
     final fixture = await openStore('cart_equipment');
     const coordinatorId = 'coordinator-a';
