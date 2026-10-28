@@ -9,6 +9,8 @@ import '../../core/services/container_service.dart';
 import '../../core/services/data_service.dart';
 import '../screens/global_search.dart';
 import '../screens/live_operations_map.dart';
+import '../screens/enterprise_operations_hub.dart' show SyncCenterPage, AlertsCenterPage;
+import '../screens/container_management.dart';
 import 'app_design.dart';
 
 /// Presentation-only workspace: does not modify Firebase rules or data writes.
@@ -85,6 +87,19 @@ class _WorkspaceOverviewState extends State<WorkspaceOverview> {
     return user.groupId != null && x.groupId == user.groupId;
   }
 
+  void _open(Widget page) => Navigator.push(context,
+    MaterialPageRoute(builder: (_) => page));
+
+  void _openEmergency(AppUser user) {
+    // The alert center reads the same permission-scoped records; it is not
+    // a fake confirmation or a privileged action.
+    if (user.role == 'group_supervisor') {
+      _open(const GlobalSearchPage());
+    } else {
+      _open(const AlertsCenterPage());
+    }
+  }
+
   void openMap(AppUser user, List<ContainerItem> scoped) {
     final screen = user.role == 'donor_manager' || user.role == 'jsc_coordinator'
       ? const LiveOperationsMapScreen()
@@ -131,12 +146,18 @@ class _WorkspaceOverviewState extends State<WorkspaceOverview> {
         subtitle:'بحسب السجلات المتاحة وصلاحيات حسابك',
         child:Column(children:[
           ListTile(leading:const Icon(Icons.warning_amber),
-            title:Text('بلاغات SOS مفتوحة: $emergencies')),
+            title:Text('بلاغات SOS مفتوحة: $emergencies'),
+            trailing:const Icon(Icons.chevron_left),
+            onTap:()=>_openEmergency(user)),
           ListTile(leading:const Icon(Icons.delete_sweep),
-            title:Text('حاويات تحتاج متابعة: $critical')),
+            title:Text('حاويات تحتاج متابعة: $critical'),
+            trailing:const Icon(Icons.chevron_left),
+            onTap:()=>_open(const ContainerManagementScreen())),
           if(pending>0) ListTile(leading:const Icon(Icons.sync_problem),
             title:Text('بانتظار تأكيد الخادم: $pending'),
-            subtitle:const Text('عمليات محفوظة محليًا ولم يتأكد تنفيذها')),
+            subtitle:const Text('عمليات محفوظة محليًا ولم يتأكد تنفيذها'),
+            trailing:const Icon(Icons.chevron_left),
+            onTap:()=>_open(const SyncCenterPage())),
         ])),
       const SizedBox(height:12),
       AiSectionCard(title:'البحث والأوامر',feature:'dashboard',
@@ -181,7 +202,9 @@ class _WorkspaceOverviewState extends State<WorkspaceOverview> {
           ListTile(title:Text('سجلات اليوم: $today'),
             subtitle:Text('آخر جلب للبيانات: ${service.lastDataRefresh.isEmpty ? 'غير مؤكد' : service.lastDataRefresh}')),
           ListTile(title:Text('عمليات معلقة: $pending'),
-            subtitle:Text(service.automaticSyncStatus)),
+            subtitle:Text(service.automaticSyncStatus),
+            trailing:const Icon(Icons.chevron_left),
+            onTap:()=>_open(const SyncCenterPage())),
         ])),
       const SizedBox(height:12),
       AiSectionCard(title:'آخر النشاط الحقيقي',feature:'operations',
