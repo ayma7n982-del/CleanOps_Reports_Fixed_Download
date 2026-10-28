@@ -12,6 +12,7 @@ import '../../core/services/data_service.dart';
 import '../../core/services/report_service.dart';
 import '../../core/services/assistant_shortcut_policy.dart';
 import '../../core/services/operations_admin_service.dart';
+import '../../core/services/operational_insights.dart';
 import 'enterprise_operations_hub.dart';
 import '../widgets/app_design.dart';
 import 'messages_center.dart';
@@ -31,6 +32,23 @@ class _ChatMessage {
   const _ChatMessage(this.text, {required this.fromUser});
 }
 
+class _LinkedOperationalRecord {
+  final String collection;
+  final String id;
+  final String title;
+  final String subtitle;
+  final String feature;
+  final Map<String, dynamic> data;
+  const _LinkedOperationalRecord({
+    required this.collection,
+    required this.id,
+    required this.title,
+    required this.subtitle,
+    required this.feature,
+    required this.data,
+  });
+}
+
 class _AIBotScreenState extends State<AIBotScreen> with TickerProviderStateMixin {
   late final AnimationController orbitController;
   late final AnimationController glowController;
@@ -38,6 +56,7 @@ class _AIBotScreenState extends State<AIBotScreen> with TickerProviderStateMixin
   final TextEditingController input = TextEditingController();
   final ScrollController chatScroll = ScrollController();
   final List<_ChatMessage> messages = [];
+  List<_LinkedOperationalRecord> linkedRecords = const [];
   bool loading = false;
   bool exportingPdf = false;
 
@@ -84,8 +103,12 @@ class _AIBotScreenState extends State<AIBotScreen> with TickerProviderStateMixin
     try {
       final service = AIService(config: context.read<ConfigService>());
       final answer = await service.answer(user: user, question: question);
+      final links = await _loadLinkedRecords(user, question);
       if (!mounted) return;
-      setState(() => messages.add(_ChatMessage(answer, fromUser: false)));
+      setState(() {
+        messages.add(_ChatMessage(answer, fromUser: false));
+        linkedRecords = links;
+      });
     } catch (e) {
       if (!mounted) return;
       final error = e.toString().replaceFirst('Bad state: ', '').replaceFirst('Exception: ', '');
@@ -256,6 +279,34 @@ class _AIBotScreenState extends State<AIBotScreen> with TickerProviderStateMixin
                   ),
                 const SizedBox(height: 10),
                 _ChatPanel(messages: messages, loading: loading, input: input, controller: chatScroll, onSend: _send),
+                if (linkedRecords.isNotEmpty) ...[
+                  const SizedBox(height: 10),
+                  AiGlassCard(
+                    padding: const EdgeInsets.all(12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Row(children: [
+                          Icon(Icons.link_rounded, size: 17, color: aiCyan),
+                          SizedBox(width: 7),
+                          AppText('السجلات المرتبطة بالتحليل', style: TextStyle(fontWeight: FontWeight.w900)),
+                        ]),
+                        const SizedBox(height: 8),
+                        ...linkedRecords.map((record) => ListTile(
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                          leading: AiFeatureIcon(record.feature, size: 14),
+                          title: AppText(record.title, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800)),
+                          subtitle: AppText(record.subtitle, style: const TextStyle(fontSize: 10, color: cleanOpsMuted)),
+                          trailing: const Icon(Icons.open_in_new_rounded, size: 17),
+                          onTap: () => Navigator.push(context, MaterialPageRoute(
+                            builder: (_) => _AssistantRecordPage(record: record),
+                          )),
+                        )),
+                      ],
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 10),
                 Wrap(spacing: 8, runSpacing: 8, children: [
                   _BotAction(icon: Icons.analytics_rounded, title: 'ملخص اليوم', onTap: () { input.text = 'أعطني ملخصًا لعمليات اليوم بالأرقام الحقيقية.'; _send(); }),
@@ -295,6 +346,91 @@ class _AIBotScreenState extends State<AIBotScreen> with TickerProviderStateMixin
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+
+class _AssistantRecordPage extends StatelessWidget {
+  final _LinkedOperationalRecord record;
+  const _AssistantRecordPage({required this.record});
+
+  bool _allowed(AppUser user, Map<String, dynamic> data) {
+    if (record.collection == 'dumpsites') return user.can('dumpsite', 'view');
+    if (record.collection == 'users') {
+      return user.can('workers', 'view') && OperationalInsights.visibleToUser(
+        data, role: user.role, userId: user.id, scope: user.scope, groupId: user.groupId,
+      );
+    }
+    final entity = '${data['_entity'] ?? ''}';
+    final feature = entity == 'trip'
+        ? 'trips'
+        : (entity == 'emergency' || entity == 'notification')
+            ? 'emergency'
+            : entity == 'worker' || entity == 'group'
+                ? 'workers'
+                : 'operations';
+    return user.can(feature, 'view') && OperationalInsights.visibleToUser(
+      data, role: user.role, userId: user.id, scope: user.scope, groupId: user.groupId,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final user = context.watch<AuthService>().currentUser;
+    if (user == null) return const Scaffold(body: Center(child: AppText('انتهت جلسة المستخدم.')));
+    final ref = FirebaseFirestore.instance.collection(record.collection).doc(record.id);
+    return Scaffold(
+      appBar: AppBar(title: AppText(record.title)),
+      body: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+        stream: ref.snapshots(),
+        builder: (context, snapshot) {
+          final data = snapshot.data?.data() ?? record.data;
+          if (!_allowed(user, data)) {
+            return const Center(child: AppText('لا تملك صلاحية عرض هذا السجل.'));
+          }
+          if (snapshot.hasData && snapshot.data?.exists == false) {
+            return const Center(child: AppText('لم يعد هذا السجل موجودًا في Firebase.'));
+          }
+          final fields = <String, Object?>{
+            'الاسم': data['name'] ?? data['nameAr'] ?? data['fullName'] ?? data['workerName'],
+            'النوع': data['_entity'] ?? data['role'],
+            'الحالة': data['status'] ?? (data['isActive'] == true ? 'نشط' : null),
+            'المجموعة': data['groupName'] ?? data['groupId'],
+            'البلدية': data['municipalityName'] ?? data['municipality'],
+            'الموقع': data['location'] ?? data['street'],
+            'المكب / الوجهة': data['landfill'] ?? data['destination'],
+            'نسبة الامتلاء': data['fillPercentage'] == null ? null : '${data['fillPercentage']}%',
+            'السعة': data['capacity'],
+            'الهاتف': data['phone'],
+            'الموعد المستهدف': data['deadlineAt'] ?? data['dueAt'] ?? data['expectedArrivalAt'],
+            'تاريخ التسجيل': data['createdAt'] ?? data['timestamp'],
+            'معرّف Firebase': record.id,
+          };
+          return ListView(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
+            children: [
+              AiSectionCard(
+                title: record.title,
+                subtitle: snapshot.data?.metadata.isFromCache == true
+                    ? 'سجل Firebase مخزن على الجهاز؛ قد لا يكون محدثًا'
+                    : 'سجل Firebase مباشر',
+                feature: record.feature,
+                child: Column(
+                  children: fields.entries
+                      .where((entry) => entry.value != null && '${entry.value}'.trim().isNotEmpty)
+                      .map((entry) => ListTile(
+                        dense: true,
+                        title: AppText(entry.key, style: const TextStyle(fontSize: 11, color: cleanOpsMuted)),
+                        subtitle: AppText('${entry.value}', style: const TextStyle(fontWeight: FontWeight.w700)),
+                      ))
+                      .toList(),
+                ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
