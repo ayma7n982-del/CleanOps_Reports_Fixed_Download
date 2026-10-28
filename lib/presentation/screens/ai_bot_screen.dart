@@ -121,6 +121,135 @@ class _AIBotScreenState extends State<AIBotScreen> with TickerProviderStateMixin
     }
   }
 
+
+  String _normalizeLinkQuestion(String value) => value.toLowerCase()
+      .replaceAll(RegExp('[أإآٱ]'), 'ا')
+      .replaceAll('ى', 'ي')
+      .replaceAll('ة', 'ه');
+
+  DateTime _recordTime(Map<String, dynamic> data) {
+    final value = data['createdAt'] ?? data['timestamp'] ?? data['updatedAt'];
+    if (value is Timestamp) return value.toDate();
+    if (value is DateTime) return value;
+    return DateTime.tryParse('${value}') ?? DateTime.fromMillisecondsSinceEpoch(0);
+  }
+
+  Future<List<_LinkedOperationalRecord>> _loadLinkedRecords(
+      AppUser user, String question) async {
+    final q = _normalizeLinkQuestion(question);
+    bool has(List<String> terms) => terms.any((term) => q.contains(_normalizeLinkQuestion(term)));
+    final broad = has(['ملخص', 'تحليل', 'مخاطر', 'مشاكل', 'اولويات', 'الوضع']);
+    final wantsWorkers = broad || has(['عامل', 'عمال', 'موظف', 'موظفين', 'نقص العمال', 'الطاقم']);
+    final wantsGroups = broad || has(['مجموعه', 'مجموعات', 'فريق', 'فرق', 'توزيع']);
+    final wantsTrips = broad || has(['ترحيل', 'ترحيلات', 'رحله', 'رحلات', 'حموله', 'نقله', 'تاخر']);
+    final wantsAlerts = broad || has(['طوارئ', 'تنبيه', 'بلاغ', 'بلاغات', 'sos', 'استغاثه']);
+    final wantsSites = broad || has(['مكب', 'مكبات', 'مطمر', 'مطامر', 'امتلاء']);
+    final result = <_LinkedOperationalRecord>[];
+
+    bool visible(Map<String, dynamic> data) => OperationalInsights.visibleToUser(
+      data, role: user.role, userId: user.id, scope: user.scope, groupId: user.groupId,
+    );
+
+    if (wantsWorkers) {
+      final snap = await FirebaseFirestore.instance.collection('users')
+          .where('isActive', isEqualTo: true).limit(400).get();
+      final docs = snap.docs.where((doc) {
+        final data = doc.data();
+        return data['role'] == 'worker' && visible(data);
+      }).take(4);
+      for (final doc in docs) {
+        final data = doc.data();
+        result.add(_LinkedOperationalRecord(
+          collection: 'users', id: doc.id, feature: 'workers',
+          title: '${data['name'] ?? data['fullName'] ?? data['displayName'] ?? 'عامل'}',
+          subtitle: 'عامل • ${data['groupName'] ?? data['groupId'] ?? 'دون مجموعة'}',
+          data: data,
+        ));
+      }
+    }
+
+    if (wantsGroups || wantsTrips || wantsAlerts || wantsWorkers) {
+      final snap = await FirebaseFirestore.instance.collection('operations').limit(1000).get();
+      final docs = snap.docs.where((doc) => visible(doc.data())).toList()
+        ..sort((a, b) => _recordTime(b.data()).compareTo(_recordTime(a.data())));
+
+      if (wantsGroups) {
+        for (final doc in docs.where((d) => d.data()['_entity'] == 'group').take(4)) {
+          final data = doc.data();
+          result.add(_LinkedOperationalRecord(
+            collection: 'operations', id: doc.id, feature: 'workers',
+            title: '${data['name'] ?? data['groupName'] ?? data['groupId'] ?? 'مجموعة'}',
+            subtitle: 'مجموعة • ${data['municipalityName'] ?? data['municipality'] ?? ''}',
+            data: data,
+          ));
+        }
+      }
+      if (wantsTrips) {
+        final trips = docs.where((d) => d.data()['_entity'] == 'trip' && d.data()['isDeleted'] != true);
+        for (final doc in trips.take(4)) {
+          final data = doc.data();
+          final review = OperationalInsights.reviewTrips([data], now: DateTime.now());
+          result.add(_LinkedOperationalRecord(
+            collection: 'operations', id: doc.id, feature: 'trips',
+            title: '${data['title'] ?? data['operation'] ?? data['tripNumber'] ?? 'ترحيل'}',
+            subtitle: review.overdue > 0
+                ? 'ترحيل متأخر • ${data['status'] ?? 'قيد التنفيذ'}'
+                : 'ترحيل • ${data['status'] ?? 'مسجل'}',
+            data: data,
+          ));
+        }
+      }
+      if (wantsAlerts) {
+        for (final doc in docs.where((d) =>
+            (d.data()['_entity'] == 'emergency' || d.data()['_entity'] == 'notification') &&
+            OperationalInsights.isOpenAlert(d.data())).take(4)) {
+          final data = doc.data();
+          result.add(_LinkedOperationalRecord(
+            collection: 'operations', id: doc.id, feature: 'emergency',
+            title: '${data['title'] ?? data['name'] ?? data['body'] ?? 'تنبيه تشغيلي'}',
+            subtitle: 'تنبيه • ${data['statusLevel'] ?? data['level'] ?? data['status'] ?? 'مفتوح'}',
+            data: data,
+          ));
+        }
+      }
+      if (wantsWorkers) {
+        for (final doc in docs.where((d) => d.data()['_entity'] == 'worker').take(3)) {
+          final data = doc.data();
+          result.add(_LinkedOperationalRecord(
+            collection: 'operations', id: doc.id, feature: 'workers',
+            title: '${data['name'] ?? data['workerName'] ?? 'عامل'}',
+            subtitle: 'عامل مسجل بالعمليات • ${data['groupName'] ?? data['groupId'] ?? 'دون مجموعة'}',
+            data: data,
+          ));
+        }
+      }
+    }
+
+    if (wantsSites && user.can('dumpsite', 'view')) {
+      final snap = await FirebaseFirestore.instance.collection('dumpsites')
+          .where('isActive', isEqualTo: true).limit(200).get();
+      final docs = [...snap.docs]..sort((a, b) {
+        double fill(Map<String, dynamic> d) {
+          final value = d['fillPercentage'];
+          return value is num ? value.toDouble() : double.tryParse('${value}') ?? 0;
+        }
+        return fill(b.data()).compareTo(fill(a.data()));
+      });
+      for (final doc in docs.take(4)) {
+        final data = doc.data();
+        result.add(_LinkedOperationalRecord(
+          collection: 'dumpsites', id: doc.id, feature: 'dumpsite',
+          title: '${data['nameAr'] ?? data['name'] ?? 'مكب'}',
+          subtitle: 'مكب • الامتلاء ${data['fillPercentage'] ?? 0}%',
+          data: data,
+        ));
+      }
+    }
+
+    final unique = <String>{};
+    return result.where((item) => unique.add('${item.collection}:${item.id}')).take(10).toList();
+  }
+
   Future<void> _exportPeriodPdf() async {
     if (exportingPdf) return;
     final user = context.read<AuthService>().currentUser;
