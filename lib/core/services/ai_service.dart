@@ -74,14 +74,26 @@ class AIService {
     throw StateError('لم تُرجع خدمة الذكاء الاصطناعي نصًا صالحًا.');
   }
 
+  static String _normalizeArabic(String input) {
+    return input.toLowerCase()
+        .replaceAll(RegExp(r'[\\u064B-\\u065F\\u0670\\u0640]'), '')
+        .replaceAll(RegExp('[أإآٱ]'), 'ا')
+        .replaceAll('ى', 'ي')
+        .replaceAll('ة', 'ه')
+        .replaceAll(RegExp(r'[^\\u0621-\\u064A\\u0660-\\u0669a-z0-9 ]'), ' ')
+        .replaceAll(RegExp(r'\\s+'), ' ')
+        .trim();
+  }
+
   Future<String?> _answerLocally(AppUser user, String question) async {
-    final q = question.trim().toLowerCase();
-    final summary = q.contains('ملخص') || q.contains('اليوم') || q.contains('تقرير') || q.contains('summary');
-    final workers = q.contains('عمال') || q.contains('عامل') || q.contains('worker');
-    final groups = q.contains('مجموعة') || q.contains('مجموعات') || q.contains('group');
-    final trips = q.contains('ترحيل') || q.contains('ترحيلات') || q.contains('رحلات') || q.contains('trip');
-    final alerts = q.contains('طوارئ') || q.contains('تنبيه') || q.contains('sos') || q.contains('emergency');
-    final sites = q.contains('مكب') || q.contains('مكبات') || q.contains('امتلاء') || q.contains('dumpsite');
+    final q = _normalizeArabic(question);
+    bool has(List<String> terms) => terms.any((term) => q.contains(_normalizeArabic(term)));
+    final summary = has(['ملخص', 'اليوم', 'تقرير', 'احصائيات', 'احصاء', 'الوضع العام', 'شو الوضع', 'كيف الوضع', 'اعطيني الوضع', 'summary', 'overview']);
+    final workers = has(['عمال', 'عامل', 'موظفين', 'موظف', 'الطاقم', 'القوى العاملة', 'workforce', 'worker']);
+    final groups = has(['مجموعة', 'مجموعات', 'المجموعه', 'الفرق', 'فريق', 'الفرق الميدانية', 'group', 'team']);
+    final trips = has(['ترحيل', 'ترحيلات', 'رحلات', 'نقل النفايات', 'النقلات', 'حمولات', 'الشحنات', 'trip', 'load']);
+    final alerts = has(['طوارئ', 'تنبيه', 'انذارات', 'بلاغات', 'بلاغ', 'استغاثة', 'sos', 'emergency', 'alert']);
+    final sites = has(['مكب', 'مكبات', 'مكبات النفايات', 'امتلاء', 'المطامر', 'مطمر', 'مواقع التخلص', 'dumpsite', 'landfill']);
     if (!(summary || workers || groups || trips || alerts || sites)) return null;
     final data = await _fetchOperationalContext(user);
     final lines = <String>[];
