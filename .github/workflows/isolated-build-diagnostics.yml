@@ -1,0 +1,60 @@
+name: CleanOps isolated build diagnostics
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose-flutter:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Capture Flutter and Android diagnostics
+        shell: bash
+        run: |
+          set +e
+          mkdir -p diagnostics
+          flutter --version > diagnostics/flutter-version.log 2>&1
+          flutter doctor -v > diagnostics/flutter-doctor.log 2>&1
+          flutter pub get > diagnostics/pub-get.log 2>&1
+          pub_status=$?
+          if [ "$pub_status" -eq 0 ]; then
+            flutter analyze --no-fatal-infos --no-fatal-warnings > diagnostics/analyze.log 2>&1
+            analyze_status=$?
+            flutter test > diagnostics/test.log 2>&1
+            test_status=$?
+            flutter build apk --debug > diagnostics/apk-build.log 2>&1
+            apk_status=$?
+          else
+            analyze_status=99
+            test_status=99
+            apk_status=99
+          fi
+          printf 'pub=%s\nanalyze=%s\ntests=%s\napk=%s\n' "$pub_status" "$analyze_status" "$test_status" "$apk_status" | tee diagnostics/status.txt
+          if [ "$pub_status" -ne 0 ] || [ "$analyze_status" -ne 0 ] || [ "$test_status" -ne 0 ] || [ "$apk_status" -ne 0 ]; then exit 1; fi
+      - name: Upload diagnostics even on failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cleanops-isolated-build-diagnostics
+          path: diagnostics/
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Upload debug APK on success
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cleanops-isolated-debug-apk
+          path: build/app/outputs/flutter-apk/app-debug.apk
+          if-no-files-found: error
