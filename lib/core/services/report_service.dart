@@ -14,6 +14,48 @@ import 'data_service.dart';
 import 'pdf_file_saver.dart';
 import 'report_pdf_template.dart';
 
+class ReportPeriodRange {
+  final DateTime startDate;
+  final DateTime endDate;
+  const ReportPeriodRange({required this.startDate, required this.endDate});
+
+  int get inclusiveDays =>
+      DateTime(endDate.year, endDate.month, endDate.day)
+          .difference(DateTime(startDate.year, startDate.month, startDate.day))
+          .inDays +
+      1;
+}
+
+class ReportPeriodPresets {
+  static ReportPeriodRange daily(DateTime now) {
+    final day = DateTime(now.year, now.month, now.day);
+    return ReportPeriodRange(startDate: day, endDate: day);
+  }
+
+  static ReportPeriodRange weekly(DateTime now) {
+    final end = DateTime(now.year, now.month, now.day);
+    return ReportPeriodRange(
+      startDate: end.subtract(const Duration(days: 6)),
+      endDate: end,
+    );
+  }
+
+  static ReportPeriodRange custom(DateTime start, DateTime end) {
+    final normalizedStart = DateTime(start.year, start.month, start.day);
+    final normalizedEnd = DateTime(end.year, end.month, end.day);
+    if (normalizedEnd.isBefore(normalizedStart)) {
+      return ReportPeriodRange(
+        startDate: normalizedEnd,
+        endDate: normalizedStart,
+      );
+    }
+    return ReportPeriodRange(
+      startDate: normalizedStart,
+      endDate: normalizedEnd,
+    );
+  }
+}
+
 class ReportSnapshot {
   final int trips, alternativeTrips, attendance, absence, ppeCompliant, emergencies, emergencyOpen, emergencySecured;
   final int containersTotal, containersFull, containersPartial, containersEmpty, containerIssues;
