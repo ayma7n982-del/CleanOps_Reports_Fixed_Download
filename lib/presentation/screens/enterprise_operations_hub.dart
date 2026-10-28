@@ -293,7 +293,65 @@ class _OperationTile extends StatelessWidget {
 
 class SyncCenterPage extends StatelessWidget {
   const SyncCenterPage({super.key});
-  @override Widget build(BuildContext context){final d=context.watch<DataService>();final m=context.watch<MessagingService>();final c=context.watch<ConfigService>();return Scaffold(appBar:AppBar(title:const AppText('مركز المزامنة')),body:ListView(padding:const EdgeInsets.fromLTRB(16,16,16,120),children:[AiSectionCard(title:'حالة الاتصال',feature:'sync',child:ListTile(leading:Icon(d.online?Icons.cloud_done_rounded:Icons.cloud_off_rounded,color:d.online?aiGreen:Colors.orange),title:AppText(d.online?'Online':'Offline'),subtitle:AppText('آخر مزامنة: ${d.lastSync}'),trailing:FilledButton.tonalIcon(onPressed:d.syncing?null:()=>d.sync(),icon:const Icon(Icons.sync_rounded),label:const AppText('مزامنة الآن')))),const SizedBox(height:12),AiSectionCard(title:'طابور البيانات المحلي',feature:'sync',child:Column(children:[_kv('عمليات بانتظار المزامنة','${d.queue.length}'),_kv('مزامنة تلقائية',c.autoMessageSync?'مفعّلة':'متوقفة'),_kv('الرسائل غير المقروءة','${m.unreadCount}'),_kv('الرسائل المحلية',c.localMessagingEnabled?'مفعّلة':'متوقفة'),_kv('الرسائل Online',c.onlineMessagingEnabled?'مفعّلة':'متوقفة')])),const SizedBox(height:12),AiSectionCard(title:'سلوك Offline',feature:'messages',child:const AppText('البيانات التي تسمح بها الصلاحيات تُحفظ محليًا وتنتظر المزامنة عند عودة الاتصال. لا يتم استخدام FCM.'))]));}
+
+  @override
+  Widget build(BuildContext context) {
+    final d = context.watch<DataService>();
+    final m = context.watch<MessagingService>();
+    final c = context.watch<ConfigService>();
+    return Scaffold(
+      appBar: AppBar(title: const AppText('مركز المزامنة')),
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
+        children: [
+          AiSectionCard(
+            title: 'حالة الاتصال والمزامنة التلقائية',
+            feature: 'sync',
+            child: ListTile(
+              leading: Icon(
+                d.syncing
+                    ? Icons.sync_rounded
+                    : d.online
+                        ? Icons.cloud_done_rounded
+                        : Icons.cloud_off_rounded,
+                color: d.online ? aiGreen : Colors.orange,
+              ),
+              title: AppText(d.online ? 'Online' : 'Offline'),
+              subtitle: AppText(d.automaticSyncStatus),
+              trailing: d.queue.isEmpty
+                  ? const Icon(Icons.check_circle_outline_rounded, color: aiGreen)
+                  : Badge(label: AppText('${d.queue.length}')),
+            ),
+          ),
+          const SizedBox(height: 12),
+          AiSectionCard(
+            title: 'طابور البيانات المحلي',
+            feature: 'sync',
+            child: Column(children: [
+              _kv('عمليات بانتظار المزامنة', '${d.queue.length}'),
+              _kv('آخر مزامنة ناجحة', d.lastSync),
+              _kv('آخر تحديث للبيانات',
+                  d.lastDataRefresh.isEmpty ? 'لم يتم بعد' : d.lastDataRefresh),
+              _kv('مزامنة الرسائل التلقائية', c.autoMessageSync ? 'مفعّلة' : 'متوقفة'),
+              _kv('الرسائل غير المقروءة', '${m.unreadCount}'),
+              _kv('الرسائل المحلية', c.localMessagingEnabled ? 'مفعّلة' : 'متوقفة'),
+              _kv('الرسائل Online', c.onlineMessagingEnabled ? 'مفعّلة' : 'متوقفة'),
+            ]),
+          ),
+          const SizedBox(height: 12),
+          AiSectionCard(
+            title: 'سلوك Offline',
+            feature: 'messages',
+            child: AppText(
+              d.online
+                  ? 'لا تحتاج إلى زر مزامنة. أي عمليات محلية معلقة تُرسل تلقائيًا، وتُحدّث البيانات دوريًا عند توفر الاتصال.'
+                  : 'أنت تعمل دون اتصال. العمليات تُحفظ محليًا، وتُرسل تلقائيًا عند عودة الإنترنت دون أي إجراء يدوي.',
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class SystemHealthPage extends StatefulWidget { const SystemHealthPage({super.key}); @override State<SystemHealthPage> createState()=>_SystemHealthPageState(); }
