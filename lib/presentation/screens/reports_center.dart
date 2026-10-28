@@ -333,7 +333,7 @@ class _ReportsCenterState extends State<ReportsCenterScreen> {
   }
 
   Widget _actions(ReportSnapshot s, AppUser u)=>_section('التصدير والاعتماد',Wrap(spacing:8,runSpacing:8,children:[OutlinedButton.icon(
-  onPressed: ['municipality_coordinator', 'jsc_coordinator', 'donor_manager'].contains(u.role)
+  onPressed: u.can('reports', 'create')
       ? () => _createSmartDraft(s, u)
       : null,
   icon: const Icon(Icons.auto_awesome_rounded),
