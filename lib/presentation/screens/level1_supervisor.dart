@@ -874,12 +874,13 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
     final user = context.watch<AuthService>().currentUser;
     final groupId = user?.groupId?.trim() ?? '';
     if (user == null || groupId.isEmpty) return const SizedBox.shrink();
-    final active = data.operations.where((item) {
-      if (item['_entity'] != 'trip' || item['isDeleted'] == true) return false;
-      if ('${item['groupId'] ?? ''}'.trim() != groupId) return false;
-      final status = '${item['status'] ?? ''}'.trim().toLowerCase();
-      return !const {'completed', 'closed', 'cancelled'}.contains(status);
-    }).toList()
+    final active = data.operations.where((item) =>
+      TripLifecycle.canSupervisorComplete(
+        trip: item,
+        supervisorId: user.id,
+        groupId: groupId,
+      ),
+    ).toList()
       ..sort((a, b) => '${b['startedAt'] ?? b['createdAt'] ?? ''}'
           .compareTo('${a['startedAt'] ?? a['createdAt'] ?? ''}'));
     if (active.isEmpty) return const SizedBox.shrink();
