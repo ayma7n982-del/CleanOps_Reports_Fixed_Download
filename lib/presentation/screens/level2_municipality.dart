@@ -253,7 +253,9 @@ class _Level2MunicipalityScreenState extends State<Level2MunicipalityScreen> {
   Widget build(BuildContext context) {
     return Directionality(
       textDirection: context.watch<LocaleController>().isArabic ? TextDirection.rtl : TextDirection.ltr,
-      child: Scaffold(
+      child: DefaultTabController(
+        length: 3,
+        child: Scaffold(
         appBar: AppBar(
           title: const AppText('المستوى 2 — منسق البلدية'),
           actions: [
@@ -277,6 +279,7 @@ class _Level2MunicipalityScreenState extends State<Level2MunicipalityScreen> {
           bottom: TabBar(isScrollable: true, onTap: (i) => setState(() => tab = i), tabs: [Tab(text: tr('لوحة القيادة')), Tab(text: tr('الإدارة')), Tab(text: tr('التقارير والرسائل'))]),
         ),
         body: _tabBody(),
+        ),
       ),
     );
   }

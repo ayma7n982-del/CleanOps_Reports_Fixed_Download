@@ -44,7 +44,10 @@ class _OperationsManagementScreenState extends State<OperationsManagementScreen>
     final safe = tab.clamp(0, tabs.length - 1);
     return Directionality(
       textDirection: context.watch<LocaleController>().isArabic ? TextDirection.rtl : TextDirection.ltr,
-      child: Scaffold(
+      child: DefaultTabController(
+        length: tabs.length,
+        initialIndex: safe,
+        child: Scaffold(
         backgroundColor: cleanOpsBg,
         appBar: AppBar(
           title: const AppText('مركز عمليات AI'),
@@ -52,6 +55,7 @@ class _OperationsManagementScreenState extends State<OperationsManagementScreen>
           bottom: TabBar(isScrollable: true, onTap: (i) => setState(() => tab = i), tabs: labels),
         ),
         body: IndexedStack(index: safe, children: tabs),
+        ),
       ),
     );
   }
