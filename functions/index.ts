@@ -424,7 +424,7 @@ export const saveOperationalReport = onCall({ region: 'us-central1', timeoutSeco
   }
 
   const now = new Date().toISOString();
-  const normalized = {
+  const normalized: Record<string, unknown> = {
     ...(existing ?? {}), ...report,
     id: reportId,
     _entity: 'report',
