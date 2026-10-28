@@ -46,6 +46,7 @@ const ids = {
   cart: `${prefix}_cart`,
   redirectDenied: `${prefix}_redirect_denied`,
   redirectAllowed: `${prefix}_redirect_allowed`,
+  deleteRequest: `${prefix}_delete_request`,
 };
 
 function rememberDoc(collection, id) {
@@ -122,20 +123,38 @@ async function rest(method, path, token, data, query = '') {
   const text = await response.text();
   return {status: response.status, ok: response.ok, text};
 }
-async function callable(name, token, data) {
+async function commit(token, writes) {
   const response = await fetch(
-    `https://us-central1-${projectId}.cloudfunctions.net/${name}`,
+    `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents:commit`,
     {
       method: 'POST',
       headers: {
         authorization: `Bearer ${token}`,
         'content-type': 'application/json',
       },
-      body: JSON.stringify({data}),
+      body: JSON.stringify({writes}),
     },
   );
   const text = await response.text();
   return {status: response.status, ok: response.ok, text};
+}
+function updateWrite(path, data, fieldPaths) {
+  return {
+    update: {
+      name: `${firestoreBase}/${path}`,
+      fields: fields(data).fields,
+    },
+    updateMask: {fieldPaths},
+  };
+}
+function createWrite(path, data) {
+  return {
+    update: {
+      name: `${firestoreBase}/${path}`,
+      fields: fields(data).fields,
+    },
+    currentDocument: {exists: false},
+  };
 }
 function expectAllowed(label, result) {
   if (!result.ok) throw new Error(`${label}: expected allowed, got HTTP ${result.status}: ${result.text.slice(0, 700)}`);
