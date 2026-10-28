@@ -156,6 +156,10 @@ class _AIBotScreenState extends State<AIBotScreen> with TickerProviderStateMixin
                       const Row(children: [AiFeatureIcon('dashboard', size: 16), SizedBox(width: 8), AppText('بيانات تشغيلية حقيقية', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w900)), Spacer(), AppText('Firestore', style: TextStyle(fontSize: 9, color: aiGreen))]),
                       const SizedBox(height: 10),
                       Wrap(spacing: 8, runSpacing: 8, children: [_LiveChip('العمال', '${x['workers']}'), _LiveChip('المجموعات', '${x['groups']}'), _LiveChip('الترحيلات', '${x['trips']}'), _LiveChip('الطوارئ', '${x['emergencies']}'), _LiveChip('المكبات الحرجة', '${x['criticalDumpsites']}')]),
+                      if ((x['criticalDumpsites'] as num? ?? 0) > 0) ...[
+                        const SizedBox(height: 10),
+                        AppText('تنبيه استباقي: ${x['criticalDumpsites']} مكب نشط بنسبة امتلاء 85% أو أكثر. راجع حالة المكبات.', style: const TextStyle(color: Color(0xFF9A4D06), fontSize: 12, fontWeight: FontWeight.w700)),
+                      ],
                     ]));
                   },
                 ),
@@ -164,6 +168,7 @@ class _AIBotScreenState extends State<AIBotScreen> with TickerProviderStateMixin
                 const SizedBox(height: 10),
                 Wrap(spacing: 8, runSpacing: 8, children: [
                   _BotAction(icon: Icons.analytics_rounded, title: 'ملخص اليوم', onTap: () { input.text = 'أعطني ملخصًا لعمليات اليوم بالأرقام الحقيقية.'; _send(); }),
+                  _BotAction(icon: Icons.insights_rounded, title: 'تحليل المخاطر', onTap: () { input.text = 'ما أهم مخاطر التشغيل وتأخر الترحيلات ونقص العمال؟'; _send(); }),
                   _BotAction(icon: Icons.warning_amber_rounded, title: 'التنبيهات', onTap: () { input.text = 'ما حالات SOS والطوارئ النشطة الآن؟'; _send(); }),
                   _BotAction(icon: Icons.delete_sweep_rounded, title: 'المكبات', onTap: () { input.text = 'اعرض حالة المكبات ونسب الامتلاء الحالية.'; _send(); }),
                   _BotAction(icon: Icons.local_shipping_rounded, title: 'الترحيلات', onTap: () { input.text = 'كم عدد الترحيلات المسجلة اليوم؟'; _send(); }),
