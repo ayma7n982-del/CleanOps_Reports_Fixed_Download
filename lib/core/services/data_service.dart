@@ -13,6 +13,7 @@ import 'package:uuid/uuid.dart';
 import '../models/core_models.dart';
 import 'config_service.dart';
 import 'local_store.dart';
+import 'operations_cache_merge.dart';
 
 class DataService extends ChangeNotifier {
   final LocalStore store;
@@ -262,18 +263,22 @@ class DataService extends ChangeNotifier {
     List<Map<String, dynamic>> remote,
     List<Map<String, dynamic>> local,
   ) {
-    final map = <String, Map<String, dynamic>>{};
-    for (final item in remote) {
-      final id = '${item['id'] ?? ''}';
-      if (id.isNotEmpty) map[id] = Map.from(item);
+    final pendingIds = <String>{};
+    for (final item in queue) {
+      if (item.entity == 'audit' || item.entity == 'notification' ||
+          item.entity == 'cart_redirect') continue;
+      try {
+        final payload = jsonDecode(item.payload);
+        if (payload is! Map) continue;
+        final id = '${payload['id'] ?? ''}'.trim();
+        if (id.isNotEmpty) pendingIds.add(id);
+      } catch (_) {
+        // An invalid pending record cannot overwrite a confirmed server value.
+      }
     }
-    for (final item in local) {
-      final id = '${item['id'] ?? ''}';
-      if (id.isNotEmpty) map[id] = {...?map[id], ...item};
-    }
-    final values = map.values.toList();
-    values.sort((a, b) => '${b['createdAt'] ?? ''}'.compareTo('${a['createdAt'] ?? ''}'));
-    return values;
+    return OperationsCacheMerge.merge(
+      remote, local, pendingIds: pendingIds,
+    );
   }
 
   void _applyLocalOperation(String entity, String operation, Map<String, dynamic> payload) {
