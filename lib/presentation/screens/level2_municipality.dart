@@ -219,8 +219,16 @@ class _Level2MunicipalityScreenState extends State<Level2MunicipalityScreen> {
         !groups.any((g) => recordId(g) == fromId) ||
         !groups.any((g) => recordId(g) == toId) || fromId == toId) return;
     try {
-      final id = DateTime.now().microsecondsSinceEpoch.toString();
       final selectedCart = carts.firstWhere((c) => cartSelectionId(c) == cartId);
+      if (data.hasPendingCartRedirect(
+          recordId(selectedCart), '${selectedCart['_cartCollection'] ?? ''}')) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: AppText('هناك طلب نقل معلّق لهذه الكارة. ستتم مزامنته تلقائياً عند عودة الإنترنت.')));
+        }
+        return;
+      }
+      final id = DateTime.now().microsecondsSinceEpoch.toString();
       final payload = <String, dynamic>{
         'id': id, 'municipalityCoordinatorId': u.id,
         'fromGroupId': fromId, 'toGroupId': toId, 'cartId': recordId(selectedCart),
