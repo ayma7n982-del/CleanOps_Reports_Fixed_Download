@@ -16,6 +16,7 @@ import '../../core/services/config_service.dart';
 import '../../core/services/data_service.dart';
 import '../../core/services/messaging_service.dart';
 import '../../core/services/operations_admin_service.dart';
+import '../../core/services/operational_insights.dart';
 import '../../core/services/excel_file_saver.dart';
 import '../widgets/app_design.dart';
 import '../widgets/creative_shortcuts.dart';
@@ -81,7 +82,62 @@ class _LoadingCard extends StatelessWidget { const _LoadingCard(); @override Wid
 
 class AlertsCenterPage extends StatelessWidget {
   const AlertsCenterPage({super.key});
-  @override Widget build(BuildContext context) => _OpsStreamPage(title:'مركز التنبيهات',feature:'emergency',query:FirebaseFirestore.instance.collection('operations').where('_entity',whereIn:['emergency','notification']).limit(200),empty:'لا توجد تنبيهات أو بلاغات مسجلة.',builder:(docs)=>Column(children:docs.map((d)=>_OperationTile(d, critical: '${d.data()['level'] ?? ''}' == 'critical' || '${d.data()['_entity']}' == 'emergency')).toList()));
+
+  @override
+  Widget build(BuildContext context) {
+    final user = context.watch<AuthService>().currentUser;
+    return _OpsStreamPage(
+      title: 'مركز التنبيهات',
+      feature: 'emergency',
+      query: FirebaseFirestore.instance.collection('operations')
+          .where('_entity', whereIn: ['emergency', 'notification']).limit(200),
+      empty: 'لا توجد تنبيهات أو بلاغات مسجلة.',
+      builder: (docs) {
+        if (user == null || !user.can('emergency', 'view')) {
+          return const AppText('ليست لديك صلاحية لعرض التنبيهات.');
+        }
+        bool visible(Map<String, dynamic> data) => OperationalInsights.visibleToUser(
+          data, role: user.role, userId: user.id, scope: user.scope,
+          groupId: user.groupId,
+        );
+        final targetedIncidents = <String>{};
+        for (final doc in docs) {
+          final data = doc.data();
+          if (data['_entity'] == 'notification' && visible(data)) {
+            final sourceId = '${data['sourceId'] ?? ''}'.trim();
+            if (sourceId.isNotEmpty && data['sourceEntity'] == 'emergency') {
+              targetedIncidents.add(sourceId);
+            }
+          }
+        }
+        final selected = docs.where((doc) {
+          final data = doc.data();
+          return OperationalInsights.isOpenAlert(data) &&
+              (visible(data) || (data['_entity'] == 'emergency' &&
+                  targetedIncidents.contains(doc.id)));
+        }).toList()
+          ..sort((a, b) {
+            final priority = OperationalInsights.alertPriority(a.data())
+                .compareTo(OperationalInsights.alertPriority(b.data()));
+            if (priority != 0) return priority;
+            return '${b.data()['createdAt'] ?? ''}'
+                .compareTo('${a.data()['createdAt'] ?? ''}');
+          });
+        final seen = <String>{};
+        final unique = selected.where((doc) =>
+            seen.add(OperationalInsights.alertIncidentKey(doc.data(), doc.id))).toList();
+        if (unique.isEmpty) {
+          return const AppText('لا توجد بلاغات مفتوحة ضمن نطاق صلاحياتك.');
+        }
+        return Column(children: [
+          AppText('البلاغات الفعالة: ${unique.length} — مرتبة حسب الأولوية، دون تكرار البلاغ نفسه.',
+              style: const TextStyle(fontSize: 11, color: cleanOpsMuted)),
+          ...unique.map((doc) => _OperationTile(
+            doc, critical: OperationalInsights.alertPriority(doc.data()) == 0)),
+        ]);
+      },
+    );
+  }
 }
 
 class TripsLogPage extends StatelessWidget {
@@ -92,7 +148,7 @@ class TripsLogPage extends StatelessWidget {
 class _OpsStreamPage extends StatelessWidget {
   final String title,feature,empty; final Query<Map<String,dynamic>> query; final Widget Function(List<QueryDocumentSnapshot<Map<String,dynamic>>>) builder;
   const _OpsStreamPage({required this.title,required this.feature,required this.query,required this.empty,required this.builder});
-  @override Widget build(BuildContext context)=>Scaffold(appBar:AppBar(title:AppText(title)),body:StreamBuilder<QuerySnapshot<Map<String,dynamic>>>(stream:query.snapshots(),builder:(c,s){if(s.hasError)return Center(child:Padding(padding:const EdgeInsets.all(20),child:AppText('تعذر تحميل البيانات: ${s.error}')));if(!s.hasData)return const Center(child:CircularProgressIndicator());final docs=s.data!.docs.toList()..sort((a,b)=>'${b.data()['createdAt']??b.data()['timestamp']??''}'.compareTo('${a.data()['createdAt']??a.data()['timestamp']??''}'));if(docs.isEmpty)return Center(child:AppText(empty));return ListView(padding:const EdgeInsets.fromLTRB(16,16,16,120),children:[AiSectionCard(title:title,feature:feature,subtitle:'بيانات حقيقية من العمليات',child:builder(docs))]);}));
+  @override Widget build(BuildContext context)=>Scaffold(appBar:AppBar(title:AppText(title)),body:StreamBuilder<QuerySnapshot<Map<String,dynamic>>>(stream:query.snapshots(),builder:(c,s){if(s.hasError)return Center(child:Padding(padding:const EdgeInsets.all(20),child:AppText('تعذر تحميل البيانات: ${s.error}')));if(!s.hasData)return const Center(child:CircularProgressIndicator());final docs=s.data!.docs.toList()..sort((a,b)=>'${b.data()['createdAt']??b.data()['timestamp']??''}'.compareTo('${a.data()['createdAt']??a.data()['timestamp']??''}'));if(docs.isEmpty)return Center(child:AppText(empty));return ListView(padding:const EdgeInsets.fromLTRB(16,16,16,120),children:[AiSectionCard(title:title,feature:feature,subtitle:s.data!.metadata.isFromCache ? 'بيانات محلية مخزنة (قد تكون قديمة)' : 'بيانات Firestore بحسب الصلاحيات',child:builder(docs))]);}));
 }
 class _OperationTile extends StatelessWidget { final QueryDocumentSnapshot<Map<String,dynamic>> doc; final bool critical; const _OperationTile(this.doc,{this.critical=false}); @override Widget build(BuildContext c){final d=doc.data();final entity='${d['_entity']??''}';final title='${d['title']??d['name']??d['operation']??entity}';final detail='${d['detail']??d['description']??d['status']??''}';return ListTile(contentPadding:const EdgeInsets.symmetric(vertical:4),leading:AiFeatureIcon(critical?'emergency':entity=='trip'?'trips':'notifications',size:15),title:AppText(title,style:const TextStyle(fontSize:12,fontWeight:FontWeight.w800)),subtitle:AppText(detail,maxLines:2,overflow:TextOverflow.ellipsis,style:const TextStyle(fontSize:10,color:cleanOpsMuted)),trailing:Text(doc.id.substring(0,doc.id.length < 8 ? doc.id.length : 8),style:const TextStyle(fontSize:9,color:cleanOpsMuted)));}}
 
