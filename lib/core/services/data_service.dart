@@ -217,7 +217,9 @@ class DataService extends ChangeNotifier {
     );
     queue = [...queue, item];
     await store.saveQueue(queue);
-    _applyLocalOperation(entity == 'attendance_checkout' ? 'attendance' : entity, operation, safePayload);
+    if (entity != 'cart_redirect') {
+      _applyLocalOperation(entity == 'attendance_checkout' ? 'attendance' : entity, operation, safePayload);
+    }
     notifyListeners();
     if (online) unawaited(sync());
   }
