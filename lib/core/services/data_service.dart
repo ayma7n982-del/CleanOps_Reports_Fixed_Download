@@ -317,7 +317,7 @@ class DataService extends ChangeNotifier {
     );
     queue = [...queue, item];
     await store.saveQueue(queue);
-    if (entity != 'cart_redirect') {
+    if (entity != 'cart_redirect' && entity != 'equipment_dispatch') {
       _applyLocalOperation(entity == 'attendance_checkout' ? 'attendance' : entity, operation, safePayload);
     }
     notifyListeners();
@@ -353,7 +353,8 @@ class DataService extends ChangeNotifier {
     final pendingIds = <String>{};
     for (final item in queue) {
       if (item.entity == 'audit' || item.entity == 'notification' ||
-          item.entity == 'cart_redirect') continue;
+          item.entity == 'cart_redirect' ||
+          item.entity == 'equipment_dispatch') continue;
       try {
         final payload = jsonDecode(item.payload);
         if (payload is! Map) continue;
@@ -490,7 +491,7 @@ class DataService extends ChangeNotifier {
                 payload,
                 coordinatorId: '${payload['municipalityCoordinatorId'] ?? ''}',
               );
-            } else {
+            } else if (item.entity != 'equipment_dispatch') {
               _applyLocalOperation(
                 item.entity == 'attendance_checkout' ? 'attendance' : item.entity,
                 item.operation,
@@ -662,6 +663,57 @@ class DataService extends ChangeNotifier {
                 throw StateError('لا يمكن إغلاق بلاغ SOS قبل تأكيد الاستلام.');
               }
             }
+          } else if (item.entity == 'equipment_dispatch' &&
+              item.operation == 'dispatch') {
+            final actorId = FirebaseAuth.instance.currentUser?.uid ?? '';
+            final equipmentId = '${payload['equipmentId'] ?? ''}'.trim();
+            final municipality = '${payload['municipality'] ?? ''}'.trim();
+            if (actorId.isEmpty || equipmentId.isEmpty || municipality.isEmpty ||
+                payload['requestedBy'] != actorId) {
+              throw StateError('طلب توجيه الآلية غير مكتمل أو يخص حسابًا آخر.');
+            }
+            final db = FirebaseFirestore.instance;
+            final equipmentRef = db.collection('equipment').doc(equipmentId);
+            await db.runTransaction((tx) async {
+              final request = await tx.get(ref);
+              final equipment = await tx.get(equipmentRef);
+              if (request.exists) {
+                final saved = request.data();
+                if (saved?['_entity'] == 'equipment_dispatch' &&
+                    saved?['equipmentId'] == equipmentId &&
+                    saved?['municipality'] == municipality &&
+                    saved?['requestedBy'] == actorId &&
+                    saved?['status'] == 'applied') return;
+                throw StateError('معرّف التوجيه مستخدم لعملية أخرى.');
+              }
+              final current = equipment.data();
+              if (current == null || current['isDeleted'] == true ||
+                  current['dispatchStatus'] == 'dispatched' ||
+                  const ['cart', 'كارة'].contains(
+                    '${current['type'] ?? current['category'] ?? ''}'.toLowerCase()) ||
+                  const ['out_of_service', 'maintenance', 'broken'].contains(
+                    '${current['status'] ?? ''}'.toLowerCase())) {
+                throw StateError('الآلية غير متاحة للتوجيه؛ حدّث بياناتها.');
+              }
+              final now = DateTime.now().toIso8601String();
+              tx.update(equipmentRef, {
+                'dispatchStatus': 'dispatched',
+                'dispatchMunicipality': municipality,
+                'dispatchRequestId': docId,
+                'dispatchBy': actorId,
+                'dispatchAt': now,
+              });
+              tx.set(ref, {
+                ...cloudPayload,
+                'id': docId,
+                '_entity': 'equipment_dispatch',
+                'requestedBy': actorId,
+                'equipmentId': equipmentId,
+                'municipality': municipality,
+                'status': 'applied',
+                'updatedAt': now,
+              });
+            });
           } else if (item.entity == 'attendance_checkout') {
             await FirebaseFunctions.instance.httpsCallable('recordAttendanceCheckout').call(<String, dynamic>{'attendanceId': docId});
           } else if (item.entity == 'work_report' || item.entity == 'report_approval') {
@@ -707,7 +759,7 @@ class DataService extends ChangeNotifier {
                 debugPrint('Cart cache refresh deferred: $error');
               }
             }
-          } else {
+          } else if (item.entity != 'equipment_dispatch') {
             _applyLocalOperation(item.entity == 'attendance_checkout' ? 'attendance' : item.entity, item.operation, cloudPayload);
           }
           queue = queue.where((e) => e.id != item.id).toList();

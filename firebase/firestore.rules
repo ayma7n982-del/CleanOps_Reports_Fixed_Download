@@ -505,6 +505,48 @@ service cloud.firestore {
         );
     }
 
+    // JSC dispatch changes only operational dispatch fields, never L2 ownership.
+    function validJscEquipmentDispatchUpdate(equipmentId) {
+      return isL3()
+        && resource.data.get('isDeleted', false) != true
+        && resource.data.get('dispatchStatus', '') != 'dispatched'
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'dispatchStatus', 'dispatchMunicipality', 'dispatchRequestId',
+          'dispatchBy', 'dispatchAt'
+        ])
+        && request.resource.data.dispatchStatus == 'dispatched'
+        && request.resource.data.dispatchBy == request.auth.uid
+        && request.resource.data.dispatchAt is string
+        && request.resource.data.dispatchAt.size() > 0
+        && request.resource.data.dispatchMunicipality is string
+        && request.resource.data.dispatchMunicipality.size() > 0
+        && request.resource.data.dispatchRequestId is string
+        && request.resource.data.dispatchRequestId.size() > 0
+        && existsAfter(/databases/$(database)/documents/operations/$(request.resource.data.dispatchRequestId))
+        && getAfter(/databases/$(database)/documents/operations/$(request.resource.data.dispatchRequestId)).data._entity == 'equipment_dispatch'
+        && getAfter(/databases/$(database)/documents/operations/$(request.resource.data.dispatchRequestId)).data.equipmentId == equipmentId
+        && getAfter(/databases/$(database)/documents/operations/$(request.resource.data.dispatchRequestId)).data.municipality == request.resource.data.dispatchMunicipality
+        && getAfter(/databases/$(database)/documents/operations/$(request.resource.data.dispatchRequestId)).data.requestedBy == request.auth.uid
+        && getAfter(/databases/$(database)/documents/operations/$(request.resource.data.dispatchRequestId)).data.status == 'applied';
+    }
+
+    function validJscEquipmentDispatchCreate(requestId) {
+      return isL3()
+        && request.resource.data._entity == 'equipment_dispatch'
+        && request.resource.data.id == requestId
+        && request.resource.data.requestedBy == request.auth.uid
+        && request.resource.data.status == 'applied'
+        && request.resource.data.equipmentId is string
+        && request.resource.data.equipmentId.size() > 0
+        && request.resource.data.municipality is string
+        && request.resource.data.municipality.size() > 0
+        && exists(/databases/$(database)/documents/equipment/$(request.resource.data.equipmentId))
+        && getAfter(/databases/$(database)/documents/equipment/$(request.resource.data.equipmentId)).data.dispatchRequestId == requestId
+        && getAfter(/databases/$(database)/documents/equipment/$(request.resource.data.equipmentId)).data.dispatchStatus == 'dispatched'
+        && getAfter(/databases/$(database)/documents/equipment/$(request.resource.data.equipmentId)).data.dispatchMunicipality == request.resource.data.municipality
+        && getAfter(/databases/$(database)/documents/equipment/$(request.resource.data.equipmentId)).data.dispatchBy == request.auth.uid;
+    }
+
     // Equipment remains municipality-scoped. Cart assignment changes are
     // atomic client transactions validated by the matching cart_redirect log.
     match /equipment/{id} {
@@ -512,7 +554,8 @@ service cloud.firestore {
         isL3OrL4() ||
         (isL2() && resource.data.municipalityCoordinatorId == request.auth.uid)
       );
-      allow update: if validEquipmentCartAssignmentUpdate(id);
+      allow update: if validEquipmentCartAssignmentUpdate(id)
+        || validJscEquipmentDispatchUpdate(id);
       allow create, delete: if false;
     }
 
@@ -521,6 +564,7 @@ service cloud.firestore {
       allow create: if signedIn() && (
         (isL4() && (request.resource.data._entity == 'report' || request.resource.data._entity == 'user'))
         || (isL2() && (request.resource.data._entity == 'group' || request.resource.data._entity == 'worker' || validCartRedirect()))
+        || validJscEquipmentDispatchCreate(id)
         || (isL3() && (request.resource.data._entity == 'heavy_machinery' || request.resource.data._entity == 'emergency' || request.resource.data._entity == 'notification' || request.resource.data._entity == 'report'))
         || (role() == 'group_supervisor' && (validSupervisorTripCreate() || request.resource.data._entity == 'trip_photo' || (request.resource.data._entity == 'attendance' && userDoc().isActive != false && userDoc().groupId is string && userDoc().groupId.size() > 0 && request.resource.data.groupId == userDoc().groupId && request.resource.data.reportedBy == request.auth.uid && request.resource.data.status in ['present','absent','leave','permission','excused_absence','unexcused_absence','external_task']) || request.resource.data._entity == 'street_photo' || (request.resource.data._entity == 'emergency' && validSupervisorSosCreate()) || request.resource.data._entity == 'notification' || request.resource.data._entity == 'report'))
       );

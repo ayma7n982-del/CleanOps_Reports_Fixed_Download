@@ -248,3 +248,49 @@ test('user deletion: managed account is disabled only with an atomic authorized 
   }));
 });
 
+
+
+test('JSC dispatch atomically marks a real machine with a matching request', async () => {
+  await env.withSecurityRulesDisabled(async ctx => {
+    await setDoc(doc(ctx.firestore(), 'equipment', 'machine-a'), {
+      id:'machine-a', type:'loader', status:'available',
+      municipalityCoordinatorId:'coordinator', groupId:'group-a', isDeleted:false,
+    });
+  });
+  const jscDb = db('jsc');
+  const batch = writeBatch(jscDb);
+  batch.update(doc(jscDb, 'equipment', 'machine-a'), {
+    dispatchStatus:'dispatched', dispatchMunicipality:'دير البلح',
+    dispatchRequestId:'dispatch-a', dispatchBy:'jsc',
+    dispatchAt:'2026-10-28T09:00:00.000Z',
+  });
+  batch.set(doc(jscDb, 'operations', 'dispatch-a'), {
+    id:'dispatch-a', _entity:'equipment_dispatch', equipmentId:'machine-a',
+    municipality:'دير البلح', requestedBy:'jsc', status:'applied',
+  });
+  await assertSucceeds(batch.commit());
+  await assertFails(updateDoc(doc(jscDb, 'equipment', 'machine-a'), {
+    groupId:'other-group',
+  }));
+  await assertFails(updateDoc(doc(db('coordinator'), 'equipment', 'machine-a'), {
+    dispatchMunicipality:'رفح',
+  }));
+});
+
+test('JSC cannot dispatch without an approved request or dispatch twice', async () => {
+  await env.withSecurityRulesDisabled(async ctx => {
+    await setDoc(doc(ctx.firestore(), 'equipment', 'machine-b'), {
+      id:'machine-b', type:'loader', dispatchStatus:'dispatched',
+      dispatchRequestId:'existing', dispatchMunicipality:'رفح',
+      dispatchBy:'jsc', dispatchAt:'2026-10-28T09:00:00.000Z',
+    });
+  });
+  await assertFails(updateDoc(doc(db('jsc'), 'equipment', 'machine-b'), {
+    dispatchRequestId:'missing', dispatchMunicipality:'دير البلح',
+  }));
+  await assertFails(setDoc(doc(db('jsc'), 'operations', 'fake-dispatch'), {
+    id:'fake-dispatch', _entity:'equipment_dispatch',
+    equipmentId:'machine-b', municipality:'دير البلح',
+    requestedBy:'jsc', status:'applied',
+  }));
+});

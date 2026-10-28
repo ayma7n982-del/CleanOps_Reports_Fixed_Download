@@ -3,6 +3,7 @@ import '../../core/localization.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../core/constants/app_constants.dart';
+import '../../core/constants/gaza_municipalities.dart';
 import '../../core/services/auth_service.dart';
 import '../../core/services/data_service.dart';
 import '../../core/services/report_service.dart';
@@ -74,16 +75,23 @@ class _Level3JscState extends State<Level3JscScreen> with SingleTickerProviderSt
     try {
       final snapshot = await FirebaseFirestore.instance
           .collection('equipment').limit(300).get(const GetOptions(source: Source.serverAndCache));
-      final available = snapshot.docs.where((doc) =>
-          doc.data()['isDeleted'] != true).toList();
+      final available = snapshot.docs.where((doc) {
+        final item = doc.data();
+        final kind = '${item['type'] ?? item['category'] ?? ''}'.toLowerCase();
+        final state = '${item['status'] ?? ''}'.toLowerCase();
+        return item['isDeleted'] != true &&
+            !const ['cart', 'كارة'].contains(kind) &&
+            item['dispatchStatus'] != 'dispatched' &&
+            !const ['out_of_service', 'maintenance', 'broken'].contains(state);
+      }).toList();
       if (!mounted) return;
       if (available.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
           content: AppText('لا توجد آليات مسجلة يمكن توجيهها.')));
         return;
       }
-      final municipalityController = TextEditingController();
       String? selectedId = available.first.id;
+      String selectedMunicipality = gazaMunicipalities.first.nameAr;
       final result = await showDialog<Map<String, String>>(
         context: context,
         builder: (dialogContext) => StatefulBuilder(
@@ -104,12 +112,16 @@ class _Level3JscState extends State<Level3JscScreen> with SingleTickerProviderSt
                   }).toList(),
                   onChanged: (value) => setDialogState(() => selectedId = value),
                 ),
-                TextField(
-                  controller: municipalityController,
-                  decoration: const InputDecoration(
-                    labelText: 'البلدية المستهدفة',
-                    hintText: 'أدخل اسم البلدية الفعلي',
-                  ),
+                DropdownButtonFormField<String>(
+                  value: selectedMunicipality,
+                  isExpanded: true,
+                  decoration: const InputDecoration(labelText: 'البلدية المستهدفة'),
+                  items: gazaMunicipalities.map((m) => DropdownMenuItem(
+                    value: m.nameAr, child: Text(m.nameAr,
+                      overflow: TextOverflow.ellipsis),
+                  )).toList(),
+                  onChanged: (value) => setDialogState(
+                    () => selectedMunicipality = value ?? selectedMunicipality),
                 ),
               ],
             ),
@@ -118,20 +130,18 @@ class _Level3JscState extends State<Level3JscScreen> with SingleTickerProviderSt
                   child: const AppText('إلغاء')),
               FilledButton(
                 onPressed: () {
-                  final municipality = municipalityController.text.trim();
-                  if (selectedId == null || municipality.isEmpty) return;
+                  if (selectedId == null) return;
                   Navigator.pop(dialogContext, {
                     'equipmentId': selectedId!,
-                    'municipality': municipality,
+                    'municipality': selectedMunicipality,
                   });
                 },
-                child: const AppText('تسجيل طلب التوجيه'),
+                child: const AppText('اعتماد طلب التوجيه'),
               ),
             ],
           ),
         ),
       );
-      municipalityController.dispose();
       if (result == null || !mounted) return;
       final equipment = available.firstWhere(
           (doc) => doc.id == result['equipmentId']);
@@ -150,19 +160,17 @@ class _Level3JscState extends State<Level3JscScreen> with SingleTickerProviderSt
     final u = context.read<AuthService>().currentUser;
     if (u == null || u.role != 'jsc_coordinator' || !u.can('operations', 'create')) return;
     final d = context.read<DataService>();
-    final id = DateTime.now().millisecondsSinceEpoch.toString();
-    await d.enqueue('heavy_machinery', 'dispatch', {
+    final id = d.uuid.v4();
+    await d.enqueue('equipment_dispatch', 'dispatch', {
       'id': id,
       'machine': machine,
       'equipmentId': equipmentId,
       'municipality': municipality,
       'requestedBy': u.id,
-      'hours': 4.0,
-      'purpose': 'تسوية وردم وتوسعة مسارات',
       'createdAt': DateTime.now().toIso8601String(),
     });
-    await d.writeAudit(actorId: u.id, operation: 'DISPATCH_HEAVY_MACHINERY', targetId: id, after: {'machine': machine, 'municipality': municipality});
-    if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: AppText('تم تسجيل توجيه الآلية في قائمة المزامنة.')));
+    if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+      content: AppText('تم حفظ طلب توجيه الآلية؛ لن يعتمد التخصيص حتى تؤكد Firebase نجاح المزامنة.')));
   }
 
   Future<void> _sendLandfillWarning() async {
