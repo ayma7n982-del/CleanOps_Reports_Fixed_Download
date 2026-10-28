@@ -181,6 +181,9 @@ void main() {
         'requestedBy': coordinatorId,
       });
       expect(fixture.store.queue(), hasLength(1));
+      expect(offline.hasPendingCartRedirect('cart-1', 'equipment'), isTrue);
+      expect(offline.hasPendingCartRedirect('cart-1', 'operations'), isFalse);
+      expect(offline.hasPendingCartRedirect('cart-2', 'equipment'), isFalse);
       expect(fixture.store.cachedEquipmentCarts(coordinatorId).single['groupId'],
           'group-a');
       expect(offline.operations.where((e) => e['_entity'] == 'cart_redirect'),
@@ -207,6 +210,7 @@ void main() {
         expect(dispatched, hasLength(1));
         expect(dispatched.single['cartId'], 'cart-1');
         expect(resumed.queue, isEmpty);
+        expect(resumed.hasPendingCartRedirect('cart-1', 'equipment'), isFalse);
         expect(fixture.store.queue(), isEmpty);
         expect(fixture.store.cachedEquipmentCarts(coordinatorId).single['groupId'],
             'group-b');
