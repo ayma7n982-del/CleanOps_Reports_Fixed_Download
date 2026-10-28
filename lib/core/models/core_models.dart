@@ -83,30 +83,128 @@ class FeaturePolicy {
 }
 
 FeaturePolicy defaultPolicy(String role, String feature) {
+  const hidden = FeaturePolicy(view: false, visible: false);
+
   if (feature == 'messages') {
-    return FeaturePolicy(create: role != 'worker', edit: false, notifications: true, offlineAllowed: true);
+    return FeaturePolicy(
+      create: role != 'worker',
+      edit: false,
+      notifications: true,
+      offlineAllowed: true,
+    );
   }
+
+  if (role == 'worker') {
+    if (const {
+      'permissions', 'audit', 'settings', 'excel', 'workers', 'users',
+      'dumpsite', 'critical_areas', 'cycle',
+    }.contains(feature)) {
+      return hidden;
+    }
+    if (feature == 'containers') {
+      return const FeaturePolicy(
+        edit: true,
+        notifications: true,
+        offlineAllowed: true,
+      );
+    }
+    // Workers may view their scoped operational data, but writes are limited
+    // by Firestore to container status updates and self GPS tracking.
+    return const FeaturePolicy();
+  }
+
+  if (role == 'group_supervisor') {
+    if (const {
+      'permissions', 'audit', 'settings', 'excel', 'workers', 'users',
+      'dumpsite', 'critical_areas', 'cycle',
+    }.contains(feature)) {
+      return hidden;
+    }
+    if (feature == 'containers') {
+      return const FeaturePolicy(
+        create: true,
+        edit: true,
+        notifications: true,
+        offlineAllowed: true,
+      );
+    }
+    if (const {
+      'attendance', 'leave', 'trips', 'streets', 'emergency',
+      'notifications', 'activity', 'reports',
+    }.contains(feature)) {
+      return const FeaturePolicy(
+        create: true,
+        edit: true,
+        notifications: true,
+        offlineAllowed: true,
+      );
+    }
+    return const FeaturePolicy();
+  }
+
+  if (role == 'municipality_coordinator') {
+    if (feature == 'permissions' || feature == 'audit') return hidden;
+    if (feature == 'cycle' || feature == 'trips') {
+      return const FeaturePolicy(export: true, notifications: true);
+    }
+    if (feature == 'containers') {
+      return const FeaturePolicy(edit: true, export: true, notifications: true);
+    }
+    if (feature == 'settings') return const FeaturePolicy();
+    return const FeaturePolicy(
+      create: true,
+      edit: true,
+      export: true,
+      notifications: true,
+    );
+  }
+
+  if (role == 'jsc_coordinator') {
+    if (feature == 'permissions' || feature == 'settings' || feature == 'audit') {
+      return hidden;
+    }
+    if (feature == 'users' || feature == 'workers' ||
+        feature == 'cycle' || feature == 'trips') {
+      return const FeaturePolicy(export: true, notifications: true);
+    }
+    return const FeaturePolicy(
+      create: true,
+      edit: true,
+      approve: true,
+      export: true,
+      notifications: true,
+    );
+  }
+
   if (role == 'donor_manager') {
     if (feature == 'workers') {
-      return const FeaturePolicy(create: false, edit: false, softDelete: false, export: true, importData: true);
+      return const FeaturePolicy(
+        create: false,
+        edit: false,
+        softDelete: false,
+        export: true,
+        importData: true,
+      );
     }
-    return const FeaturePolicy(create: true, edit: true, approve: true, softDelete: true, export: true, importData: true);
+    if (feature == 'dumpsite' || feature == 'containers' ||
+        feature == 'trips' || feature == 'emergency') {
+      return const FeaturePolicy(
+        approve: true,
+        export: true,
+        notifications: true,
+      );
+    }
+    return const FeaturePolicy(
+      create: true,
+      edit: true,
+      approve: true,
+      softDelete: true,
+      export: true,
+      importData: true,
+    );
   }
-  if (role == 'jsc_coordinator') {
-    if (feature == 'permissions' || feature == 'settings') return const FeaturePolicy(view: false, visible: false);
-    return const FeaturePolicy(create: true, edit: true, approve: true, export: true, notifications: true);
-  }
-  if (role == 'municipality_coordinator') {
-    if (feature == 'permissions' || feature == 'audit') return const FeaturePolicy(view: false, visible: false);
-    return const FeaturePolicy(create: true, edit: true, export: true, notifications: true);
-  }
-  if (feature == 'permissions' || feature == 'audit' || feature == 'settings' || feature == 'excel' || feature == 'workers') {
-    return const FeaturePolicy(view: false, visible: false);
-  }
-  if (feature == 'attendance' || feature == 'leave' || feature == 'trips' || feature == 'streets' || feature == 'emergency' || feature == 'notifications' || feature == 'activity') {
-    return const FeaturePolicy(create: true, edit: true, notifications: true, offlineAllowed: true);
-  }
-  return const FeaturePolicy();
+
+  return hidden;
 }
 
 class AppUser {
@@ -134,16 +232,21 @@ class AppUser {
   });
 
   bool can(String feature, String action) {
-    final p = roleOverrides[role]?[feature] ?? policies[feature] ?? defaultPolicy(role, feature);
-    if (!p.visible || !p.enabled) return false;
+    final ceiling = defaultPolicy(role, feature);
+    final configured =
+        roleOverrides[role]?[feature] ?? policies[feature] ?? ceiling;
+    if (!ceiling.visible || !ceiling.enabled ||
+        !configured.visible || !configured.enabled) {
+      return false;
+    }
     switch (action) {
-      case 'view': return p.view;
-      case 'create': return p.create;
-      case 'edit': return p.edit;
-      case 'approve': return p.approve;
-      case 'delete': return p.softDelete;
-      case 'export': return p.export;
-      case 'import': return p.importData;
+      case 'view': return ceiling.view && configured.view;
+      case 'create': return ceiling.create && configured.create;
+      case 'edit': return ceiling.edit && configured.edit;
+      case 'approve': return ceiling.approve && configured.approve;
+      case 'delete': return ceiling.softDelete && configured.softDelete;
+      case 'export': return ceiling.export && configured.export;
+      case 'import': return ceiling.importData && configured.importData;
       default: return false;
     }
   }
