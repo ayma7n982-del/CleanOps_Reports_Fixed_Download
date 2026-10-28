@@ -216,7 +216,21 @@ class _WorkspaceOverviewState extends State<WorkspaceOverview> {
               for(final x in dated.take(5)) ListTile(dense:true,
                 leading:const Icon(Icons.history),
                 title:Text('${x['_entity'] ?? 'عملية'} • ${x['id'] ?? ''}'),
-                subtitle:Text('${x['createdAt']}')),
+                subtitle:Text('${x['createdAt']}'),
+                trailing:const Icon(Icons.info_outline),
+                onTap:()=>showDialog<void>(context:context,builder:(ctx)=>
+                  AlertDialog(
+                    title:const Text('تفاصيل سجل النشاط'),
+                    content:SingleChildScrollView(child:SelectableText(
+                      'النوع: ${x['_entity'] ?? 'عملية'}\n'
+                      'الرقم: ${x['id'] ?? ''}\n'
+                      'التاريخ: ${x['createdAt'] ?? ''}\n'
+                      'الحالة: ${x['status'] ?? 'غير محددة'}\n'
+                      'منفذ الإجراء: ${x['userId'] ?? x['requestedBy'] ?? x['reportedBy'] ?? 'غير محدد'}',
+                    )),
+                    actions:[TextButton(onPressed:()=>Navigator.pop(ctx),
+                      child:const Text('إغلاق'))],
+                  ))),
             ])),
     ]);
   }
