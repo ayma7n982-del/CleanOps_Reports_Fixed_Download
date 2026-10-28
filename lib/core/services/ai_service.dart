@@ -133,6 +133,7 @@ class AIService {
         lines.add('• ${item['name']}: الامتلاء ${item['fillPercentage']}%');
       }
     }
+    if (summary) lines.addAll(_buildProactiveInsights(data));
     if (data['scopeLimited'] == true) {
       lines.add('النطاق: بيانات المجلس المحددة فقط. السجلات دون هوية مجلس أو بلدية واضحة لا تدخل في المؤشرات.');
     }
@@ -254,6 +255,34 @@ class AIService {
       if (error.code != 'unavailable' && error.code != 'deadline-exceeded') rethrow;
       return query.get(const GetOptions(source: Source.cache));
     }
+  }
+
+  List<String> _buildProactiveInsights(Map<String, dynamic> data) {
+    final insights = <String>[];
+    final workers = data['activeWorkers'] as int? ?? 0;
+    final groups = data['activeGroups'] as int? ?? 0;
+    final emergencies = data['activeSOSorEmergencies'] as int? ?? 0;
+    final dumpsites = (data['dumpsites'] as List?) ?? const [];
+    final criticalSites = dumpsites.where((site) {
+      if (site is! Map) return false;
+      final fill = site['fillPercentage'];
+      final value = fill is num ? fill.toDouble() : double.tryParse('$fill') ?? 0;
+      return value >= 85;
+    }).length;
+
+    if (emergencies > 0) {
+      insights.add('أولوية عالية: توجد $emergencies حالة طوارئ غير مغلقة تحتاج متابعة.');
+    }
+    if (criticalSites > 0) {
+      insights.add('أولوية عالية: يوجد $criticalSites مكب بنسبة امتلاء 85% أو أكثر.');
+    }
+    if (groups > 0 && workers == 0) {
+      insights.add('تنبيه موارد: توجد مجموعات نشطة دون عمال نشطين ضمن البيانات المقروءة.');
+    } else if (groups > 0 && workers < groups) {
+      insights.add('تنبيه موارد: عدد العمال النشطين ($workers) أقل من عدد المجموعات ($groups)؛ راجع توزيع القوى العاملة.');
+    }
+    insights.add('ملاحظة تشغيلية: تحديد تأخر الترحيلات يتطلب وقتًا مستهدفًا أو موعدًا مخططًا لكل رحلة؛ عدد الرحلات وحده لا يكفي.');
+    return insights;
   }
 
   double _number(dynamic value) => value is num ? value.toDouble() : double.tryParse('$value') ?? 0;
