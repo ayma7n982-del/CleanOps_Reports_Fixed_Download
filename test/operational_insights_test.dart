@@ -39,4 +39,48 @@ void main() {
     expect(result.assessable, 0);
     expect(result.overdue, 0);
   });
+
+  test('council-scope filtering excludes records of other councils', () {
+    expect(OperationalInsights.visibleToUser(
+      {'_entity': 'trip', 'councilName': 'Council A'},
+      role: 'jsc_coordinator', userId: 'c1', scope: 'Council A',
+    ), isTrue);
+    expect(OperationalInsights.visibleToUser(
+      {'_entity': 'trip', 'councilName': 'Council B'},
+      role: 'jsc_coordinator', userId: 'c1', scope: 'Council A',
+    ), isFalse);
+    expect(OperationalInsights.visibleToUser(
+      {'_entity': 'trip', 'groupId': 'g1'},
+      role: 'jsc_coordinator', userId: 'c1', scope: 'assigned_only',
+    ), isFalse);
+  });
+
+  test('SOS notifications must be addressed to the current user', () {
+    final notification = <String, dynamic>{
+      '_entity': 'notification', 'targetRole': 'jsc_coordinator',
+      'targetUserId': 'c1', 'sourceId': 'incident-5', 'sourceEntity': 'emergency',
+    };
+    expect(OperationalInsights.visibleToUser(
+      notification, role: 'jsc_coordinator', userId: 'c1', scope: 'Council A',
+    ), isTrue);
+    expect(OperationalInsights.visibleToUser(
+      notification, role: 'jsc_coordinator', userId: 'c2', scope: 'Council A',
+    ), isFalse);
+    expect(OperationalInsights.alertIncidentKey(notification, 'notification-a'),
+        'emergency:incident-5');
+    expect(OperationalInsights.alertIncidentKey(
+      {'_entity': 'emergency'}, 'incident-5'), 'emergency:incident-5');
+  });
+
+  test('closed critical emergencies are not presented as open alerts', () {
+    expect(OperationalInsights.isOpenAlert(
+      {'_entity': 'emergency', 'status': 'closed', 'statusLevel': 'critical'},
+    ), isFalse);
+    expect(OperationalInsights.isOpenAlert(
+      {'_entity': 'emergency', 'status': 'urgent', 'statusLevel': 'critical'},
+    ), isTrue);
+    expect(OperationalInsights.alertPriority(
+      {'_entity': 'emergency', 'statusLevel': 'critical'}), 0);
+  });
+
 }
