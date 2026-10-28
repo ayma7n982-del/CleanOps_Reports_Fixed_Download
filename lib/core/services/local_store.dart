@@ -39,6 +39,10 @@ class LocalStore {
   List<Map<String, dynamic>> cachedOperations() => _list('operations_cache');
   Future<void> saveCachedOperations(List<Map<String, dynamic>> value) => _save('operations_cache', value);
 
+  List<Map<String, dynamic>> cachedEquipmentCarts(String userId) => _list('equipment_carts_cache_$userId');
+  Future<void> saveCachedEquipmentCarts(String userId, List<Map<String, dynamic>> carts) =>
+      _save('equipment_carts_cache_$userId', carts);
+
   List<Map<String, dynamic>> cachedContainers() => _list('containers_cache');
   Future<void> saveCachedContainers(List<Map<String, dynamic>> value) => _save('containers_cache', value);
 
