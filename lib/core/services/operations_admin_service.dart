@@ -1,7 +1,6 @@
 import 'dart:math';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import '../models/core_models.dart';
@@ -393,25 +392,57 @@ class OperationsAdminService {
     });
   }
 
-  /// Permanently removes a managed user through a Firebase Callable Function.
-  /// The callable validates RBAC and removes both Firebase Authentication and
-  /// the Firestore profile, so the user disappears instead of merely becoming
-  /// inactive. No Firestore rules are weakened for this operation.
+  /// Free serverless-admin alternative:
+  /// immediately blocks the managed account in Firestore and queues a deletion
+  /// request. A GitHub Actions worker using the existing service account later
+  /// removes the Firebase Authentication account and profile permanently.
   Future<void> deleteManagedUser(String userId, {required String actorId}) async {
     final uid = userId.trim();
-    if (uid.isEmpty || uid == actorId) {
+    final actor = actorId.trim();
+    if (uid.isEmpty || actor.isEmpty || uid == actor) {
       throw StateError('لا يمكن حذف الحساب الحالي.');
     }
-    try {
-      final result = await FirebaseFunctions.instanceFor(region: 'us-central1')
-          .httpsCallable('deleteManagedUser')
-          .call(<String, dynamic>{'userId': uid});
-      final payload = result.data;
-      if (payload is! Map || payload['ok'] != true || payload['userId'] != uid) {
-        throw StateError('لم يؤكد الخادم حذف الحساب. يرجى إعادة المحاولة.');
+
+    final requestId =
+        'delete_${actor}_${uid}_${DateTime.now().microsecondsSinceEpoch}';
+    final userRef = _users.doc(uid);
+    final requestRef = firestore.collection('admin_requests').doc(requestId);
+
+    await firestore.runTransaction((tx) async {
+      final target = await tx.get(userRef);
+      if (!target.exists) {
+        throw StateError('المستخدم غير موجود أو تم حذفه مسبقًا.');
       }
-    } on FirebaseFunctionsException catch (e) {
-      throw StateError(e.message ?? 'تعذر حذف المستخدم نهائيًا.');
+      final data = target.data() ?? const <String, dynamic>{};
+      if (data['isActive'] == false && data['status'] == 'pending_deletion') {
+        throw StateError('يوجد طلب حذف قيد التنفيذ لهذا المستخدم.');
+      }
+      tx.update(userRef, {
+        'isActive': false,
+        'status': 'pending_deletion',
+        'deletionRequestedBy': actor,
+        'deletionRequestedAt': FieldValue.serverTimestamp(),
+        'deletionRequestId': requestId,
+        'updatedBy': actor,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+      tx.set(requestRef, {
+        'id': requestId,
+        'type': 'delete_user',
+        'targetUserId': uid,
+        'requestedBy': actor,
+        'status': 'pending',
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+    });
+
+    final confirmation = await userRef.get(const GetOptions(source: Source.server));
+    final request = await requestRef.get(const GetOptions(source: Source.server));
+    if (!confirmation.exists ||
+        confirmation.data()?['status'] != 'pending_deletion' ||
+        !request.exists ||
+        request.data()?['status'] != 'pending') {
+      throw StateError('لم يتم تأكيد طلب الحذف على Firebase.');
     }
   }
 
