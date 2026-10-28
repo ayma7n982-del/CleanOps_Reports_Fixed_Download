@@ -121,8 +121,7 @@ class _AIBotScreenState extends State<AIBotScreen> with TickerProviderStateMixin
                 _LanguagePill(onTap: _toggleLanguage, isArabic: locale.isArabic),
               ]),
               const SizedBox(height: 8),
-              _BotCoreAnimation(orbitController: orbitController, glowController: glowController, entranceController: entranceController, width: width),
-              const AppText('CleanOps AI', textAlign: TextAlign.center, style: TextStyle(color: aiBlue, fontWeight: FontWeight.w900, letterSpacing: 1.4, fontSize: 13)),
+              const AppText('اسأل عن العمليات والبيانات المتاحة لصلاحياتك', style: TextStyle(color: cleanOpsMuted, fontSize: 12)),
               const SizedBox(height: 10),
               if (!allowed)
                 const _AccessNotice()
@@ -149,19 +148,17 @@ class _AIBotScreenState extends State<AIBotScreen> with TickerProviderStateMixin
                   _BotAction(icon: Icons.local_shipping_rounded, title: 'الترحيلات', onTap: () { input.text = 'كم عدد الترحيلات المسجلة اليوم؟'; _send(); }),
                 ]),
                 const SizedBox(height: 12),
-                Row(children: [
-                  Expanded(child: _BotAction(icon: Icons.forum_rounded, title: 'الرسائل', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const MessagesCenterScreen())))),
-                  const SizedBox(width: 8),
-                  Expanded(child: _BotAction(icon: Icons.hub_rounded, title: 'مركز التشغيل', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const EnterpriseOperationsHubPage())))),
-                  if (user.role == 'jsc_coordinator') ...[
-                    const SizedBox(width: 8),
-                    Expanded(child: _BotAction(icon: Icons.location_on_rounded, title: 'المكبات', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const OperationsManagementScreen(initialTab: 0))))),
+                LayoutBuilder(builder: (context, constraints) => Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    _BotAction(icon: Icons.forum_rounded, title: 'الرسائل', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const MessagesCenterScreen()))),
+                    _BotAction(icon: Icons.hub_rounded, title: 'مركز التشغيل', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const EnterpriseOperationsHubPage()))),
+                    if (user.role == 'jsc_coordinator')
+                      _BotAction(icon: Icons.location_on_rounded, title: 'المكبات', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const OperationsManagementScreen(initialTab: 0)))),
+                    _BotAction(icon: Icons.map_rounded, title: 'العمليات الحية', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const LiveOperationsMapScreen()))),
                   ],
-                  if (user.role == 'donor_manager' || user.role == 'jsc_coordinator') ...[
-                    const SizedBox(width: 8),
-                    Expanded(child: _BotAction(icon: Icons.map_rounded, title: 'العمليات الحية', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const LiveOperationsMapScreen())))),
-                  ],
-                ]),
+                )),
               ],
               const SizedBox(height: 16),
               const AppText('Developed by @Eman Al-Qahwaji', textAlign: TextAlign.center, style: TextStyle(color: aiDark2, fontSize: 10, letterSpacing: .45, fontWeight: FontWeight.w700)),
