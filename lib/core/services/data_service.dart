@@ -381,6 +381,29 @@ class DataService extends ChangeNotifier {
 
           completed++;
           if (item.entity == 'cart_redirect') {
+            // Commit is confirmed: update the local assignment immediately even if
+            // the subsequent equipment query cannot reach Firestore.
+            final cartId = '${payload['cartId'] ?? ''}';
+            final destinationId = '${payload['toGroupId'] ?? ''}';
+            if (payload['cartCollection'] == 'operations') {
+              operations = operations.map((entry) =>
+                '${entry['id']}' == cartId && entry['_entity'] != 'cart_redirect'
+                    ? {...entry, 'groupId': destinationId}
+                    : entry).toList();
+            } else {
+              final uid = FirebaseAuth.instance.currentUser?.uid;
+              if (uid != null) {
+                final cached = store.cachedEquipmentCarts(uid);
+                await store.saveCachedEquipmentCarts(uid, cached.map((entry) =>
+                    '${entry['id']}' == cartId
+                        ? {...entry, 'groupId': destinationId}
+                        : entry).toList());
+              }
+            }
+            operations = operations.where((entry) =>
+                !(entry['_entity'] == 'cart_redirect' && '${entry['id']}' == docId)).toList();
+            await store.saveCachedOperations(operations.take(1000).toList());
+            notifyListeners();
             // The callable committed the real cart assignment. Refresh the scoped
             // equipment cache instead of showing a synthetic local redirect record.
             final uid = FirebaseAuth.instance.currentUser?.uid;
