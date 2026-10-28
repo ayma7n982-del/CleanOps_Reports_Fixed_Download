@@ -438,12 +438,9 @@ class DataService extends ChangeNotifier {
             continue;
           }
 
-          if (payload['localAttachmentPath'] != null && '${payload['localAttachmentPath']}'.isNotEmpty) {
-            try {
-              await _uploadAttachment(payload);
-            } catch (attErr) {
-              debugPrint('تعذر رفع المرفق للعنصر ${item.id}: $attErr');
-            }
+          if (payload['localAttachmentPath'] != null &&
+              payload['localAttachmentPath'].toString().isNotEmpty) {
+            await _uploadAttachment(payload);
           }
 
           final collection = item.entity == 'audit' ? 'audit' : (item.entity == 'container' ? 'containers' : 'operations');
