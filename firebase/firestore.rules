@@ -378,6 +378,16 @@ service cloud.firestore {
         );
     }
 
+    // Equipment records are read by the municipality coordinator who owns them.
+    // Assignment changes are performed only by the trusted Cloud Function.
+    match /equipment/{id} {
+      allow read: if signedIn() && (
+        isL3OrL4() ||
+        (isL2() && resource.data.municipalityCoordinatorId == request.auth.uid)
+      );
+      allow create, update, delete: if false;
+    }
+
     match /operations/{id} {
       allow read: if signedIn();
       allow create: if signedIn() && (
