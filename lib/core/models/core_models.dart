@@ -245,6 +245,9 @@ class ActivityItem {
 class SyncItem {
   final String id, entity, operation, payload, createdAt;
   final int retryCount;
+  /// The Firebase account that originally queued this operation.
+  /// Null supports records written before this field was introduced.
+  final String? ownerUid;
   const SyncItem({
     required this.id,
     required this.entity,
@@ -252,6 +255,7 @@ class SyncItem {
     required this.payload,
     required this.createdAt,
     this.retryCount = 0,
+    this.ownerUid,
   });
 
   Map<String, dynamic> toJson() => {
@@ -261,6 +265,7 @@ class SyncItem {
     'payload': payload,
     'createdAt': createdAt,
     'retryCount': retryCount,
+    if (ownerUid != null) 'ownerUid': ownerUid,
   };
 
   factory SyncItem.fromJson(Map<String, dynamic> j) => SyncItem(
@@ -270,5 +275,6 @@ class SyncItem {
     payload: '${j['payload']}',
     createdAt: '${j['createdAt']}',
     retryCount: (j['retryCount'] ?? 0) as int,
+    ownerUid: j['ownerUid']?.toString(),
   );
 }
