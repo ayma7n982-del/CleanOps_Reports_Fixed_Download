@@ -41,18 +41,15 @@ try {
       continue;
     }
 
-    const [actorSnap, targetSnap] = await Promise.all([
-      db.collection('users').doc(actorId).get(),
-      db.collection('users').doc(targetId).get(),
-    ]);
-    if (!actorSnap.exists || !targetSnap.exists) {
+    const targetSnap = await db.collection('users').doc(targetId).get();
+    if (!targetSnap.exists) {
       // A previously completed/partial cleanup is idempotently finalized.
       let authExists = true;
       try { await auth.getUser(targetId); } catch (error) {
         if (error?.code === 'auth/user-not-found') authExists = false;
         else throw error;
       }
-      if (!targetSnap.exists && !authExists) {
+      if (!authExists) {
         await requestDoc.ref.set({
           status: 'completed',
           processedAt: FieldValue.serverTimestamp(),
@@ -62,31 +59,24 @@ try {
         processed++;
         continue;
       }
-      await reject(requestDoc.ref, 'actor_or_target_profile_missing');
+      await reject(requestDoc.ref, 'target_profile_missing');
       rejected++;
       continue;
     }
 
-    const actor = actorSnap.data() ?? {};
+    // Firestore Security Rules authorize the actor and target at creation time,
+    // and clients cannot modify admin_requests afterwards. The worker only
+    // requires the target to still carry the exact atomic deletion marker.
     const target = targetSnap.data() ?? {};
-    const actorRole = String(actor.role ?? '');
     const targetRole = String(target.role ?? '');
-    const targetIsWorkforce =
-      targetRole === 'worker' || targetRole === 'group_supervisor';
-    const allowed = actor.isActive !== false && (
-      actorRole === 'donor_manager' ||
-      (actorRole === 'municipality_coordinator' &&
-        targetIsWorkforce &&
-        String(target.municipalityCoordinatorId ?? '') === actorId)
-    );
     const requestMatchesTarget =
       target.status === 'pending_deletion' &&
       target.isActive === false &&
       String(target.deletionRequestId ?? '') === requestDoc.id &&
       String(target.deletionRequestedBy ?? '') === actorId;
 
-    if (!allowed || !requestMatchesTarget) {
-      await reject(requestDoc.ref, allowed ? 'target_state_mismatch' : 'permission_denied');
+    if (!requestMatchesTarget) {
+      await reject(requestDoc.ref, 'target_state_mismatch');
       rejected++;
       continue;
     }
