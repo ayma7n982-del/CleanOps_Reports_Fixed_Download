@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Set up Java 17 for Gradle 8.4
+      - name: Set up Java 17 for Android Gradle
         uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -24,8 +24,27 @@ jobs:
           flutter-version: '3.47.8'
           channel: stable
           cache: true
+      - name: Select Java 17 in Flutter
+        run: flutter config --jdk-dir="$JAVA_HOME"
       - name: Install dependencies
         run: flutter pub get
+      - name: Setup Gradle 8.14
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.14'
+      - name: Restore missing Android Gradle wrapper
+        working-directory: android
+        run: |
+          if [ ! -f gradlew ] || [ ! -f gradle/wrapper/gradle-wrapper.jar ]; then
+            wrapper_dir="$(mktemp -d)"
+            touch "$wrapper_dir/build.gradle"
+            gradle -p "$wrapper_dir" wrapper --gradle-version 8.14
+            cp "$wrapper_dir/gradlew" ./gradlew
+            mkdir -p gradle/wrapper
+            cp "$wrapper_dir/gradle/wrapper/gradle-wrapper.jar" gradle/wrapper/
+            cp "$wrapper_dir/gradle/wrapper/gradle-wrapper.properties" gradle/wrapper/
+          fi
+          chmod +x gradlew
       - name: Analyze Dart sources
         run: flutter analyze --no-fatal-infos --no-fatal-warnings
       - name: Run tests
