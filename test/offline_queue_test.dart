@@ -493,4 +493,44 @@ test('cart redirect: offline equipment move persists and reconciles on reconnect
     }
   });
 
+  test('SOS notification waits until its emergency exists on the server', () async {
+    final fixture = await openStore('sos_notification_dependency');
+    var failEmergency = true;
+    final sent = <String>[];
+    final service = DataService(
+      fixture.store,
+      ConfigService(fixture.store),
+      syncItemOverride: (item, payload) async {
+        if (item.entity == 'emergency' && failEmergency) {
+          throw StateError('Cannot persist emergency yet');
+        }
+        sent.add(item.entity);
+      },
+    );
+    try {
+      service.online = false;
+      await service.enqueue('emergency', 'create', {
+        'id':'sos-dependency','street':'Some street',
+      });
+      await service.enqueue('notification', 'urgent', {
+        'id':'sos-dependency_L3','sourceEntity':'emergency',
+        'sourceId':'sos-dependency','targetRole':'jsc_coordinator',
+      });
+      service.online = true;
+      await service.sync();
+      expect(service.queue, hasLength(2));
+      expect(sent, isEmpty);
+      expect(service.hasPendingEmergencyCreation('sos-dependency'), isTrue);
+
+      failEmergency = false;
+      await service.sync();
+      expect(sent, ['emergency', 'notification']);
+      expect(service.queue, isEmpty);
+    } finally {
+      service.dispose();
+      await fixture.box.close();
+      await fixture.directory.delete(recursive:true);
+    }
+  });
+
 }

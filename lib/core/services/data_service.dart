@@ -375,6 +375,19 @@ class DataService extends ChangeNotifier {
     payload['localAttachmentPath'] = stored.path;
   }
 
+  bool hasPendingEmergencyCreation(String id) {
+    for (final item in queue) {
+      if (item.entity != 'emergency' || item.operation != 'create') continue;
+      try {
+        final payload = jsonDecode(item.payload);
+        if (payload is Map && '${payload['id']}' == id) return true;
+      } catch (_) {
+        // Leave corrupted items to the normal queue diagnostics.
+      }
+    }
+    return false;
+  }
+
   bool hasPendingEmergencyAction(String id) {
     final uid = Firebase.apps.isNotEmpty
         ? FirebaseAuth.instance.currentUser?.uid : null;
@@ -588,6 +601,15 @@ class DataService extends ChangeNotifier {
             item.ownerUid != currentUid) continue;
         try {
           final payload = Map<String, dynamic>.from(jsonDecode(item.payload));
+
+          // Do not deliver SOS notifications before the actual emergency
+          // record has been accepted by Firebase. A failed SOS creation must
+          // not leave orphan notifications claiming the incident was sent.
+          if (item.entity == 'notification' &&
+              payload['sourceEntity'] == 'emergency' &&
+              hasPendingEmergencyCreation('${payload['sourceId'] ?? ''}')) {
+            continue;
+          }
 
           // Deterministic test seam for the complete offline -> online queue
           // lifecycle. Production never supplies this override.
