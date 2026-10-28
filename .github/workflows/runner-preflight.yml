@@ -1,0 +1,22 @@
+name: CleanOps runner preflight
+
+on:
+  push:
+    paths:
+      - '.github/workflows/runner-preflight.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Confirm GitHub Actions runner starts
+        run: |
+          echo "RUNNER_STARTED"
+          echo "Repository: ${GITHUB_REPOSITORY}"
+          echo "Commit: ${GITHUB_SHA}"
+          uname -a
