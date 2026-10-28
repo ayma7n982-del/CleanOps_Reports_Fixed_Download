@@ -83,4 +83,27 @@ void main() {
       {'_entity': 'emergency', 'statusLevel': 'critical'}), 0);
   });
 
+
+  test('alert priority reflects explicit severity instead of entity type alone', () {
+    expect(OperationalInsights.alertPriority({
+      '_entity': 'emergency',
+      'statusLevel': 'critical',
+      'status': 'urgent',
+    }), 0);
+    expect(OperationalInsights.alertPriority({
+      '_entity': 'emergency',
+      'statusLevel': 'warning',
+      'status': 'open',
+    }), 1);
+    expect(OperationalInsights.alertPriority({
+      '_entity': 'emergency',
+      'status': 'open',
+    }), 1);
+    expect(OperationalInsights.alertPriority({
+      '_entity': 'notification',
+      'statusLevel': 'info',
+      'status': 'open',
+    }), 2);
+  });
+
 }
