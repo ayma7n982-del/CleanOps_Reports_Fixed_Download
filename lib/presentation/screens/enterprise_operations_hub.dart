@@ -17,6 +17,7 @@ import '../../core/services/data_service.dart';
 import '../../core/services/messaging_service.dart';
 import '../../core/services/operations_admin_service.dart';
 import '../../core/services/operational_insights.dart';
+import '../../core/services/trip_lifecycle.dart';
 import '../../core/services/excel_file_saver.dart';
 import '../widgets/app_design.dart';
 import '../widgets/creative_shortcuts.dart';
@@ -158,9 +159,24 @@ class _OperationTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final record = doc.data();
+    final user = context.watch<AuthService>().currentUser;
     final entity = '${record['_entity'] ?? ''}';
     final title = '${record['title'] ?? record['name'] ?? record['operation'] ?? entity}';
     final detail = '${record['body'] ?? record['detail'] ?? record['description'] ?? record['status'] ?? ''}';
+    final tripReview = entity == 'trip'
+        ? OperationalInsights.reviewTrips([record], now: DateTime.now())
+        : const OperationalTripReview(assessable: 0, overdue: 0);
+    final overdue = tripReview.overdue > 0;
+    final canComplete = entity == 'trip' && user != null &&
+        user.role == 'group_supervisor' && user.can('trips', 'edit') &&
+        TripLifecycle.canSupervisorComplete(
+          trip: record,
+          supervisorId: user.id,
+          groupId: user.groupId ?? '',
+        );
+    final displayDetail = overdue
+        ? 'متأخرة عن الموعد المستهدف • ${detail.isEmpty ? 'قيد التنفيذ' : detail}'
+        : detail;
     final fields = <String, Object?>{
       'معرّف السجل': doc.id,
       'الحالة': record['status'],
@@ -177,9 +193,11 @@ class _OperationTile extends StatelessWidget {
       contentPadding: const EdgeInsets.symmetric(vertical: 4),
       leading: AiFeatureIcon(critical ? 'emergency' : entity == 'trip' ? 'trips' : 'notifications', size: 15),
       title: AppText(title, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800)),
-      subtitle: AppText(detail, maxLines: 2, overflow: TextOverflow.ellipsis,
-          style: const TextStyle(fontSize: 10, color: cleanOpsMuted)),
-      trailing: const Icon(Icons.chevron_left_rounded, size: 18),
+      subtitle: AppText(displayDetail, maxLines: 2, overflow: TextOverflow.ellipsis,
+          style: TextStyle(fontSize: 10, color: overdue ? Colors.orange : cleanOpsMuted,
+              fontWeight: overdue ? FontWeight.w700 : FontWeight.normal)),
+      trailing: Icon(overdue ? Icons.warning_amber_rounded : Icons.chevron_left_rounded,
+          size: 18, color: overdue ? Colors.orange : null),
       onTap: () => showDialog<void>(
         context: context,
         builder: (_) => AlertDialog(
@@ -201,6 +219,28 @@ class _OperationTile extends StatelessWidget {
             ),
           ),
           actions: [
+            if (canComplete)
+              FilledButton.icon(
+                onPressed: () async {
+                  final current = context.read<AuthService>().currentUser;
+                  if (current == null || current.id != user.id) return;
+                  final fields = TripLifecycle.completionFields(
+                    completedAt: DateTime.now(),
+                    completedBy: current.id,
+                  );
+                  await context.read<DataService>().enqueue('trip', 'update', {
+                    'id': doc.id,
+                    ...fields,
+                  });
+                  if (!context.mounted) return;
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                    content: AppText('تم إنهاء النقلة محليًا وستتم مزامنتها تلقائيًا.'),
+                  ));
+                },
+                icon: const Icon(Icons.check_circle_outline_rounded),
+                label: const AppText('اعتماد الوصول وإنهاء النقلة'),
+              ),
             TextButton(onPressed: () => Navigator.pop(context),
                 child: const AppText('إغلاق')),
           ],
