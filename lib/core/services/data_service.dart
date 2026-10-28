@@ -628,15 +628,15 @@ class DataService extends ChangeNotifier {
               const ['sos_acknowledge', 'sos_close', 'sos_refer', 'sos_reopen'].contains(item.operation)) {
             // Update only fields permitted by validSosAcknowledgment in Firestore rules.
             // Never merge an entire cached SOS document into the remote record.
-            final existing = await ref.get();
+            final existing = await ref.get(const GetOptions(source: Source.server));
             if (!existing.exists || existing.data()?['_entity'] != 'emergency') {
               throw StateError('بلاغ SOS غير موجود على الخادم.');
             }
             final current = existing.data()!;
             if (item.operation == 'sos_acknowledge') {
               if (current['acknowledged'] == true &&
-                  current['acknowledgedBy'] == cloudPayload['acknowledgedBy']) {
-                // Already acknowledged by this coordinator.
+                  const ['acknowledged', 'resolved', 'closed'].contains(current['status'])) {
+                // Already acknowledged by an authorized coordinator on the server.
               } else if (current['status'] == 'urgent' &&
                   current['acknowledged'] == false) {
                 await ref.update({

@@ -66,7 +66,8 @@ class _Level3JscState extends State<Level3JscScreen> with SingleTickerProviderSt
       }
       final cases = <Map<String, dynamic>>[];
       for (final m in data.operations.where((e) => '${e['_entity'] ?? ''}' == 'emergency')) {
-        if (m['isDeleted'] != true && m['status'] != 'closed') cases.add(Map.from(m));
+        if (m['isDeleted'] != true && (m['status'] != 'closed' ||
+            _hasPendingSos('${m['id']}'))) cases.add(Map.from(m));
       }
       cases.sort((a, b) => '${b['createdAt'] ?? ''}'.compareTo('${a['createdAt'] ?? ''}'));
       if (mounted) {
@@ -114,7 +115,7 @@ class _Level3JscState extends State<Level3JscScreen> with SingleTickerProviderSt
               mainAxisSize: MainAxisSize.min,
               children: [
                 DropdownButtonFormField<String>(
-                  value: selectedId,
+                  initialValue: selectedId,
                   isExpanded: true,
                   decoration: const InputDecoration(labelText: 'الآلية'),
                   items: available.map((doc) {
@@ -126,7 +127,7 @@ class _Level3JscState extends State<Level3JscScreen> with SingleTickerProviderSt
                   onChanged: (value) => setDialogState(() => selectedId = value),
                 ),
                 DropdownButtonFormField<String>(
-                  value: selectedMunicipality,
+                  initialValue: selectedMunicipality,
                   isExpanded: true,
                   decoration: const InputDecoration(labelText: 'البلدية المستهدفة'),
                   items: gazaMunicipalities.map((m) => DropdownMenuItem(
@@ -330,7 +331,9 @@ class _Level3JscState extends State<Level3JscScreen> with SingleTickerProviderSt
 
   bool _hasPendingSos(String id) {
     for (final item in context.read<DataService>().queue) {
-      if (item.entity != 'emergency') continue;
+      final uid = context.read<AuthService>().currentUser?.id;
+      if (item.entity != 'emergency' ||
+          (item.ownerUid != null && item.ownerUid != uid)) continue;
       try {
         final payload = jsonDecode(item.payload);
         if (payload is Map && '${payload['id']}' == id) return true;
