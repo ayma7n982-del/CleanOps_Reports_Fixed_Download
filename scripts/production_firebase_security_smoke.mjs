@@ -151,7 +151,7 @@ function updateWrite(path, data, fieldPaths) {
 function createWrite(path, data) {
   return {
     update: {
-      name: `${firestoreBase}/${path}`,
+      name: `${firestoreNameBase}/${path}`,
       fields: fields(data).fields,
     },
     currentDocument: {exists: false},
