@@ -76,12 +76,12 @@ class AIService {
 
   static String _normalizeArabic(String input) {
     return input.toLowerCase()
-        .replaceAll(RegExp(r'[\\u064B-\\u065F\\u0670\\u0640]'), '')
+        .replaceAll(RegExp(r'[\u064B-\u065F\u0670\u0640]'), '')
         .replaceAll(RegExp('[أإآٱ]'), 'ا')
         .replaceAll('ى', 'ي')
         .replaceAll('ة', 'ه')
-        .replaceAll(RegExp(r'[^\\u0621-\\u064A\\u0660-\\u0669a-z0-9 ]'), ' ')
-        .replaceAll(RegExp(r'\\s+'), ' ')
+        .replaceAll(RegExp(r'[^\u0621-\u064A\u0660-\u0669a-z0-9 ]'), ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
         .trim();
   }
 
@@ -115,7 +115,7 @@ class AIService {
       }
     }
     lines.add('المصدر: بيانات Firestore المتاحة؛ قد تكون مخزنة مؤقتًا عند عدم الاتصال.');
-    return lines.join('\\n');
+    return lines.join('\n');
   }
 
   Future<String> _buildPrompt(AppUser user, String question) async {
