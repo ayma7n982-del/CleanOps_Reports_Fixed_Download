@@ -148,7 +148,18 @@ class _Level2MunicipalityScreenState extends State<Level2MunicipalityScreen> {
         x['isDeleted'] != true && '${x['municipalityCoordinatorId'] ?? ''}' == u.id));
     if (!mounted) return;
     String? fromId, toId, cartId;
+    String? cartGroupId(String? id) {
+      if (id == null) return null;
+      for (final cart in carts) {
+        if ('${cart['_cartCollection']}:${cart['id']}' == id) {
+          final group = '${cart['groupId'] ?? ''}';
+          return groups.any((g) => '${g['id']}' == group) ? group : null;
+        }
+      }
+      return null;
+    }
     String recordId(Map<String, dynamic> x) => '${x['id'] ?? ''}';
+    String cartSelectionId(Map<String, dynamic> x) => '${x['_cartCollection']}:${x['id']}';
     String recordName(Map<String, dynamic> x) =>
         '${x['name'] ?? x['groupName'] ?? x['number'] ?? x['id'] ?? ''}';
     if (groups.length < 2 || carts.isEmpty) {
@@ -166,19 +177,20 @@ class _Level2MunicipalityScreenState extends State<Level2MunicipalityScreen> {
             DropdownButtonFormField<String>(
               value: cartId, isExpanded: true,
               decoration: const InputDecoration(labelText: 'الكارة'),
-              items: carts.map((c) => DropdownMenuItem(value: recordId(c),
+              items: carts.map((c) => DropdownMenuItem(value: cartSelectionId(c),
                 child: Text(recordName(c), overflow: TextOverflow.ellipsis))).toList(),
-              onChanged: (v) => setDialogState(() => cartId = v),
+              onChanged: (v) => setDialogState(() {
+                cartId = v;
+                fromId = cartGroupId(v);
+                toId = null;
+              }),
             ),
             DropdownButtonFormField<String>(
               value: fromId, isExpanded: true,
               decoration: const InputDecoration(labelText: 'من المجموعة'),
               items: groups.map((g) => DropdownMenuItem(value: recordId(g),
                 child: Text(recordName(g), overflow: TextOverflow.ellipsis))).toList(),
-              onChanged: (v) => setDialogState(() {
-                fromId = v;
-                if (toId == v) toId = null;
-              }),
+              onChanged: null,
             ),
             DropdownButtonFormField<String>(
               value: toId, isExpanded: true,
@@ -203,7 +215,7 @@ class _Level2MunicipalityScreenState extends State<Level2MunicipalityScreen> {
     final current = context.read<AuthService>().currentUser;
     if (current == null || current.id != u.id || !current.can('workers', 'edit')) return;
     // Validate selections again before enqueuing an offline-first operation.
-    if (!carts.any((c) => recordId(c) == cartId) ||
+    if (!carts.any((c) => cartSelectionId(c) == cartId) ||
         !groups.any((g) => recordId(g) == fromId) ||
         !groups.any((g) => recordId(g) == toId) || fromId == toId) return;
     try {
@@ -211,7 +223,7 @@ class _Level2MunicipalityScreenState extends State<Level2MunicipalityScreen> {
       final payload = <String, dynamic>{
         'id': id, 'municipalityCoordinatorId': u.id,
         'fromGroupId': fromId, 'toGroupId': toId, 'cartId': cartId,
-        'cartEntity': carts.firstWhere((c) => recordId(c) == cartId)['_entity'],
+        'cartEntity': carts.firstWhere((c) => cartSelectionId(c) == cartId)['_entity'],
         'cartCollection': carts.firstWhere((c) => recordId(c) == cartId)['_cartCollection'],
         'fromGroup': recordName(groups.firstWhere((g) => recordId(g) == fromId)),
         'toGroup': recordName(groups.firstWhere((g) => recordId(g) == toId)),
