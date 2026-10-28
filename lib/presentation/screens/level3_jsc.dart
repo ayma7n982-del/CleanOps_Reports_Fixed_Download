@@ -188,7 +188,8 @@ class _Level3JscState extends State<Level3JscScreen> with SingleTickerProviderSt
     if (user == null || user.role != 'jsc_coordinator') return;
     try {
       final now = DateTime.now().toIso8601String();
-      await FirebaseFirestore.instance.collection('operations').doc(id).update({
+      await context.read<DataService>().enqueue('emergency', 'sos_acknowledge', {
+        'id': id,
         'acknowledged': true,
         'acknowledgedBy': user.id,
         'acknowledgedAt': now,
@@ -197,16 +198,23 @@ class _Level3JscState extends State<Level3JscScreen> with SingleTickerProviderSt
       });
       await _loadOperationsState();
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: AppText('تم تأكيد الاستلام.')));
+        const SnackBar(content: AppText('تم حفظ تأكيد الاستلام للمزامنة التلقائية.')));
     } catch (error) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('تعذر تأكيد الاستلام: $error')));
+        SnackBar(content: Text('تعذر تسجيل تأكيد الاستلام: $error')));
     }
   }
 
   Future<void> _closeSos(String id) async {
     final user = context.read<AuthService>().currentUser;
     if (user == null || user.role != 'jsc_coordinator') return;
+    final record = emergencies.where((e) => '${e['id']}' == id).toList();
+    if (record.isEmpty || record.first['acknowledged'] != true ||
+        !const ['acknowledged', 'resolved'].contains(record.first['status'])) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: AppText('يجب تأكيد استلام البلاغ قبل إغلاقه.')));
+      return;
+    }
     final noteController = TextEditingController();
     final note = await showDialog<String>(
       context: context,
@@ -218,7 +226,8 @@ class _Level3JscState extends State<Level3JscScreen> with SingleTickerProviderSt
           decoration: const InputDecoration(labelText: 'سبب الإغلاق والإجراءات المتخذة'),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const AppText('إلغاء')),
+          TextButton(onPressed: () => Navigator.pop(dialogContext),
+              child: const AppText('إلغاء')),
           FilledButton(onPressed: () {
             final value = noteController.text.trim();
             if (value.isNotEmpty) Navigator.pop(dialogContext, value);
@@ -229,11 +238,9 @@ class _Level3JscState extends State<Level3JscScreen> with SingleTickerProviderSt
     noteController.dispose();
     if (note == null || note.isEmpty || !mounted) return;
     try {
-      final recordRef = FirebaseFirestore.instance.collection('operations').doc(id);
-      final existing = (await recordRef.get()).data();
-      if (existing?['acknowledged'] != true || existing?['status'] == 'closed') return;
       final now = DateTime.now().toIso8601String();
-      await recordRef.update({
+      await context.read<DataService>().enqueue('emergency', 'sos_close', {
+        'id': id,
         'status': 'closed',
         'acknowledged': true,
         'closedBy': user.id,
@@ -242,11 +249,11 @@ class _Level3JscState extends State<Level3JscScreen> with SingleTickerProviderSt
         'updatedAt': now,
       });
       await _loadOperationsState();
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: AppText('تم إغلاق بلاغ SOS في Firebase.')));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: AppText('تم حفظ طلب إغلاق SOS؛ سيُزامن تلقائيًا عند الاتصال.')));
     } catch (error) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('تعذر إغلاق البلاغ: $error')));
+        SnackBar(content: Text('تعذر تسجيل إغلاق البلاغ: $error')));
     }
   }
 
