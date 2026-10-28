@@ -5,6 +5,7 @@ import '../../core/services/auth_service.dart';
 import '../widgets/app_design.dart';
 import '../widgets/creative_shortcuts.dart';
 import '../widgets/operations_overview.dart';
+import '../widgets/workspace_overview.dart';
 import 'equipment_search.dart';
 import 'enterprise_operations_hub.dart';
 import 'reports_center.dart';
@@ -32,6 +33,21 @@ class Level4UnicefScreen extends StatelessWidget {
           const _SimulationShortcutBanner(),
           const SizedBox(height: 12),
           const OperationsOverviewStrip(),
+          const SizedBox(height: 12),
+          WorkspaceOverview(actions: [
+            WorkspaceAction('users','إدارة المستخدمين',Icons.people,
+              () => Navigator.push(context,MaterialPageRoute(
+                builder:(_)=>const UserManagementSettingsPage()))),
+            WorkspaceAction('equipment','بحث المعدات',Icons.local_shipping,
+              () => Navigator.push(context,MaterialPageRoute(
+                builder:(_)=>const EquipmentSearchScreen()))),
+            WorkspaceAction('operations','مركز الإدارة',Icons.dashboard,
+              () => Navigator.push(context,MaterialPageRoute(
+                builder:(_)=>const EnterpriseOperationsHubPage()))),
+            WorkspaceAction('reports','التقارير',Icons.analytics,
+              () => Navigator.push(context,MaterialPageRoute(
+                builder:(_)=>const ReportsCenterScreen()))),
+          ]),
           const SizedBox(height: 14),
           CreativeShortcutGrid(
             emphasize: true,

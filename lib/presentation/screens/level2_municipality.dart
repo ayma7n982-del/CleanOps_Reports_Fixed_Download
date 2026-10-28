@@ -12,6 +12,7 @@ import 'operations_management.dart';
 import '../widgets/app_design.dart';
 import '../widgets/creative_shortcuts.dart';
 import '../widgets/operations_overview.dart';
+import '../widgets/workspace_overview.dart';
 import '../widgets/smart_excel_import.dart';
 import 'container_management.dart';
 import 'messages_center.dart';
@@ -375,6 +376,20 @@ class _Level2MunicipalityScreenState extends State<Level2MunicipalityScreen> {
             ),
             const SizedBox(height: 10),
             const OperationsOverviewStrip(),
+            const SizedBox(height: 12),
+            WorkspaceOverview(actions: [
+              WorkspaceAction('workers','المجموعات والعمال',Icons.groups,
+                () => Navigator.push(context,MaterialPageRoute(
+                  builder:(_)=>const OperationsManagementScreen(initialTab:0)))),
+              WorkspaceAction('cart','إعادة توجيه الكارات',Icons.local_shipping,
+                _redirect),
+              WorkspaceAction('containers','الحاويات',Icons.delete_outline,
+                () => Navigator.push(context,MaterialPageRoute(
+                  builder:(_)=>const ContainerManagementScreen()))),
+              WorkspaceAction('reports','التقارير',Icons.analytics,
+                () => Navigator.push(context,MaterialPageRoute(
+                  builder:(_)=>const ReportsCenterScreen()))),
+            ]),
             const SizedBox(height: 12),
             AiSectionCard(title: 'بلاغات SOS العاجلة', feature: 'emergency', child: _municipalitySosInbox()),
             const SizedBox(height: 12),

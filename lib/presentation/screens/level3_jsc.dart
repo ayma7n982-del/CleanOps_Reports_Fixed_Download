@@ -17,6 +17,7 @@ import 'operations_management.dart';
 import '../widgets/app_design.dart';
 import '../widgets/creative_shortcuts.dart';
 import '../widgets/operations_overview.dart';
+import '../widgets/workspace_overview.dart';
 import 'container_management.dart';
 import 'messages_center.dart';
 
@@ -595,6 +596,17 @@ class _Level3JscState extends State<Level3JscScreen> with SingleTickerProviderSt
                   ),
                   const SizedBox(height: 10),
                   const OperationsOverviewStrip(),
+                  const SizedBox(height: 12),
+                  WorkspaceOverview(actions: [
+                    WorkspaceAction('dispatch','توجيه الآليات',Icons.local_shipping,_chooseDispatch),
+                    WorkspaceAction('return','استعادة الآليات',Icons.assignment_return,_chooseEquipmentReturn),
+                    WorkspaceAction('containers','الحاويات',Icons.delete_outline,
+                      () => Navigator.push(context,MaterialPageRoute(
+                        builder:(_)=>const ContainerManagementScreen()))),
+                    WorkspaceAction('reports','التقارير',Icons.analytics,
+                      () => Navigator.push(context,MaterialPageRoute(
+                        builder:(_)=>const ReportsCenterScreen()))),
+                  ]),
                   const SizedBox(height: 6),
                   Text(context.watch<DataService>().automaticSyncStatus),
                   const SizedBox(height: 12),

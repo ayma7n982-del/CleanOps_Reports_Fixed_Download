@@ -19,6 +19,7 @@ import '../../core/services/operational_insights.dart';
 import 'reports_center.dart';
 import '../widgets/app_design.dart';
 import '../widgets/operations_overview.dart';
+import '../widgets/workspace_overview.dart';
 import 'container_management.dart';
 import 'global_search.dart';
 
@@ -576,6 +577,22 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
               ),
               const SizedBox(height: 12),
               const OperationsOverviewStrip(),
+              const SizedBox(height: 12),
+              WorkspaceOverview(actions: [
+                if (user.can('attendance','create'))
+                  WorkspaceAction('attendance','حضور مجموعتي',Icons.fact_check,
+                    () => _openAction(context,'حضور مجموعتي',_attendance(config))),
+                if (user.can('trips','create'))
+                  WorkspaceAction('trips','تسجيل نقلة',Icons.local_shipping,
+                    () => _openAction(context,'تسجيل نقلة',_trips(config))),
+                if (user.can('containers','create') || user.can('containers','edit'))
+                  WorkspaceAction('containers','حاويات مجموعتي',Icons.delete_outline,
+                    () => Navigator.push(context,MaterialPageRoute(
+                      builder:(_)=>const ContainerManagementScreen()))),
+                if (user.can('emergency','create'))
+                  WorkspaceAction('emergency','SOS',Icons.warning_amber,
+                    () => _openAction(context,'SOS / طوارئ',_emergency(config))),
+              ]),
               const SizedBox(height: 18),
               GridView.count(
                 crossAxisCount: MediaQuery.sizeOf(context).width >= 700 ? 4 : 2,
