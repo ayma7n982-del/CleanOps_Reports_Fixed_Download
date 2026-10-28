@@ -127,20 +127,25 @@ class _Level2MunicipalityScreenState extends State<Level2MunicipalityScreen> {
         ['${x['type'] ?? ''}', '${x['category'] ?? ''}', '${x['machine'] ?? ''}', '${x['name'] ?? ''}']
             .any((value) => value.contains('كارة') || value.toLowerCase().contains('cart')))
         .map((x) => {...x, '_cartCollection': 'operations'}).toList();
+    // Keep the equipment cache scoped to the authenticated coordinator.
+    final cachedCarts = data.store.cachedEquipmentCarts(u.id);
+    List<Map<String, dynamic>> equipmentCarts = cachedCarts;
     if (data.online) {
       try {
-        final equipment = await FirebaseFirestore.instance.collection('equipment').limit(1000).get();
-        for (final doc in equipment.docs) {
-          final x = doc.data();
-          if (x['isDeleted'] == true || '${x['municipalityCoordinatorId'] ?? ''}' != u.id) continue;
-          if (!['${x['type'] ?? ''}', '${x['category'] ?? ''}', '${x['name'] ?? ''}']
-              .any((v) => v.contains('كارة') || v.toLowerCase().contains('cart'))) continue;
-          carts.add({...x, 'id': doc.id, '_cartCollection': 'equipment', '_entity': 'equipment'});
-        }
+        final equipment = await FirebaseFirestore.instance.collection('equipment')
+            .where('municipalityCoordinatorId', isEqualTo: u.id).limit(1000).get();
+        equipmentCarts = equipment.docs.map((doc) => {
+          ...doc.data(), 'id': doc.id, '_cartCollection': 'equipment', '_entity': 'equipment',
+        }).where((x) => x['isDeleted'] != true &&
+          ['${x['type'] ?? ''}', '${x['category'] ?? ''}', '${x['name'] ?? ''}']
+              .any((v) => v.contains('كارة') || v.toLowerCase().contains('cart'))).toList();
+        await data.store.saveCachedEquipmentCarts(u.id, equipmentCarts);
       } catch (e) {
-        debugPrint('Equipment cart lookup unavailable; using offline operations cache: $e');
+        debugPrint('Equipment lookup failed; using coordinator-specific cache: $e');
       }
     }
+    carts.addAll(equipmentCarts.where((x) =>
+        x['isDeleted'] != true && '${x['municipalityCoordinatorId'] ?? ''}' == u.id));
     if (!mounted) return;
     String? fromId, toId, cartId;
     String recordId(Map<String, dynamic> x) => '${x['id'] ?? ''}';
