@@ -89,9 +89,14 @@ class AIService {
     if (summary || workers) lines.add('العمال النشطون: ${data['activeWorkers']}، المشرفون: ${data['activeGroupSupervisors']}');
     if (summary || groups) lines.add('المجموعات النشطة: ${data['activeGroups']}');
     if (summary || trips) lines.add('الترحيلات اليوم: ${data['loadsTransferredToday']}');
-    if (summary || alerts) lines.add('حالات الطوارئ غير المغلقة: ${data['activeSOSorEmergencies']}');
+    if (summary || alerts) {
+      lines.add('حالات الطوارئ غير المغلقة: ${data['activeSOSorEmergencies']}');
+      if ((data['activeSOSorEmergencies'] as int) > 0) lines.add('تنبيه تشغيلي: توجد حالات طوارئ تحتاج مراجعة في شاشة العمليات.');
+    }
     if (summary || sites) {
       lines.add('المكبات النشطة: ${data['activeDumpsites']}');
+      final critical = (data['dumpsites'] as List).where((site) => (site['fillPercentage'] as num) >= 85).length;
+      if (critical > 0) lines.add('تنبيه تشغيلي: $critical مكب/مكبات بنسبة امتلاء 85% أو أكثر. يُنصح بمراجعة السعة المتاحة قبل توجيه الترحيلات.');
       final items = data['dumpsites'] as List;
       for (final item in items.take(12)) {
         lines.add('• ${item['name']}: الامتلاء ${item['fillPercentage']}%');
