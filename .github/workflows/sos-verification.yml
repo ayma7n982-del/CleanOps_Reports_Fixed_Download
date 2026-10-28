@@ -1,4 +1,9 @@
 name: SOS verification
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: ${{ github.event_name == 'push' }}
+
 on:
   push:
     paths:

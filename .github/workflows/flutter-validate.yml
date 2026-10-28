@@ -1,5 +1,10 @@
 name: Flutter validation
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: ${{ github.event_name == 'push' }}
+
+
 on:
   push:
     branches: [main]
