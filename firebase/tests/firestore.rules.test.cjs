@@ -2,7 +2,7 @@ const {before, after, beforeEach, test} = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const {initializeTestEnvironment, assertSucceeds, assertFails} = require('@firebase/rules-unit-testing');
-const {doc, setDoc, getDoc, updateDoc, deleteDoc, Timestamp} = require('firebase/firestore');
+const {doc, setDoc, getDoc, updateDoc, deleteDoc, writeBatch, Timestamp} = require('firebase/firestore');
 
 let env;
 const projectId = 'cleanops-messaging-rules-test';
@@ -156,6 +156,75 @@ test('operations: supervisor may complete own-group trip but cannot mutate or cl
   }));
   await assertFails(updateDoc(doc(db('head-a'),'operations','trip-own-update'), {
     landfill:'unauthorized-change',
+  }));
+});
+
+test('cart redirect: L2 atomically reassigns owned equipment with matching audit log', async () => {
+  await env.withSecurityRulesDisabled(async ctx => {
+    const admin = ctx.firestore();
+    await setDoc(doc(admin,'operations','group-a'), {_entity:'group',municipalityCoordinatorId:'coordinator'});
+    await setDoc(doc(admin,'operations','group-b'), {_entity:'group',municipalityCoordinatorId:'coordinator'});
+    await setDoc(doc(admin,'equipment','cart-a'), {
+      id:'cart-a', type:'cart', category:'cart',
+      municipalityCoordinatorId:'coordinator', groupId:'group-a', isDeleted:false,
+    });
+  });
+
+  const coordinatorDb = db('coordinator');
+  const batch = writeBatch(coordinatorDb);
+  batch.update(doc(coordinatorDb,'equipment','cart-a'), {
+    groupId:'group-b', updatedBy:'coordinator',
+    updatedAt:'2026-10-28T09:00:00.000Z',
+    lastRedirectRequestId:'redirect-a',
+  });
+  batch.set(doc(coordinatorDb,'operations','redirect-a'), {
+    id:'redirect-a', _entity:'cart_redirect',
+    municipalityCoordinatorId:'coordinator', requestedBy:'coordinator',
+    fromGroupId:'group-a', toGroupId:'group-b',
+    cartId:'cart-a', cartEntity:'equipment', cartCollection:'equipment',
+    status:'applied',
+  });
+  await assertSucceeds(batch.commit());
+
+  await assertFails(updateDoc(doc(coordinatorDb,'equipment','cart-a'), {
+    groupId:'group-a', updatedBy:'coordinator',
+    updatedAt:'2026-10-28T09:05:00.000Z',
+    lastRedirectRequestId:'missing-log',
+  }));
+  await assertFails(updateDoc(doc(db('head-a'),'equipment','cart-a'), {
+    groupId:'group-a',
+  }));
+});
+
+test('user deletion: managed account is disabled only with an atomic authorized deletion request', async () => {
+  const coordinatorDb = db('coordinator');
+  const batch = writeBatch(coordinatorDb);
+  batch.update(doc(coordinatorDb,'users','worker-a'), {
+    isActive:false,
+    status:'pending_deletion',
+    deletionRequestedBy:'coordinator',
+    deletionRequestedAt:'2026-10-28T09:10:00.000Z',
+    deletionRequestId:'delete-worker-a',
+    updatedBy:'coordinator',
+    updatedAt:'2026-10-28T09:10:00.000Z',
+  });
+  batch.set(doc(coordinatorDb,'admin_requests','delete-worker-a'), {
+    id:'delete-worker-a',
+    type:'delete_user',
+    targetUserId:'worker-a',
+    requestedBy:'coordinator',
+    status:'pending',
+    createdAt:'2026-10-28T09:10:00.000Z',
+  });
+  await assertSucceeds(batch.commit());
+
+  await assertFails(updateDoc(doc(db('head-a'),'users','worker-b'), {
+    isActive:false,
+    status:'pending_deletion',
+  }));
+  await assertFails(setDoc(doc(db('head-a'),'admin_requests','bad-delete'), {
+    id:'bad-delete', type:'delete_user',
+    targetUserId:'worker-b', requestedBy:'head-a', status:'pending',
   }));
 });
 
