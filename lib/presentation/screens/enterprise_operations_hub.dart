@@ -37,16 +37,24 @@ class EnterpriseOperationsHubPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final user = context.watch<AuthService>().currentUser!;
     final tiles = <CreativeShortcut>[
-      CreativeShortcut(title: 'الحاويات', subtitle: 'الحالة والامتلاء والمشكلات', feature: 'containers', onTap: () => _push(context, const ContainerManagementScreen())),
-      CreativeShortcut(title: 'المكبات', subtitle: 'السعة والامتلاء والحالة', feature: 'dumpsite', onTap: () => _push(context, user.role == 'donor_manager' ? const DumpsitesOverviewScreen() : OperationsManagementScreen(initialTab: user.role == 'municipality_coordinator' ? 1 : 0))),
-      CreativeShortcut(title: 'بحث المعدات', subtitle: 'بحث سريع بالاسم والنوع والموقع', feature: 'operations', onTap: () => _push(context, const EquipmentSearchScreen())),
-      CreativeShortcut(title: 'البحث الشامل', subtitle: 'بحث ذكي يفهم الاختلافات والأخطاء', feature: 'reports', onTap: () => _push(context, const GlobalSearchPage())),
-      CreativeShortcut(title: 'التنبيهات والبلاغات', subtitle: 'البلاغات والحالات الحرجة', feature: 'emergency', onTap: () => _push(context, const AlertsCenterPage())),
+      if (user.can('containers', 'view'))
+        CreativeShortcut(title: 'الحاويات', subtitle: 'الحالة والامتلاء والمشكلات', feature: 'containers', onTap: () => _push(context, const ContainerManagementScreen())),
+      if (user.can('dumpsite', 'view'))
+        CreativeShortcut(title: 'المكبات', subtitle: 'السعة والامتلاء والحالة', feature: 'dumpsite', onTap: () => _push(context, user.role == 'donor_manager' ? const DumpsitesOverviewScreen() : OperationsManagementScreen(initialTab: user.role == 'municipality_coordinator' ? 1 : 0))),
+      if (user.can('operations', 'view') &&
+          const ['donor_manager', 'jsc_coordinator', 'municipality_coordinator'].contains(user.role))
+        CreativeShortcut(title: 'بحث المعدات', subtitle: 'بحث سريع بالاسم والنوع والموقع', feature: 'operations', onTap: () => _push(context, const EquipmentSearchScreen())),
+      if (user.can('operations', 'view') || user.can('reports', 'view'))
+        CreativeShortcut(title: 'البحث الشامل', subtitle: 'بحث ذكي يفهم الاختلافات والأخطاء', feature: 'reports', onTap: () => _push(context, const GlobalSearchPage())),
+      if (user.can('emergency', 'view'))
+        CreativeShortcut(title: 'التنبيهات والبلاغات', subtitle: 'البلاغات والحالات الحرجة', feature: 'emergency', onTap: () => _push(context, const AlertsCenterPage())),
       if (user.can('workers', 'view')) CreativeShortcut(title: 'المجموعات والعمال', subtitle: 'الحالة والتوزيع والأفراد', feature: 'workers', onTap: () => _push(context, const GroupsCommandCenterPage())),
       if (user.can('trips', 'view')) CreativeShortcut(title: 'سجل الترحيلات', subtitle: 'جميع النقلات الموثقة', feature: 'trips', onTap: () => _push(context, const TripsLogPage())),
       if (user.can('reports', 'view')) CreativeShortcut(title: 'التقارير', subtitle: 'الغياب والحاويات والعمل والدورات', feature: 'reports', onTap: () => _push(context, const ReportsCenterScreen())),
-      CreativeShortcut(title: 'المزامنة', subtitle: 'Online / Offline والطوابير', feature: 'sync', onTap: () => _push(context, const SyncCenterPage())),
-      CreativeShortcut(title: 'الأمان', subtitle: 'الحساب والجلسة والصلاحيات', feature: 'permissions', onTap: () => _push(context, const SecurityCenterPage())),
+      if (user.can('sync', 'view'))
+        CreativeShortcut(title: 'المزامنة', subtitle: 'Online / Offline والطوابير', feature: 'sync', onTap: () => _push(context, const SyncCenterPage())),
+      if (user.can('permissions', 'view'))
+        CreativeShortcut(title: 'الأمان', subtitle: 'الحساب والجلسة والصلاحيات', feature: 'permissions', onTap: () => _push(context, const SecurityCenterPage())),
     ];
     return Scaffold(
       appBar: AppBar(
@@ -64,7 +72,10 @@ class EnterpriseOperationsHubPage extends StatelessWidget {
             if (!snap.hasData) return const _LoadingCard();
             final x = snap.data!;
             return AiSectionCard(title: 'لقطة تشغيلية حقيقية', subtitle: 'تُقرأ من Firestore ولا تستخدم أرقامًا تجريبية', feature: 'dashboard', trailing: AppText(_time(x['checkedAt']), style: const TextStyle(color: cleanOpsMuted, fontSize: 10)), child: Wrap(spacing: 10, runSpacing: 10, children: [
-              _HubMetric('العمال النشطون', '${x['workers']}', 'workers'), _HubMetric('المجموعات', '${x['groups']}', 'operations'), _HubMetric('الطوارئ', '${x['emergencies']}', 'emergency'), _HubMetric('مكبات حرجة', '${x['criticalDumpsites']}', 'dumpsite'),
+              if (user.can('workers', 'view')) _HubMetric('العمال النشطون', '${x['workers']}', 'workers'),
+              if (user.can('operations', 'view')) _HubMetric('المجموعات', '${x['groups']}', 'operations'),
+              if (user.can('emergency', 'view')) _HubMetric('الطوارئ', '${x['emergencies']}', 'emergency'),
+              if (user.can('dumpsite', 'view')) _HubMetric('مكبات حرجة', '${x['criticalDumpsites']}', 'dumpsite'),
             ]));
           },
         ),
