@@ -5,6 +5,8 @@ on:
     branches: [main]
     paths:
       - 'scripts/production_firebase_security_smoke.mjs'
+      - 'scripts/process_user_deletion_requests.mjs'
+      - 'scripts/verify_smoke_user_deletion.mjs'
       - '.github/workflows/firebase-production-smoke.yml'
   workflow_dispatch:
 
@@ -31,4 +33,17 @@ jobs:
         env:
           FIREBASE_PROJECT_ID: nrc-aid
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          KEEP_SMOKE_DELETE_REQUEST: '1'
         run: node scripts/production_firebase_security_smoke.mjs
+      - name: Process queued deletion using the free GitHub worker
+        env:
+          FIREBASE_PROJECT_ID: nrc-aid
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: node scripts/process_user_deletion_requests.mjs
+      - name: Verify permanent deletion and clean smoke artifacts
+        env:
+          FIREBASE_PROJECT_ID: nrc-aid
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          SMOKE_DELETE_USER_ID: ${{ env.SMOKE_DELETE_USER_ID }}
+          SMOKE_DELETE_REQUEST_ID: ${{ env.SMOKE_DELETE_REQUEST_ID }}
+        run: node scripts/verify_smoke_user_deletion.mjs
