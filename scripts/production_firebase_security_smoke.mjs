@@ -1,5 +1,4 @@
 import fs from 'node:fs';
-import crypto from 'node:crypto';
 import {initializeApp, cert, deleteApp} from 'firebase-admin/app';
 import {getAuth} from 'firebase-admin/auth';
 import {getFirestore} from 'firebase-admin/firestore';
@@ -23,12 +22,14 @@ const auth = getAuth(app);
 const adminDb = getFirestore(app);
 const createdUids = [];
 const createdDocs = [];
+const actorIds = [];
 
 const ids = {
   supervisorA: `${prefix}_head_a`,
   supervisorB: `${prefix}_head_b`,
   workerA: `${prefix}_worker_a`,
   workerB: `${prefix}_worker_b`,
+  deleteWorker: `${prefix}_worker_delete`,
   coordinator: `${prefix}_l2`,
   jsc: `${prefix}_l3`,
   manager: `${prefix}_l4`,
@@ -38,6 +39,13 @@ const ids = {
   tripB: `${prefix}_trip_b`,
   ownCreate: `${prefix}_trip_created_by_a`,
   otherCreate: `${prefix}_trip_cross_create`,
+  sosOwn: `${prefix}_sos_a`,
+  sosOther: `${prefix}_sos_cross`,
+  dumpsite: `${prefix}_dumpsite`,
+  workerDumpsite: `${prefix}_worker_dumpsite`,
+  cart: `${prefix}_cart`,
+  redirectDenied: `${prefix}_redirect_denied`,
+  redirectAllowed: `${prefix}_redirect_allowed`,
 };
 
 function rememberDoc(collection, id) {
@@ -51,6 +59,7 @@ async function adminSet(collection, id, data) {
 async function createTestUser(uid, role, groupId = null) {
   await auth.createUser({uid, disabled: false});
   createdUids.push(uid);
+  actorIds.push(uid);
   const data = {
     id: uid,
     username: uid.slice(-28),
@@ -113,16 +122,35 @@ async function rest(method, path, token, data, query = '') {
   const text = await response.text();
   return {status: response.status, ok: response.ok, text};
 }
+async function callable(name, token, data) {
+  const response = await fetch(
+    `https://us-central1-${projectId}.cloudfunctions.net/${name}`,
+    {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${token}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({data}),
+    },
+  );
+  const text = await response.text();
+  return {status: response.status, ok: response.ok, text};
+}
 function expectAllowed(label, result) {
-  if (!result.ok) throw new Error(`${label}: expected allowed, got HTTP ${result.status}: ${result.text.slice(0, 500)}`);
+  if (!result.ok) throw new Error(`${label}: expected allowed, got HTTP ${result.status}: ${result.text.slice(0, 700)}`);
   console.log(`PASS allowed: ${label}`);
 }
 function expectDenied(label, result) {
-  if (![401, 403].includes(result.status)) {
-    throw new Error(`${label}: expected 401/403, got HTTP ${result.status}: ${result.text.slice(0, 500)}`);
+  if (![400, 401, 403].includes(result.status)) {
+    throw new Error(`${label}: expected denial, got HTTP ${result.status}: ${result.text.slice(0, 700)}`);
   }
   console.log(`PASS denied: ${label}`);
 }
+
+const aiRef = adminDb.collection('ai_state').doc('command_center');
+const aiBeforeSnap = await aiRef.get();
+const aiBefore = aiBeforeSnap.exists ? aiBeforeSnap.data() : null;
 
 try {
   await createTestUser(ids.coordinator, 'municipality_coordinator');
@@ -132,6 +160,7 @@ try {
   await createTestUser(ids.supervisorB, 'group_supervisor', ids.groupB);
   await createTestUser(ids.workerA, 'worker', ids.groupA);
   await createTestUser(ids.workerB, 'worker', ids.groupB);
+  await createTestUser(ids.deleteWorker, 'worker', ids.groupA);
 
   await adminSet('operations', ids.groupA, {
     id: ids.groupA, _entity: 'group', name: 'Smoke Group A',
@@ -155,6 +184,11 @@ try {
     deadlineAt: new Date(Date.now() + 50 * 60_000).toISOString(),
     createdAt: new Date().toISOString(), isDeleted: false,
   });
+  await adminSet('equipment', ids.cart, {
+    id: ids.cart, name: 'Smoke Cart', type: 'cart', category: 'cart',
+    municipalityCoordinatorId: ids.coordinator,
+    groupId: ids.groupA, isDeleted: false,
+  });
 
   const tokens = {};
   for (const [name, uid] of Object.entries({
@@ -165,7 +199,6 @@ try {
 
   expectDenied('anonymous cannot read operations',
     await rest('GET', `operations/${ids.tripA}`, null));
-
   expectAllowed('worker A reads own-group trip',
     await rest('GET', `operations/${ids.tripA}`, tokens.workerA));
   expectDenied('worker A cannot read group B trip',
@@ -220,13 +253,107 @@ try {
       landfill: 'unauthorized-change',
     }, '?updateMask.fieldPaths=landfill'));
 
-  console.log('PRODUCTION FIREBASE SECURITY SMOKE TEST PASSED.');
+  expectAllowed('municipality coordinator transfers managed worker to another owned group',
+    await rest('PATCH', `users/${ids.workerA}`, tokens.coordinator, {
+      groupId: ids.groupB,
+      groupName: 'Smoke Group B',
+      updatedBy: ids.coordinator,
+      updatedAt: new Date().toISOString(),
+    }, '?updateMask.fieldPaths=groupId&updateMask.fieldPaths=groupName&updateMask.fieldPaths=updatedBy&updateMask.fieldPaths=updatedAt'));
+
+  expectDenied('group supervisor cannot transfer worker profile',
+    await rest('PATCH', `users/${ids.workerB}`, tokens.supervisorA, {
+      groupId: ids.groupA,
+    }, '?updateMask.fieldPaths=groupId'));
+
+  const dumpsite = {
+    nameAr: 'مكب اختبار مؤقت',
+    nameEn: 'Temporary Smoke Dumpsite',
+    capacity: 100,
+    fillPercentage: 25,
+    isActive: true,
+    createdBy: ids.coordinator,
+    createdAt: new Date().toISOString(),
+  };
+  rememberDoc('dumpsites', ids.dumpsite);
+  expectAllowed('municipality coordinator creates a valid dumpsite',
+    await rest('PATCH', `dumpsites/${ids.dumpsite}`, tokens.coordinator, dumpsite));
+  rememberDoc('dumpsites', ids.workerDumpsite);
+  expectDenied('worker cannot create dumpsite',
+    await rest('PATCH', `dumpsites/${ids.workerDumpsite}`, tokens.workerA, dumpsite));
+
+  const sos = {
+    id: ids.sosOwn, _entity: 'emergency',
+    reportedBy: ids.supervisorA, userId: ids.supervisorA,
+    groupId: ids.groupA, municipalityCoordinatorId: ids.coordinator,
+    latitude: 31.9, longitude: 35.2, street: 'Smoke Test Street',
+    status: 'urgent', statusLevel: 'critical', acknowledged: false,
+    createdAt: new Date().toISOString(), isDeleted: false,
+  };
+  rememberDoc('operations', ids.sosOwn);
+  expectAllowed('supervisor creates SOS for own group',
+    await rest('PATCH', `operations/${ids.sosOwn}`, tokens.supervisorA, sos));
+  rememberDoc('operations', ids.sosOther);
+  expectDenied('supervisor cannot create SOS for another group',
+    await rest('PATCH', `operations/${ids.sosOther}`, tokens.supervisorA, {
+      ...sos, id: ids.sosOther, groupId: ids.groupB,
+    }));
+
+  expectDenied('supervisor cannot redirect municipality cart',
+    await callable('redirectCartAssignment', tokens.supervisorA, {
+      requestId: ids.redirectDenied, cartId: ids.cart,
+      cartCollection: 'equipment', fromGroupId: ids.groupA, toGroupId: ids.groupB,
+    }));
+  rememberDoc('operations', ids.redirectAllowed);
+  expectAllowed('municipality coordinator redirects managed cart between owned groups',
+    await callable('redirectCartAssignment', tokens.coordinator, {
+      requestId: ids.redirectAllowed, cartId: ids.cart,
+      cartCollection: 'equipment', fromGroupId: ids.groupA, toGroupId: ids.groupB,
+    }));
+  const cartAfter = await adminDb.collection('equipment').doc(ids.cart).get();
+  if (cartAfter.data()?.groupId !== ids.groupB) {
+    throw new Error('Cart redirect callable returned success but equipment assignment did not change.');
+  }
+  console.log('PASS verified: cart assignment changed on production Firestore.');
+
+  expectAllowed('municipality coordinator permanently deletes managed temporary worker',
+    await callable('deleteManagedUser', tokens.coordinator, {userId: ids.deleteWorker}));
+  const deletedProfile = await adminDb.collection('users').doc(ids.deleteWorker).get();
+  if (deletedProfile.exists) throw new Error('deleteManagedUser left the temporary Firestore profile behind.');
+  let deletedAuthStillExists = true;
+  try { await auth.getUser(ids.deleteWorker); } catch (error) {
+    if (error?.code === 'auth/user-not-found') deletedAuthStillExists = false;
+    else throw error;
+  }
+  if (deletedAuthStillExists) throw new Error('deleteManagedUser left the temporary Authentication account behind.');
+  console.log('PASS verified: managed worker removed from Auth and Firestore.');
+
+  console.log('PRODUCTION FIREBASE SECURITY AND OPERATIONS SMOKE TEST PASSED.');
 } finally {
+  try {
+    const audits = await adminDb.collection('audit').where('actorId', 'in', actorIds.slice(0, 10)).get();
+    for (const doc of audits.docs) {
+      try { await doc.ref.delete(); } catch (error) { console.error(`Cleanup audit failed ${doc.ref.path}: ${error}`); }
+    }
+  } catch (error) {
+    console.error(`Cleanup audit query failed: ${error}`);
+  }
+
   for (const ref of [...new Map(createdDocs.map(ref => [ref.path, ref])).values()].reverse()) {
     try { await ref.delete(); } catch (error) { console.error(`Cleanup document failed ${ref.path}: ${error}`); }
   }
   for (const uid of [...createdUids].reverse()) {
-    try { await auth.deleteUser(uid); } catch (error) { console.error(`Cleanup auth user failed ${uid}: ${error}`); }
+    try { await auth.deleteUser(uid); } catch (error) {
+      if (error?.code !== 'auth/user-not-found') console.error(`Cleanup auth user failed ${uid}: ${error}`);
+    }
+  }
+
+  await new Promise(resolve => setTimeout(resolve, 5000));
+  try {
+    if (aiBeforeSnap.exists) await aiRef.set(aiBefore, {merge: false});
+    else await aiRef.delete();
+  } catch (error) {
+    console.error(`Cleanup ai_state restore failed: ${error}`);
   }
   await deleteApp(app);
 }
