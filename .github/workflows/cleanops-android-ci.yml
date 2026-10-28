@@ -27,6 +27,13 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Resolve dependencies
+        run: flutter pub get
       - name: Set up Gradle 8.4
         uses: gradle/actions/setup-gradle@v4
         with:
@@ -38,13 +45,6 @@ jobs:
             gradle wrapper --gradle-version 8.4
           fi
           chmod +x gradlew
-      - name: Set up Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          channel: stable
-          cache: true
-      - name: Resolve dependencies
-        run: flutter pub get
       - name: Check Dart compilation
         run: flutter analyze --no-fatal-infos --no-fatal-warnings
       - name: Build Android debug APK
