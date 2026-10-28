@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/localization.dart';
@@ -201,13 +202,50 @@ class _AIBotScreenState extends State<AIBotScreen> with TickerProviderStateMixin
                       const Row(children: [AiFeatureIcon('dashboard', size: 16), SizedBox(width: 8), AppText('بيانات تشغيلية حقيقية', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w900)), Spacer(), AppText('Firestore', style: TextStyle(fontSize: 9, color: aiGreen))]),
                       const SizedBox(height: 10),
                       Wrap(spacing: 8, runSpacing: 8, children: [_LiveChip('العمال', '${x['workers']}'), _LiveChip('المجموعات', '${x['groups']}'), _LiveChip('الترحيلات', '${x['trips']}'), _LiveChip('الطوارئ', '${x['emergencies']}'), _LiveChip('المكبات الحرجة', '${x['criticalDumpsites']}')]),
-                      if ((x['criticalDumpsites'] as num? ?? 0) > 0) ...[
-                        const SizedBox(height: 10),
-                        AppText('تنبيه استباقي: ${x['criticalDumpsites']} مكب نشط بنسبة امتلاء 85% أو أكثر. راجع حالة المكبات.', style: const TextStyle(color: Color(0xFF9A4D06), fontSize: 12, fontWeight: FontWeight.w700)),
-                      ],
+
                     ]));
                   },
                 ),
+                if (user.can('dumpsite', 'view'))
+                  StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                    stream: FirebaseFirestore.instance.collection('dumpsites')
+                        .where('isActive', isEqualTo: true).limit(500).snapshots(),
+                    builder: (context, snapshot) {
+                      if (!snapshot.hasData) return const SizedBox.shrink();
+                      final critical = snapshot.data!.docs.where((doc) {
+                        final data = doc.data();
+                        if (data['isDeleted'] == true) return false;
+                        final value = data['fillPercentage'];
+                        final fill = value is num ? value.toDouble()
+                            : double.tryParse('$value') ?? 0;
+                        return fill >= 85;
+                      }).length;
+                      if (critical == 0) return const SizedBox.shrink();
+                      return AiGlassCard(
+                        padding: const EdgeInsets.all(12),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            AppText('تنبيه مباشر: $critical مكب بنسبة امتلاء 85% أو أكثر.',
+                                style: const TextStyle(color: Color(0xFF9A4D06),
+                                    fontWeight: FontWeight.w700, fontSize: 12)),
+                            if (snapshot.data!.metadata.isFromCache)
+                              const AppText('البيانات من ذاكرة الجهاز؛ قد لا تكون محدثة.',
+                                  style: TextStyle(fontSize: 10, color: cleanOpsMuted)),
+                            TextButton.icon(
+                              onPressed: () => Navigator.push(context, MaterialPageRoute(
+                                builder: (_) => user.role == 'jsc_coordinator'
+                                    ? const OperationsManagementScreen(initialTab: 0)
+                                    : const EnterpriseOperationsHubPage(),
+                              )),
+                              icon: const Icon(Icons.open_in_new_rounded, size: 16),
+                              label: const AppText('فتح إدارة المكبات'),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
                 const SizedBox(height: 10),
                 _ChatPanel(messages: messages, loading: loading, input: input, controller: chatScroll, onSend: _send),
                 const SizedBox(height: 10),
