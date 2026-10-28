@@ -99,6 +99,7 @@ async function idToken(uid) {
 }
 
 const firestoreBase = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents`;
+const firestoreNameBase = `projects/${projectId}/databases/(default)/documents`;
 function fields(data) {
   const out = {};
   for (const [key, value] of Object.entries(data)) {
@@ -141,7 +142,7 @@ async function commit(token, writes) {
 function updateWrite(path, data, fieldPaths) {
   return {
     update: {
-      name: `${firestoreBase}/${path}`,
+      name: `${firestoreNameBase}/${path}`,
       fields: fields(data).fields,
     },
     updateMask: {fieldPaths},
