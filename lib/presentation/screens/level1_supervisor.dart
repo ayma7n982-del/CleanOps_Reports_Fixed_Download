@@ -15,6 +15,7 @@ import '../../core/services/data_service.dart';
 import '../../core/services/image_service.dart';
 import '../../core/services/report_service.dart';
 import '../../core/services/trip_lifecycle.dart';
+import '../../core/services/operational_insights.dart';
 import 'reports_center.dart';
 import '../widgets/app_design.dart';
 import '../widgets/operations_overview.dart';
@@ -829,9 +830,102 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
     }
   }
 
+  Future<void> _completeTrip(String tripId) async {
+    final user = context.read<AuthService>().currentUser;
+    final data = context.read<DataService>();
+    if (user == null || !user.can('trips', 'edit')) return;
+    final index = data.operations.indexWhere((item) =>
+        item['_entity'] == 'trip' && '${item['id'] ?? ''}' == tripId);
+    if (index < 0) return;
+    final trip = data.operations[index];
+    if (!TripLifecycle.canSupervisorComplete(
+      trip: trip,
+      supervisorId: user.id,
+      groupId: user.groupId ?? '',
+    )) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: AppText('لا يمكن إنهاء نقلة لا تتبع مجموعتك أو تم إغلاقها مسبقًا.'),
+        ));
+      }
+      return;
+    }
+    await data.enqueue('trip', 'update', {
+      'id': tripId,
+      ...TripLifecycle.completionFields(
+        completedAt: DateTime.now(),
+        completedBy: user.id,
+      ),
+    });
+    await data.addActivity(
+      'إنهاء نقلة',
+      'تم اعتماد وصول النقلة وإغلاقها بواسطة رئيس المجموعة.',
+      level: 'success',
+    );
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: AppText('تم إنهاء النقلة محليًا وستتم مزامنتها تلقائيًا.'),
+      ));
+    }
+  }
+
+  Widget _activeTripsCard() {
+    final data = context.watch<DataService>();
+    final user = context.watch<AuthService>().currentUser;
+    final groupId = user?.groupId?.trim() ?? '';
+    if (user == null || groupId.isEmpty) return const SizedBox.shrink();
+    final active = data.operations.where((item) {
+      if (item['_entity'] != 'trip' || item['isDeleted'] == true) return false;
+      if ('${item['groupId'] ?? ''}'.trim() != groupId) return false;
+      final status = '${item['status'] ?? ''}'.trim().toLowerCase();
+      return !const {'completed', 'closed', 'cancelled'}.contains(status);
+    }).toList()
+      ..sort((a, b) => '${b['startedAt'] ?? b['createdAt'] ?? ''}'
+          .compareTo('${a['startedAt'] ?? a['createdAt'] ?? ''}'));
+    if (active.isEmpty) return const SizedBox.shrink();
+    return AiSectionCard(
+      title: 'النقلات النشطة',
+      subtitle: 'إنهاء النقلة يوقف احتساب التأخير ويُزامن تلقائيًا.',
+      feature: 'trips',
+      child: Column(
+        children: active.map((trip) {
+          final overdue = OperationalInsights.reviewTrips(
+            [trip],
+            now: DateTime.now(),
+          ).overdue > 0;
+          final deadline = '${trip['deadlineAt'] ?? ''}';
+          return ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(
+              overdue ? Icons.warning_amber_rounded : Icons.local_shipping_rounded,
+              color: overdue ? Colors.orange : aiCyan,
+            ),
+            title: AppText('${trip['title'] ?? 'نقلة إلى ${trip['landfill'] ?? ''}'}'),
+            subtitle: AppText(
+              overdue
+                  ? 'متأخرة عن الموعد المستهدف: $deadline'
+                  : 'الموعد المستهدف: $deadline',
+              style: TextStyle(
+                fontSize: 10,
+                color: overdue ? Colors.orange : cleanOpsMuted,
+                fontWeight: overdue ? FontWeight.w700 : FontWeight.normal,
+              ),
+            ),
+            trailing: FilledButton.tonal(
+              onPressed: emergencyLock ? null : () => _completeTrip('${trip['id']}'),
+              child: const AppText('تم الوصول'),
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
   Widget _trips(ConfigService config) => ListView(
     padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
     children: [
+      _activeTripsCard(),
+      const SizedBox(height: 12),
       SupervisorCardSection(
         title: 'النقلات والتوثيق',
         icon: const Icon(Icons.local_shipping_outlined),
