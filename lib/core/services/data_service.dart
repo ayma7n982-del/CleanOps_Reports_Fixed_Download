@@ -29,8 +29,15 @@ class DataService extends ChangeNotifier {
   Timer? automaticSyncTimer;
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? sosNotificationSub;
   StreamSubscription<User?>? authNotificationSub;
+  final Future<void> Function(SyncItem item, Map<String, dynamic> payload)?
+      _syncItemOverride;
 
-  DataService(this.store, this.config);
+  DataService(
+    this.store,
+    this.config, {
+    Future<void> Function(SyncItem item, Map<String, dynamic> payload)?
+        syncItemOverride,
+  }) : _syncItemOverride = syncItemOverride;
 
   Future<void> init() async {
     notifications = store.notifications();
@@ -70,6 +77,13 @@ class DataService extends ChangeNotifier {
             (_) => unawaited(refreshSosInbox()),
             onError: (Object error) => debugPrint('SOS notification listener failed: $error'),
           );
+          if (online) {
+            // A queue created while signed out must retry immediately after the
+            // real Firebase session becomes available instead of waiting for
+            // the periodic retry timer.
+            unawaited(sync());
+            unawaited(refreshOperations());
+          }
           unawaited(refreshSosInbox());
         },
         onError: (Object error) => debugPrint('SOS auth listener failed: $error'),
@@ -332,7 +346,10 @@ class DataService extends ChangeNotifier {
   }
 
   Future<void> sync() async {
-    if (!online || syncing || queue.isEmpty || Firebase.apps.isEmpty) return;
+    if (!online || syncing || queue.isEmpty ||
+        (Firebase.apps.isEmpty && _syncItemOverride == null)) {
+      return;
+    }
     syncing = true;
     notifyListeners();
     var completed = 0;
@@ -341,6 +358,22 @@ class DataService extends ChangeNotifier {
       for (final item in List.from(queue)) {
         try {
           final payload = Map<String, dynamic>.from(jsonDecode(item.payload));
+
+          // Deterministic test seam for the complete offline -> online queue
+          // lifecycle. Production never supplies this override.
+          if (_syncItemOverride != null) {
+            await _syncItemOverride!(item, payload);
+            completed++;
+            _applyLocalOperation(
+              item.entity == 'attendance_checkout' ? 'attendance' : item.entity,
+              item.operation,
+              payload,
+            );
+            queue = queue.where((e) => e.id != item.id).toList();
+            await store.saveQueue(queue);
+            continue;
+          }
+
           if (payload['localAttachmentPath'] != null && '${payload['localAttachmentPath']}'.isNotEmpty) {
             try {
               await _uploadAttachment(payload);
