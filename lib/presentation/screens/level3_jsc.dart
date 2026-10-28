@@ -1,4 +1,6 @@
+import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../core/localization.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -34,6 +36,11 @@ class _Level3JscState extends State<Level3JscScreen> with SingleTickerProviderSt
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
+    _tabController.addListener(() {
+      if (mounted && _tabController.index != tab) {
+        setState(() => tab = _tabController.index);
+      }
+    });
     _loadOperationsState();
   }
 
@@ -47,11 +54,17 @@ class _Level3JscState extends State<Level3JscScreen> with SingleTickerProviderSt
     if (!mounted) return;
     setState(() => loading = true);
     try {
-      final snapshot = await ReportService(context.read<DataService>()).load(user: context.read<AuthService>().currentUser);
-      var loadedCapacity = snapshot.landfillCapacity;
-      final cases = <Map<String, dynamic>>[];
       final data = context.read<DataService>();
       if (data.online) await data.refreshOperations();
+      var loadedCapacity = capacity;
+      try {
+        final snapshot = await ReportService(data).load(
+          user: context.read<AuthService>().currentUser);
+        loadedCapacity = snapshot.landfillCapacity;
+      } catch (error) {
+        debugPrint('Council capacity unavailable; keeping cached SOS: $error');
+      }
+      final cases = <Map<String, dynamic>>[];
       for (final m in data.operations.where((e) => '${e['_entity'] ?? ''}' == 'emergency')) {
         if (m['isDeleted'] != true && m['status'] != 'closed') cases.add(Map.from(m));
       }
@@ -266,26 +279,79 @@ class _Level3JscState extends State<Level3JscScreen> with SingleTickerProviderSt
   }
 
   Future<void> _referEmergency(String id) async {
-    final u = context.read<AuthService>().currentUser;
-    if (u == null || u.role != 'jsc_coordinator') return;
-    final d = context.read<DataService>();
-    await d.enqueue('emergency', 'refer_to_eod', {'id': id, 'referredBy': u.id, 'destination': 'هندسة المتفجرات', 'createdAt': DateTime.now().toIso8601String()});
-    await d.writeAudit(actorId: u.id, operation: 'REFER_EMERGENCY_TO_EOD', targetId: id, after: {'destination': 'هندسة المتفجرات'});
-    if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: AppText('تمت إحالة البلاغ إلى هندسة المتفجرات.')));
+    final user = context.read<AuthService>().currentUser;
+    if (user == null || user.role != 'jsc_coordinator') return;
+    try {
+      final now = DateTime.now().toIso8601String();
+      final data = context.read<DataService>();
+      await data.enqueue('emergency', 'sos_refer', {
+        'id': id,
+        'referredBy': user.id,
+        'referredAt': now,
+        'referralDestination': 'هندسة المتفجرات',
+        'updatedAt': now,
+      });
+      await _loadOperationsState();
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: AppText('تم حفظ إحالة البلاغ في سجل العمليات بانتظار المزامنة؛ لا يعني ذلك استلام جهة خارجية.')));
+    } catch (error) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('تعذر حفظ إحالة البلاغ: $error')));
+    }
   }
 
   Future<void> _reopenStreet(String id) async {
-    final u = context.read<AuthService>().currentUser;
-    if (u == null || u.role != 'jsc_coordinator') return;
-    final d = context.read<DataService>();
-    final secured = emergencies.any((e) => '${e['id']}' == id && '${e['status'] ?? ''}' == 'secured');
+    final user = context.read<AuthService>().currentUser;
+    if (user == null || user.role != 'jsc_coordinator') return;
+    final secured = emergencies.any((e) =>
+        '${e['id']}' == id && e['status'] == 'secured' && e['acknowledged'] == true);
     if (!secured) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: AppText('لا يمكن إعادة فتح الشارع قبل تسجيل حالة الموقع كمؤمّن.')));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: AppText('لا يمكن طلب إعادة الفتح قبل تأمين الموقع وتأكيد الاستلام.')));
       return;
     }
-    await d.enqueue('emergency', 'reopen', {'id': id, 'status': 'reopened', 'reopenedBy': u.id, 'reopenedAt': DateTime.now().toIso8601String()});
-    await d.writeAudit(actorId: u.id, operation: 'REOPEN_STREET_AFTER_UXO', targetId: id, after: {'status': 'reopened'});
-    if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: AppText('تم تسجيل إعادة فتح الشارع.')));
+    try {
+      final now = DateTime.now().toIso8601String();
+      await context.read<DataService>().enqueue('emergency', 'sos_reopen', {
+        'id': id,
+        'status': 'reopened',
+        'reopenedBy': user.id,
+        'reopenedAt': now,
+        'updatedAt': now,
+      });
+      await _loadOperationsState();
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: AppText('تم تسجيل إعادة الفتح للمزامنة؛ لا تُعد الحالة مؤكدة قبل موافقة الخادم.')));
+    } catch (error) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('تعذر تسجيل إعادة الفتح: $error')));
+    }
+  }
+
+  bool _hasPendingSos(String id) {
+    for (final item in context.read<DataService>().queue) {
+      if (item.entity != 'emergency') continue;
+      try {
+        final payload = jsonDecode(item.payload);
+        if (payload is Map && '${payload['id']}' == id) return true;
+      } catch (_) {}
+    }
+    return false;
+  }
+
+  Future<void> _openSosLocation(num latitude, num longitude) async {
+    final link = Uri.https('www.google.com', '/maps/search/', {
+      'api': '1', 'query': '$latitude,$longitude',
+    });
+    try {
+      if (!await launchUrl(link, mode: LaunchMode.externalApplication) && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: AppText('تعذر فتح خريطة الموقع على هذا الجهاز.')));
+      }
+    } catch (error) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('تعذر فتح الموقع: $error')));
+    }
   }
 
   @override
@@ -300,7 +366,7 @@ class _Level3JscState extends State<Level3JscScreen> with SingleTickerProviderSt
             IconButton(tooltip: tr('البحث الذكي'), onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const GlobalSearchPage())), icon: const Icon(Icons.search_rounded)),
             IconButton(onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ReportsCenterScreen())), icon: const Icon(Icons.analytics_outlined)),
           ],
-          bottom: TabBar(controller: _tabController, onTap: (i) => setState(() => tab = i), isScrollable: true, tabs: [Tab(text: tr('لوحة القيادة')), Tab(text: tr('الإدارة')), Tab(text: tr('التقارير والرسائل'))]),
+          bottom: TabBar(controller: _tabController, isScrollable: true, tabs: [Tab(text: tr('لوحة القيادة')), Tab(text: tr('الإدارة')), Tab(text: tr('التقارير والرسائل'))]),
         ),
         body: IndexedStack(index: tab, children: [_dashboardBody(), _managementBody(), _reportsBody()]),
         ),
@@ -321,6 +387,8 @@ class _Level3JscState extends State<Level3JscScreen> with SingleTickerProviderSt
                   ),
                   const SizedBox(height: 10),
                   const OperationsOverviewStrip(),
+                  const SizedBox(height: 6),
+                  Text(context.watch<DataService>().automaticSyncStatus),
                   const SizedBox(height: 12),
                   Builder(builder: (context) {
                     final cs = context.watch<ContainerService>();
@@ -381,19 +449,57 @@ class _Level3JscState extends State<Level3JscScreen> with SingleTickerProviderSt
                         : Column(
                             children: emergencies.take(20).map((e) {
                               final id = '${e['id']}';
-                              final secured = '${e['status'] ?? ''}' == 'secured';
+                              final secured = e['status'] == 'secured';
+                              final latitude = e['latitude'] ?? e['lat'] ?? e['locationLat'];
+                              final longitude = e['longitude'] ?? e['lng'] ?? e['locationLng'];
+                              final pending = _hasPendingSos(id);
                               return Card(
                                 margin: const EdgeInsets.only(bottom: 8),
-                                child: ListTile(
-                                  title: AppText('بلاغ مخلفات حربية #$id'),
-                                  subtitle: AppText('${e['street'] ?? 'موقع غير محدد'} • ${e['status'] ?? 'urgent'}\\nالإحداثيات: ${e['latitude'] ?? e['lat'] ?? e['locationLat'] ?? 'غير متوفرة'}، ${e['longitude'] ?? e['lng'] ?? e['locationLng'] ?? 'غير متوفرة'}'),
-                                  trailing: Wrap(
-                                    spacing: 6,
+                                child: Padding(
+                                  padding: const EdgeInsets.all(12),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
-                                      if (e['acknowledged'] != true && '${e['status']}' == 'urgent') OutlinedButton.icon(onPressed: () => _acknowledgeEmergency(id), icon: const Icon(Icons.check_circle_outline), label: const AppText('تأكيد الاستلام')),
-                                      if (e['acknowledged'] == true && ['acknowledged', 'resolved'].contains(e['status'])) FilledButton(onPressed: () => _closeSos(id), child: const AppText('إغلاق SOS')),
-                                      if (!secured) OutlinedButton.icon(onPressed: () => _referEmergency(id), icon: const Icon(Icons.forward), label: const AppText('إحالة')),
-                                      if (secured) OutlinedButton.icon(onPressed: () => _reopenStreet(id), icon: const Icon(Icons.lock_open), label: const AppText('إعادة فتح')),
+                                      AppText('بلاغ مخلفات حربية #$id',
+                                        style: const TextStyle(fontWeight: FontWeight.bold)),
+                                      const SizedBox(height: 6),
+                                      AppText('${e['street'] ?? 'موقع غير محدد'} • ${e['status'] ?? 'urgent'}\\nالإحداثيات: ${latitude ?? 'غير متوفرة'}، ${longitude ?? 'غير متوفرة'}'),
+                                      if (pending) const Padding(
+                                        padding: EdgeInsets.only(top: 6),
+                                        child: AppText('هناك إجراء محلي بانتظار تأكيد المزامنة.'),
+                                      ),
+                                      const SizedBox(height: 8),
+                                      Wrap(
+                                        spacing: 8, runSpacing: 8,
+                                        children: [
+                                          if (latitude is num && longitude is num)
+                                            OutlinedButton.icon(
+                                              onPressed: () => _openSosLocation(latitude, longitude),
+                                              icon: const Icon(Icons.place_outlined),
+                                              label: const AppText('فتح الموقع')),
+                                          if (e['acknowledged'] != true && e['status'] == 'urgent')
+                                            OutlinedButton.icon(
+                                              onPressed: () => _acknowledgeEmergency(id),
+                                              icon: const Icon(Icons.check_circle_outline),
+                                              label: const AppText('تأكيد الاستلام')),
+                                          if (e['acknowledged'] == true &&
+                                              const ['acknowledged', 'resolved'].contains(e['status']))
+                                            FilledButton(
+                                              onPressed: () => _closeSos(id),
+                                              child: const AppText('إغلاق SOS')),
+                                          if (!secured && !const ['reopened', 'closed'].contains(e['status']) &&
+                                              e['referredBy'] == null)
+                                            OutlinedButton.icon(
+                                              onPressed: () => _referEmergency(id),
+                                              icon: const Icon(Icons.forward),
+                                              label: const AppText('إحالة')),
+                                          if (secured && e['acknowledged'] == true)
+                                            OutlinedButton.icon(
+                                              onPressed: () => _reopenStreet(id),
+                                              icon: const Icon(Icons.lock_open),
+                                              label: const AppText('إعادة فتح')),
+                                        ],
+                                      ),
                                     ],
                                   ),
                                 ),

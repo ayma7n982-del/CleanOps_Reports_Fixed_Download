@@ -620,7 +620,7 @@ class DataService extends ChangeNotifier {
               });
             });
           } else if (item.entity == 'emergency' &&
-              const ['sos_acknowledge', 'sos_close'].contains(item.operation)) {
+              const ['sos_acknowledge', 'sos_close', 'sos_refer', 'sos_reopen'].contains(item.operation)) {
             // Update only fields permitted by validSosAcknowledgment in Firestore rules.
             // Never merge an entire cached SOS document into the remote record.
             final existing = await ref.get();
@@ -644,7 +644,7 @@ class DataService extends ChangeNotifier {
               } else {
                 throw StateError('تغيرت حالة بلاغ SOS قبل تأكيد الاستلام.');
               }
-            } else {
+            } else if (item.operation == 'sos_close') {
               if (current['status'] == 'closed' &&
                   current['closedBy'] == cloudPayload['closedBy'] &&
                   current['resolutionNote'] == cloudPayload['resolutionNote']) {
@@ -661,6 +661,36 @@ class DataService extends ChangeNotifier {
                 });
               } else {
                 throw StateError('لا يمكن إغلاق بلاغ SOS قبل تأكيد الاستلام.');
+              }
+            } else if (item.operation == 'sos_refer') {
+              if (current['referralDestination'] == 'هندسة المتفجرات' &&
+                  current['referredBy'] == cloudPayload['referredBy']) {
+                // The first successful attempt is already recorded.
+              } else if (const ['urgent', 'acknowledged', 'resolved', 'secured']
+                  .contains(current['status'])) {
+                await ref.update({
+                  'referredBy': cloudPayload['referredBy'],
+                  'referredAt': cloudPayload['referredAt'],
+                  'referralDestination': 'هندسة المتفجرات',
+                  'updatedAt': cloudPayload['updatedAt'],
+                });
+              } else {
+                throw StateError('حالة بلاغ SOS لا تسمح بإحالته.');
+              }
+            } else if (item.operation == 'sos_reopen') {
+              if (current['status'] == 'reopened' &&
+                  current['reopenedBy'] == cloudPayload['reopenedBy']) {
+                // Idempotent retry of a previously saved transition.
+              } else if (current['status'] == 'secured' &&
+                  current['acknowledged'] == true) {
+                await ref.update({
+                  'status': 'reopened',
+                  'reopenedBy': cloudPayload['reopenedBy'],
+                  'reopenedAt': cloudPayload['reopenedAt'],
+                  'updatedAt': cloudPayload['updatedAt'],
+                });
+              } else {
+                throw StateError('لم يتم تأمين الموقع أو تأكيد استلام البلاغ.');
               }
             }
           } else if (item.entity == 'equipment_dispatch' &&

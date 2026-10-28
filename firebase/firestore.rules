@@ -414,6 +414,33 @@ service cloud.firestore {
         && (resource.data.status != 'resolved' || request.resource.data.status in ['resolved', 'closed']);
     }
 
+    function validJscSosReferral() {
+      return isL3()
+        && resource.data._entity == 'emergency'
+        && resource.data.status in ['urgent', 'acknowledged', 'resolved', 'secured']
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'referredBy', 'referredAt', 'referralDestination', 'updatedAt'
+        ])
+        && request.resource.data.referredBy == request.auth.uid
+        && request.resource.data.referredAt is string
+        && request.resource.data.referredAt.size() > 0
+        && request.resource.data.referralDestination == 'هندسة المتفجرات';
+    }
+
+    function validJscSosReopen() {
+      return isL3()
+        && resource.data._entity == 'emergency'
+        && resource.data.status == 'secured'
+        && resource.data.acknowledged == true
+        && request.resource.data.status == 'reopened'
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'status', 'reopenedBy', 'reopenedAt', 'updatedAt'
+        ])
+        && request.resource.data.reopenedBy == request.auth.uid
+        && request.resource.data.reopenedAt is string
+        && request.resource.data.reopenedAt.size() > 0;
+    }
+
     function validEquipmentCartAssignmentUpdate(cartId) {
       return isL2()
         && resource.data.municipalityCoordinatorId == request.auth.uid
@@ -510,6 +537,9 @@ service cloud.firestore {
       return isL3()
         && resource.data.get('isDeleted', false) != true
         && resource.data.get('dispatchStatus', '') != 'dispatched'
+        && resource.data.get('type', '') != 'cart'
+        && resource.data.get('category', '') != 'cart'
+        && resource.data.get('status', '') not in ['maintenance', 'broken', 'out_of_service']
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
           'dispatchStatus', 'dispatchMunicipality', 'dispatchRequestId',
           'dispatchBy', 'dispatchAt'
@@ -570,6 +600,8 @@ service cloud.firestore {
       );
       allow update: if signedIn() && (
         validSosAcknowledgment()
+        || validJscSosReferral()
+        || validJscSosReopen()
         || (isL4() && (resource.data._entity == 'report' || resource.data._entity == 'user'))
         || (isL2() && (resource.data._entity == 'group' || resource.data._entity == 'worker' || validOperationsCartAssignmentUpdate(id)))
         || (isL3() && (resource.data._entity == 'heavy_machinery' || resource.data._entity == 'notification' || resource.data._entity == 'report'))

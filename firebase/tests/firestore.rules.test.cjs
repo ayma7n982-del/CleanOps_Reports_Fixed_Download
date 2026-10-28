@@ -294,3 +294,69 @@ test('JSC cannot dispatch without an approved request or dispatch twice', async 
     requestedBy:'jsc', status:'applied',
   }));
 });
+
+
+test('JSC can acknowledge and then close SOS; workforce cannot close', async () => {
+  await env.withSecurityRulesDisabled(async ctx => {
+    await setDoc(doc(ctx.firestore(), 'operations', 'sos-a'), {
+      id:'sos-a', _entity:'emergency', status:'urgent',
+      acknowledged:false, reportedBy:'head-a', groupId:'group-a',
+      municipalityCoordinatorId:'coordinator',
+    });
+  });
+  const jscDb = db('jsc');
+  await assertSucceeds(updateDoc(doc(jscDb, 'operations', 'sos-a'), {
+    status:'acknowledged', acknowledged:true,
+    acknowledgedBy:'jsc', acknowledgedAt:'2026-10-28T09:00:00.000Z',
+    updatedAt:'2026-10-28T09:00:00.000Z',
+  }));
+  await assertFails(updateDoc(doc(db('head-a'), 'operations', 'sos-a'), {
+    status:'closed', closedBy:'head-a',
+    closedAt:'2026-10-28T09:01:00.000Z', resolutionNote:'not authorized',
+  }));
+  await assertSucceeds(updateDoc(doc(jscDb, 'operations', 'sos-a'), {
+    status:'closed', closedBy:'jsc',
+    closedAt:'2026-10-28T09:02:00.000Z',
+    resolutionNote:'handed over safely', updatedAt:'2026-10-28T09:02:00.000Z',
+  }));
+});
+
+test('JSC referral is scoped and does not allow changing SOS location', async () => {
+  await env.withSecurityRulesDisabled(async ctx => {
+    await setDoc(doc(ctx.firestore(), 'operations', 'sos-b'), {
+      id:'sos-b', _entity:'emergency', status:'urgent',
+      acknowledged:false, latitude:31.5, longitude:34.4,
+    });
+  });
+  const jscDb = db('jsc');
+  await assertSucceeds(updateDoc(doc(jscDb,'operations','sos-b'), {
+    referredBy:'jsc', referredAt:'2026-10-28T09:00:00.000Z',
+    referralDestination:'هندسة المتفجرات',
+    updatedAt:'2026-10-28T09:00:00.000Z',
+  }));
+  await assertFails(updateDoc(doc(jscDb,'operations','sos-b'), {
+    latitude:31.4,
+  }));
+  await assertFails(updateDoc(doc(db('head-a'),'operations','sos-b'), {
+    referredBy:'head-a',
+  }));
+});
+
+test('only JSC can reopen an already secured and acknowledged SOS', async () => {
+  await env.withSecurityRulesDisabled(async ctx => {
+    await setDoc(doc(ctx.firestore(),'operations','sos-secure'), {
+      id:'sos-secure', _entity:'emergency', status:'secured', acknowledged:true,
+      acknowledgedBy:'coordinator', acknowledgedAt:'2026-10-28T09:00:00.000Z',
+    });
+    await setDoc(doc(ctx.firestore(),'operations','sos-urgent'), {
+      id:'sos-urgent', _entity:'emergency', status:'urgent', acknowledged:false,
+    });
+  });
+  await assertFails(updateDoc(doc(db('jsc'),'operations','sos-urgent'), {
+    status:'reopened', reopenedBy:'jsc', reopenedAt:'2026-10-28T09:10:00.000Z',
+  }));
+  await assertSucceeds(updateDoc(doc(db('jsc'),'operations','sos-secure'), {
+    status:'reopened', reopenedBy:'jsc', reopenedAt:'2026-10-28T09:10:00.000Z',
+    updatedAt:'2026-10-28T09:10:00.000Z',
+  }));
+});
