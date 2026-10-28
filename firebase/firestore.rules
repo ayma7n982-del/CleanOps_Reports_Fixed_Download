@@ -63,6 +63,36 @@ service cloud.firestore {
       );
     }
 
+    function validSupervisorTripCreate() {
+      return role() == 'group_supervisor'
+        && userDoc().isActive != false
+        && userDoc().groupId is string
+        && userDoc().groupId.size() > 0
+        && request.resource.data._entity == 'trip'
+        && request.resource.data.groupId == userDoc().groupId
+        && request.resource.data.supervisorId == request.auth.uid;
+    }
+
+    function validSupervisorTripUpdate() {
+      return role() == 'group_supervisor'
+        && userDoc().isActive != false
+        && userDoc().groupId is string
+        && userDoc().groupId.size() > 0
+        && resource.data._entity == 'trip'
+        && resource.data.groupId == userDoc().groupId
+        && request.resource.data.groupId == resource.data.groupId
+        && request.resource.data.supervisorId == resource.data.supervisorId
+        && request.resource.data._entity == resource.data._entity
+        && request.resource.data.status == 'completed'
+        && request.resource.data.completedBy == request.auth.uid
+        && request.resource.data.completedAt is string
+        && request.resource.data.completedAt.size() > 0
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'status','completedAt','completedBy','updatedAt'
+        ]);
+    }
+
+
     // ---------------- Internal messaging ----------------
     function activeMessenger() { return signedIn() && userDoc().isActive != false; }
     function supervisorOwnGroupTarget() {
@@ -410,14 +440,14 @@ service cloud.firestore {
         (isL4() && (request.resource.data._entity == 'report' || request.resource.data._entity == 'user'))
         || (isL2() && (request.resource.data._entity == 'group' || request.resource.data._entity == 'worker'))
         || (isL3() && (request.resource.data._entity == 'heavy_machinery' || request.resource.data._entity == 'emergency' || request.resource.data._entity == 'notification' || request.resource.data._entity == 'report'))
-        || (role() == 'group_supervisor' && (request.resource.data._entity == 'trip' || request.resource.data._entity == 'trip_photo' || (request.resource.data._entity == 'attendance' && userDoc().isActive != false && userDoc().groupId is string && userDoc().groupId.size() > 0 && request.resource.data.groupId == userDoc().groupId && request.resource.data.reportedBy == request.auth.uid && request.resource.data.status in ['present','absent','leave','permission','excused_absence','unexcused_absence','external_task']) || request.resource.data._entity == 'street_photo' || (request.resource.data._entity == 'emergency' && validSupervisorSosCreate()) || request.resource.data._entity == 'notification' || request.resource.data._entity == 'report'))
+        || (role() == 'group_supervisor' && (validSupervisorTripCreate() || request.resource.data._entity == 'trip_photo' || (request.resource.data._entity == 'attendance' && userDoc().isActive != false && userDoc().groupId is string && userDoc().groupId.size() > 0 && request.resource.data.groupId == userDoc().groupId && request.resource.data.reportedBy == request.auth.uid && request.resource.data.status in ['present','absent','leave','permission','excused_absence','unexcused_absence','external_task']) || request.resource.data._entity == 'street_photo' || (request.resource.data._entity == 'emergency' && validSupervisorSosCreate()) || request.resource.data._entity == 'notification' || request.resource.data._entity == 'report'))
       );
       allow update: if signedIn() && (
         validSosAcknowledgment()
         || (isL4() && (resource.data._entity == 'report' || resource.data._entity == 'user'))
         || (isL2() && (resource.data._entity == 'group' || resource.data._entity == 'worker'))
         || (isL3() && (resource.data._entity == 'heavy_machinery' || resource.data._entity == 'notification' || resource.data._entity == 'report'))
-        || (role() == 'group_supervisor' && (resource.data._entity == 'trip' || resource.data._entity == 'trip_photo' || (resource.data._entity == 'attendance' && userDoc().isActive != false && resource.data.groupId == userDoc().groupId && request.resource.data.groupId == resource.data.groupId && request.resource.data.workerId == resource.data.workerId && request.resource.data.reportedBy == resource.data.reportedBy && resource.data.reportedBy == request.auth.uid && request.resource.data.status in ['present','absent','leave','permission','excused_absence','unexcused_absence','external_task']) || resource.data._entity == 'street_photo' || resource.data._entity == 'notification' || resource.data._entity == 'report'))
+        || (role() == 'group_supervisor' && (validSupervisorTripUpdate() || resource.data._entity == 'trip_photo' || (resource.data._entity == 'attendance' && userDoc().isActive != false && resource.data.groupId == userDoc().groupId && request.resource.data.groupId == resource.data.groupId && request.resource.data.workerId == resource.data.workerId && request.resource.data.reportedBy == resource.data.reportedBy && resource.data.reportedBy == request.auth.uid && request.resource.data.status in ['present','absent','leave','permission','excused_absence','unexcused_absence','external_task']) || resource.data._entity == 'street_photo' || resource.data._entity == 'notification' || resource.data._entity == 'report'))
       );
       allow delete: if isL2() && resource.data._entity == 'group';
     }
