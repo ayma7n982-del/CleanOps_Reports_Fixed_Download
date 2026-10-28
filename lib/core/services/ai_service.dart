@@ -30,7 +30,7 @@ class AIService {
         'Content-Type': 'application/json',
       },
       body: jsonEncode({
-        'model': config.aiModel.trim().isEmpty ? 'gpt-5.6-luna' : config.aiModel.trim(),
+        'model': config.aiModel.trim().isEmpty ? 'gpt-4.1-mini' : config.aiModel.trim(),
         'instructions': 'أنت CleanOps AI، مساعد تشغيلي لمنظومة إدارة النفايات الصلبة. استخدم فقط البيانات التشغيلية الموجودة في السياق المرفق. لا تخترع أرقامًا أو مستخدمين أو ترحيلات أو تنبيهات. إذا كانت المعلومة غير موجودة فقل بوضوح إنها غير متاحة. لا تنفذ أي إجراء تشغيلي أو تغيّر بيانات؛ أنت مساعد تحليلي فقط. احترم مستوى المستخدم وصلاحياته. أجب بالعربية إذا كان السؤال عربيًا وبالإنجليزية إذا كان السؤال إنجليزيًا. اجعل الإجابة مختصرة ومفيدة للإدارة.',
         'input': prompt,
         'store': false,
@@ -47,6 +47,9 @@ class AIService {
       final message = error is Map
           ? '${error['message'] ?? 'تعذر الاتصال بخدمة الذكاء الاصطناعي.'}'
           : 'تعذر الاتصال بخدمة الذكاء الاصطناعي (${response.statusCode}).';
+      if (response.statusCode == 401) throw StateError('مفتاح API غير صالح. راجع إعدادات الذكاء الاصطناعي.');
+      if (response.statusCode == 429) throw StateError('تم بلوغ حد استخدام خدمة الذكاء الاصطناعي. حاول لاحقًا أو راجع الرصيد.');
+      if (response.statusCode == 404) throw StateError('نموذج الذكاء الاصطناعي غير متاح. راجع اسم النموذج في الإعدادات.');
       throw StateError(message);
     }
     final outputText = body['output_text'];
