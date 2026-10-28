@@ -268,6 +268,8 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
         'id': id,
         'groupId': u.groupId,
         'groupName': u.groupId,
+        'municipalityCoordinatorId': u.municipalityCoordinatorId,
+        'municipalityName': u.scope == 'all' ? '' : u.scope,
         'municipality': u.scope == 'all' ? '' : u.scope,
         'supervisorId': u.id,
         'cartType': alternative ? 'alternative' : 'primary',
