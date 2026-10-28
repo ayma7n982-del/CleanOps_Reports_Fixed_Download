@@ -452,7 +452,12 @@ class ExcelService {
 
       final rowErrors = <String>[];
       if (name.isEmpty) rowErrors.add('الاسم مفقود');
-      if (id.isNotEmpty && !RegExp(r'^\d{9}      if (id.isNotEmpty && RegExp(r'^\d{9}$').hasMatch(id) && !seenIds.add(id)) {
+      if (id.isNotEmpty && !RegExp(r'^\d{9}$').hasMatch(id)) rowErrors.add('رقم الهوية يجب أن يتكون من 9 أرقام عند إدخاله');
+      if (name.isNotEmpty && !seenNames.add(_normalize(name))) {
+        duplicates++;
+        rowErrors.add('اسم العامل مكرر في الملف');
+      }
+      if (id.isNotEmpty && RegExp(r'^\d{9}$').hasMatch(id) && !seenIds.add(id)) {
         duplicates++;
         rowErrors.add('رقم الهوية مكرر في الملف');
       }
