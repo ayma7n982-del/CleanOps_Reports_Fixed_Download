@@ -5,6 +5,7 @@ import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import '../models/core_models.dart';
+import 'operational_insights.dart';
 
 /// Human-readable error (Arabic) thrown by direct user provisioning.
 class UserProvisionException implements Exception {
@@ -433,6 +434,10 @@ class OperationsAdminService {
     final db = firestore;
     final opsSnap = await _operations.limit(1000).get();
     final dumpsSnap = await _dumpsites.limit(200).get();
+    bool visible(Map<String, dynamic> record) => OperationalInsights.visibleToUser(
+      record, role: user.role, userId: user.id,
+      scope: user.scope, groupId: user.groupId,
+    );
     var activeUsers = 0;
     var workers = 0;
     var supervisors = 0;
@@ -442,8 +447,8 @@ class OperationsAdminService {
       final x = self.data();
       if (x != null) {
         if (x['isActive'] != false) activeUsers = 1;
-        if (x['role'] == 'worker') workers = 1;
-        if (x['role'] == 'group_supervisor') supervisors = 1;
+        if (x['isActive'] != false && x['role'] == 'worker') workers = 1;
+        if (x['isActive'] != false && x['role'] == 'group_supervisor') supervisors = 1;
         final g = '${x['groupId'] ?? ''}'.trim();
         if (g.isNotEmpty) groupIds.add(g);
       }
@@ -455,7 +460,8 @@ class OperationsAdminService {
       final usersSnap = await usersQuery.get();
       for (final d in usersSnap.docs) {
         final x = d.data();
-        if (x['isActive'] != false) activeUsers++;
+        if (x['isActive'] == false || !visible(x)) continue;
+        activeUsers++;
         final role = '${x['role'] ?? ''}';
         if (role == 'worker') workers++;
         if (role == 'group_supervisor') supervisors++;
@@ -467,9 +473,11 @@ class OperationsAdminService {
     var emergencies = 0;
     var reports = 0;
     for (final d in opsSnap.docs) {
-      final e = '${d.data()['_entity'] ?? ''}';
+      final x = d.data();
+      if (!visible(x)) continue;
+      final e = '${x['_entity'] ?? ''}';
       if (e == 'trip') trips++;
-      if (e == 'emergency') emergencies++;
+      if (e == 'emergency' && OperationalInsights.isOpenAlert(x)) emergencies++;
       if (e == 'report') reports++;
     }
     var activeDumpsites = 0;
@@ -492,6 +500,8 @@ class OperationsAdminService {
       'reports': reports,
       'activeDumpsites': activeDumpsites,
       'criticalDumpsites': criticalDumpsites,
+      'scopeLimited': user.role == 'jsc_coordinator' || user.role == 'municipality_coordinator',
+      'countsMayBePartial': opsSnap.docs.length >= 1000 || dumpsSnap.docs.length >= 200,
       'checkedAt': DateTime.now(),
       'firebase': db.app.name,
     };
