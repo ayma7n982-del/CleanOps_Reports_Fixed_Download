@@ -134,7 +134,12 @@ class AIService {
       lines.add('تنبيه موارد: توجد مجموعات دون عمال نشطين ضمن البيانات المقروءة؛ راجع توزيع العمال.');
     }
     if (summary) lines.add('لا يمكن تحديد تأخر الترحيلات دون مواعيد مستهدفة معتمدة؛ عدد الرحلات وحده لا يثبت التأخر.');
-    lines.add('المصدر: بيانات Firestore المتاحة؛ قد تكون مخزنة مؤقتًا عند عدم الاتصال.');
+    if (data['dataMayBeIncomplete'] == true) {
+      lines.add('تنبيه دقة: وصلت إحدى القراءات إلى حد السجلات؛ الأعداد تخص العينة المقروءة وليست بالضرورة إجمالي النظام.');
+    }
+    lines.add(data['source'] == 'Firestore server data'
+        ? 'المصدر: Firebase / Firestore (اتصال بالخادم).'
+        : 'المصدر: نسخة Firestore المخزنة على الجهاز؛ قد تكون قديمة أو غير مكتملة.');
     return lines.join('\n');
   }
 
@@ -148,7 +153,7 @@ class AIService {
     final start = DateTime(now.year, now.month, now.day);
     final end = start.add(const Duration(days: 1));
 
-    final usersSnap = await firestore.collection('users').where('isActive', isEqualTo: true).limit(1000).get();
+    final usersSnap = await _readQuery(firestore.collection('users').where('isActive', isEqualTo: true).limit(1000));
     var activeWorkers = 0;
     var activeSupervisors = 0;
     final groups = <String>{};
@@ -163,7 +168,7 @@ class AIService {
 
     final coverageGaps = OperationalInsights.supervisedGroupsWithoutWorkers(usersSnap.docs.map((d) => d.data()));
 
-    final dumpsitesSnap = await firestore.collection('dumpsites').where('isActive', isEqualTo: true).limit(500).get();
+    final dumpsitesSnap = await _readQuery(firestore.collection('dumpsites').where('isActive', isEqualTo: true).limit(500));
     final dumpsites = <Map<String, dynamic>>[];
     for (final doc in dumpsitesSnap.docs) {
       final d = doc.data();
@@ -177,7 +182,7 @@ class AIService {
       });
     }
 
-    final opsSnap = await firestore.collection('operations').limit(1500).get();
+    final opsSnap = await _readQuery(firestore.collection('operations').limit(1500));
     var loadsToday = 0;
     var activeEmergencies = 0;
     final tripDocuments = <Map<String, dynamic>>[];
@@ -219,8 +224,22 @@ class AIService {
       'activeSOSorEmergencies': activeEmergencies,
       'activeDumpsites': dumpsites.length,
       'dumpsites': dumpsites,
-      'source': 'Firestore live operational collections',
+      'source': (usersSnap.metadata.isFromCache || dumpsitesSnap.metadata.isFromCache || opsSnap.metadata.isFromCache)
+          ? 'Firestore offline cached data; potentially stale or incomplete'
+          : 'Firestore server data',
+      'dataMayBeIncomplete': usersSnap.docs.length >= 1000 || dumpsitesSnap.docs.length >= 500 || opsSnap.docs.length >= 1500,
     };
+  }
+
+  Future<QuerySnapshot<Map<String, dynamic>>> _readQuery(
+    Query<Map<String, dynamic>> query,
+  ) async {
+    try {
+      return await query.get(const GetOptions(source: Source.server));
+    } on FirebaseException catch (error) {
+      if (error.code != 'unavailable' && error.code != 'deadline-exceeded') rethrow;
+      return query.get(const GetOptions(source: Source.cache));
+    }
   }
 
   double _number(dynamic value) => value is num ? value.toDouble() : double.tryParse('$value') ?? 0;
