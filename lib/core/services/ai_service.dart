@@ -13,6 +13,9 @@ class AIService {
       : firestore = firestore ?? FirebaseFirestore.instance;
 
   Future<String> answer({required AppUser user, required String question}) async {
+    if (!user.isActive || !user.can('operations', 'view')) {
+      throw StateError('هذا الحساب غير نشط أو لا يملك صلاحية عرض العمليات.');
+    }
     if (user.role != 'donor_manager' && user.role != 'jsc_coordinator') {
       throw StateError('المساعد الذكي متاح للمستوى 3 والمستوى 4 فقط.');
     }
@@ -130,6 +133,9 @@ class AIService {
         lines.add('• ${item['name']}: الامتلاء ${item['fillPercentage']}%');
       }
     }
+    if (data['scopeLimited'] == true) {
+      lines.add('النطاق: بيانات المجلس المحددة فقط. السجلات دون هوية مجلس أو بلدية واضحة لا تدخل في المؤشرات.');
+    }
     if (data['dataMayBeIncomplete'] == true) {
       lines.add('تنبيه دقة: وصلت إحدى القراءات إلى حد السجلات؛ الأعداد تخص العينة المقروءة وليست بالضرورة إجمالي النظام.');
     }
@@ -153,7 +159,12 @@ class AIService {
     var activeWorkers = 0;
     var activeSupervisors = 0;
     final groups = <String>{};
-    for (final doc in usersSnap.docs) {
+    bool visible(Map<String, dynamic> record) => OperationalInsights.visibleToUser(
+      record, role: user.role, userId: user.id,
+      scope: user.scope, groupId: user.groupId,
+    );
+    final scopedUsers = usersSnap.docs.where((doc) => visible(doc.data())).toList();
+    for (final doc in scopedUsers) {
       final data = doc.data();
       final role = '${data['role'] ?? ''}';
       if (role == 'worker') activeWorkers++;
@@ -162,7 +173,7 @@ class AIService {
       if (groupId.isNotEmpty) groups.add(groupId);
     }
 
-    final coverageGaps = OperationalInsights.supervisedGroupsWithoutWorkers(usersSnap.docs.map((d) => d.data()));
+    final coverageGaps = OperationalInsights.supervisedGroupsWithoutWorkers(scopedUsers.map((d) => d.data()));
 
     final dumpsitesSnap = await _readQuery(firestore.collection('dumpsites').where('isActive', isEqualTo: true).limit(500));
     final dumpsites = <Map<String, dynamic>>[];
@@ -182,8 +193,15 @@ class AIService {
     var loadsToday = 0;
     var activeEmergencies = 0;
     final tripDocuments = <Map<String, dynamic>>[];
+    final addressedEmergencies = opsSnap.docs.where((doc) {
+      final record = doc.data();
+      return record['_entity'] == 'notification' &&
+          record['sourceEntity'] == 'emergency' && visible(record);
+    }).map((doc) => '${doc.data()['sourceId'] ?? ''}'.trim())
+        .where((id) => id.isNotEmpty).toSet();
     for (final doc in opsSnap.docs) {
       final d = doc.data();
+      if (!visible(d) && !(d['_entity'] == 'emergency' && addressedEmergencies.contains(doc.id))) continue;
       final created = _parseDate(d['createdAt']);
       final entity = '${d['_entity'] ?? ''}';
       if (entity == 'trip' && d['isDeleted'] != true) {
@@ -198,8 +216,7 @@ class AIService {
       }
       if (entity == 'emergency' && d['isDeleted'] != true) {
         final status = '${d['status'] ?? ''}'.toLowerCase();
-        final level = '${d['statusLevel'] ?? ''}'.toLowerCase();
-        if (!['resolved', 'closed', 'secured', 'referred_to_eod'].contains(status) || level == 'critical') {
+        if (OperationalInsights.isOpenAlert(d) && status != 'completed') {
           activeEmergencies++;
         }
       }
@@ -216,6 +233,7 @@ class AIService {
       'activeWorkers': activeWorkers,
       'activeGroupSupervisors': activeSupervisors,
       'activeGroups': groups.length,
+      'scopeLimited': user.role == 'jsc_coordinator',
       'loadsTransferredToday': loadsToday,
       'activeSOSorEmergencies': activeEmergencies,
       'activeDumpsites': dumpsites.length,
