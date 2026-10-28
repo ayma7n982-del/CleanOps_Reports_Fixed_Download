@@ -49,6 +49,7 @@ jobs:
       - name: Flutter static analysis
         run: flutter analyze --no-fatal-infos --no-fatal-warnings
       - name: Build Android debug APK
+        if: github.event_name != 'push'
         run: flutter build apk --debug
       - name: Upload Android diagnostics
         if: failure()
@@ -60,6 +61,7 @@ jobs:
             android/build/reports/**
           if-no-files-found: ignore
       - name: Upload APK
+        if: github.event_name != 'push'
         uses: actions/upload-artifact@v4
         with:
           name: cleanops-android-debug-apk
