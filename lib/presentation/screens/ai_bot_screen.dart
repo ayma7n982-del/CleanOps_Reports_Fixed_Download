@@ -10,6 +10,7 @@ import '../../core/services/auth_service.dart';
 import '../../core/services/config_service.dart';
 import '../../core/services/data_service.dart';
 import '../../core/services/report_service.dart';
+import '../../core/services/assistant_shortcut_policy.dart';
 import '../../core/services/operations_admin_service.dart';
 import 'enterprise_operations_hub.dart';
 import '../widgets/app_design.dart';
@@ -153,6 +154,13 @@ class _AIBotScreenState extends State<AIBotScreen> with TickerProviderStateMixin
     final compact = width < 390;
     final titleSize = (width * .055).clamp(19.0, 25.0);
     final allowed = user?.role == 'donor_manager' || user?.role == 'jsc_coordinator';
+    final shortcuts = user == null
+        ? const <String>{}
+        : AssistantShortcutPolicy.visibleKeys(
+            user,
+            liveOperationsMapEnabled:
+                context.watch<ConfigService>().liveOperationsMapEnabled,
+          );
     return Scaffold(
       backgroundColor: const Color(0xFFF3F8F5),
       body: DecoratedBox(
@@ -261,21 +269,23 @@ class _AIBotScreenState extends State<AIBotScreen> with TickerProviderStateMixin
                   spacing: 8,
                   runSpacing: 8,
                   children: [
-                    _BotAction(icon: Icons.forum_rounded, title: 'الرسائل', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const MessagesCenterScreen()))),
-                    _BotAction(icon: Icons.hub_rounded, title: 'مركز التشغيل', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const EnterpriseOperationsHubPage()))),
-                    if (user.can('trips', 'view'))
+                    if (shortcuts.contains('messages'))
+                      _BotAction(icon: Icons.forum_rounded, title: 'الرسائل', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const MessagesCenterScreen()))),
+                    if (shortcuts.contains('operations'))
+                      _BotAction(icon: Icons.hub_rounded, title: 'مركز التشغيل', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const EnterpriseOperationsHubPage()))),
+                    if (shortcuts.contains('trips'))
                       _BotAction(icon: Icons.route_rounded, title: 'سجل النقلات', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const TripsLogPage()))),
-                    if (user.can('workers', 'view'))
+                    if (shortcuts.contains('workers'))
                       _BotAction(icon: Icons.groups_rounded, title: 'المجموعات والعمال', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const GroupsCommandCenterPage()))),
-                    if (user.can('emergency', 'view'))
+                    if (shortcuts.contains('alerts'))
                       _BotAction(icon: Icons.notification_important_rounded, title: 'مركز التنبيهات', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AlertsCenterPage()))),
-                    if (user.can('reports', 'view'))
+                    if (shortcuts.contains('reports'))
                       _BotAction(icon: Icons.description_rounded, title: 'التقارير', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ReportsCenterScreen()))),
-                    if (user.can('reports', 'export'))
+                    if (shortcuts.contains('report_pdf'))
                       _BotAction(icon: Icons.picture_as_pdf_rounded, title: exportingPdf ? 'جاري تجهيز PDF' : 'تقرير PDF لفترة محددة', onTap: _exportPeriodPdf),
-                    if (user.role == 'jsc_coordinator')
+                    if (shortcuts.contains('dumpsites'))
                       _BotAction(icon: Icons.location_on_rounded, title: 'المكبات', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const OperationsManagementScreen(initialTab: 0)))),
-                    if (context.watch<ConfigService>().liveOperationsMapEnabled)
+                    if (shortcuts.contains('live_map'))
                       _BotAction(icon: Icons.map_rounded, title: 'العمليات الحية', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const LiveOperationsMapScreen()))),
                   ],
                 )),
