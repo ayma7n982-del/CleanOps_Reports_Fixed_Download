@@ -332,18 +332,31 @@ class ReportService {
         : 'متابعة أداء البلدية وتوثيق الإنجاز الميداني ضمن النطاق المحدد.';
     final summary = 'تم تسجيل ${snapshot.trips} نقلة، مع ${snapshot.alternativeTrips} نقلة بكارة بديلة. $attendanceText، $ppeText. $emergencyText.';
     final id = DateTime.now().microsecondsSinceEpoch.toString();
-    await data.enqueue('report', 'create', {
+    final queueEntity =
+        user.role == 'municipality_coordinator' ? 'work_report' : 'report';
+    await data.enqueue(queueEntity, 'create', {
       'id': id,
       'type': 'smart_operational',
       'scope': user.scope,
       'municipality': municipality,
+      'municipalityName': municipality ??
+          (user.role == 'municipality_coordinator' &&
+                  user.scope != 'assigned_only' &&
+                  user.scope != 'all'
+              ? user.scope
+              : null),
+      'municipalityCoordinatorId':
+          user.role == 'municipality_coordinator' ? user.id : null,
       'group': group,
+      'groupId': group,
       'cycle': cycle,
       'reportId': snapshot.reportId,
       'reportType': snapshot.reportType ?? 'all',
       'period': snapshot.periodLabel,
       'periodPreset': periodPreset ?? 'custom',
       'generatedBy': user.id,
+      'reportedBy': user.id,
+      'workDate': DateTime.now().toIso8601String(),
       'createdAt': DateTime.now().toIso8601String(),
       'objectives': objective,
       'results': summary,
