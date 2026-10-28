@@ -440,6 +440,9 @@ class DataService extends ChangeNotifier {
 
     try {
       for (final item in List.from(queue)) {
+        // Stop the previous account's sync immediately after an auth switch.
+        if (_syncItemOverride == null &&
+            FirebaseAuth.instance.currentUser?.uid != currentUid) break;
         // Retain records for a different account; its own session will retry.
         if (_syncItemOverride == null && item.ownerUid != null &&
             item.ownerUid != currentUid) continue;
@@ -480,6 +483,10 @@ class DataService extends ChangeNotifier {
                     ownerUid: queued.ownerUid)
                 : queued).toList();
             await store.saveQueue(queue);
+          }
+          if (_syncItemOverride == null &&
+              FirebaseAuth.instance.currentUser?.uid != currentUid) {
+            throw StateError('تغير الحساب أثناء المزامنة؛ ستُستأنف للحساب الصحيح.');
           }
           final cloudPayload = Map<String, dynamic>.from(payload)
             ..remove('localAttachmentPath')
