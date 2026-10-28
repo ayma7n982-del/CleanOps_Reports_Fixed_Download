@@ -289,7 +289,13 @@ class SystemHealthPage extends StatefulWidget { const SystemHealthPage({super.ke
 class _SystemHealthPageState extends State<SystemHealthPage>{Map<String,String> state={};bool busy=false;Future<void> check()async{setState(()=>busy=true);final next=<String,String>{};next['Firebase']=Firebase.apps.isNotEmpty?'جاهز':'غير مهيأ';next['Authentication']=FirebaseAuth.instance.currentUser != null?'جلسة نشطة':'لا توجد جلسة';try{await FirebaseFirestore.instance.collection('config').doc('global').get(const GetOptions(source:Source.server)).timeout(const Duration(seconds:5));next['Firestore']='متصل';}catch(e){next['Firestore']='غير متاح';}final c=context.read<ConfigService>();next['API']=c.apiEnabled?(c.apiBaseUrl.isEmpty?'مفعّل بلا عنوان':'مفعّل'):'غير مفعّل';next['Local Store']='جاهز';setState(()=>state=next..['Checked At']=DateTime.now().toIso8601String());setState(()=>busy=false);} @override void initState(){super.initState();unawaited(check());} @override Widget build(BuildContext context)=>Scaffold(appBar:AppBar(title:const AppText('صحة النظام')),body:ListView(padding:const EdgeInsets.fromLTRB(16,16,16,120),children:[AiSectionCard(title:'System Health',subtitle:'فحص فعلي للخدمات المتاحة',feature:'operations',trailing:IconButton(onPressed:busy?null:check,icon:const Icon(Icons.refresh_rounded)),child:Column(children:state.entries.map((e)=>ListTile(dense:true,leading:Icon(e.key=='Checked At'?Icons.schedule_rounded:Icons.circle,color:e.key=='Checked At'?cleanOpsMuted:(e.value.contains('غير')||e.value.contains('لا ')?Colors.orange:aiGreen),size:15),title:AppText(e.key,style:const TextStyle(fontSize:11)),trailing:AppText(e.value,style:const TextStyle(fontSize:10,color:cleanOpsText)))).toList()))]));}
 
 class GlobalSearchPage extends StatefulWidget {
-  const GlobalSearchPage({super.key});
+  final String initialQuery;
+  final bool openExactResult;
+  const GlobalSearchPage({
+    super.key,
+    this.initialQuery = '',
+    this.openExactResult = false,
+  });
   @override State<GlobalSearchPage> createState() => _GlobalSearchPageState();
 }
 
@@ -298,9 +304,22 @@ class _GlobalSearchPageState extends State<GlobalSearchPage> {
   bool busy = false;
   Timer? _searchDebounce;
   int _searchRequest = 0;
+  bool _autoOpened = false;
   List<_SearchResult> results = [];
   final Map<String, List<Map<String, dynamic>>> _searchCache = {};
   final Map<String, DateTime> _searchCacheAt = {};
+
+  @override
+  void initState() {
+    super.initState();
+    final initial = widget.initialQuery.trim();
+    if (initial.isNotEmpty) {
+      controller.text = initial;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _onQueryChanged(initial);
+      });
+    }
+  }
 
   @override void dispose() { _searchDebounce?.cancel(); controller.dispose(); super.dispose(); }
 
@@ -372,7 +391,18 @@ class _GlobalSearchPageState extends State<GlobalSearchPage> {
       scan('municipalities', 'بلدية'),
     ]);
     if (!mounted || request != _searchRequest) return;
-    setState(() { results = out.take(80).toList(); busy = false; });
+    final nextResults = out.take(80).toList();
+    setState(() { results = nextResults; busy = false; });
+    if (widget.openExactResult && !_autoOpened) {
+      final expected = widget.initialQuery.trim();
+      final exact = nextResults.where((result) => result.id == expected).toList();
+      if (exact.length == 1) {
+        _autoOpened = true;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _showResultDetails(exact.single);
+        });
+      }
+    }
   }
 
   String _normalize(String value) => value
