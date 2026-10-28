@@ -26,6 +26,7 @@ class DataService extends ChangeNotifier {
   List<Map<String, dynamic>> operations = [];
   bool online = false, syncing = false;
   String lastSync = 'لم تتم المزامنة بعد';
+  String lastDataRefresh = '';
   StreamSubscription<List<ConnectivityResult>>? connectivitySub;
   Timer? automaticSyncTimer;
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? sosNotificationSub;
@@ -46,6 +47,7 @@ class DataService extends ChangeNotifier {
     queue = store.queue();
     operations = store.cachedOperations();
     lastSync = store.lastSync();
+    lastDataRefresh = store.lastDataRefresh();
     final c = await Connectivity().checkConnectivity();
     online = !c.contains(ConnectivityResult.none);
     connectivitySub = Connectivity().onConnectivityChanged.listen((v) {
@@ -58,10 +60,18 @@ class DataService extends ChangeNotifier {
       }
     });
     automaticSyncTimer = Timer.periodic(const Duration(seconds: 45), (_) async {
-      if (syncing || queue.isEmpty) return;
       final connections = await Connectivity().checkConnectivity();
-      online = !connections.contains(ConnectivityResult.none);
-      if (online) unawaited(sync());
+      final nextOnline = !connections.contains(ConnectivityResult.none);
+      if (online != nextOnline) {
+        online = nextOnline;
+        notifyListeners();
+      }
+      if (!online) return;
+      if (!syncing && queue.isNotEmpty) unawaited(sync());
+      final lastRefresh = DateTime.tryParse(lastDataRefresh);
+      final stale = lastRefresh == null ||
+          DateTime.now().difference(lastRefresh) >= const Duration(minutes: 3);
+      if (stale) unawaited(refreshOperations());
     });
     notifyListeners();
     if (Firebase.apps.isNotEmpty) {
@@ -97,6 +107,25 @@ class DataService extends ChangeNotifier {
     }
   }
 
+  String get automaticSyncStatus {
+    if (!online) {
+      return queue.isEmpty
+          ? 'غير متصل • البيانات المحلية متاحة'
+          : 'غير متصل • ' + queue.length.toString() + ' عملية محفوظة وستُزامن تلقائيًا';
+    }
+    if (syncing) return 'مزامنة تلقائية جارية';
+    if (queue.isNotEmpty) {
+      return queue.length.toString() + ' عملية بانتظار المزامنة التلقائية';
+    }
+    final refreshed = DateTime.tryParse(lastDataRefresh);
+    if (refreshed == null) return 'متصل • التحديث التلقائي جاهز';
+    final age = DateTime.now().difference(refreshed);
+    if (age.inMinutes < 1) return 'متصل • البيانات محدثة الآن';
+    if (age.inHours < 1) return 'متصل • آخر تحديث قبل ' + age.inMinutes.toString() + ' دقيقة';
+    return 'متصل • آخر تحديث قبل ' + age.inHours.toString() + ' ساعة';
+  }
+
+  bool get usingCachedData => !online && operations.isNotEmpty;
   @override
   void dispose() {
     connectivitySub?.cancel();
@@ -308,6 +337,8 @@ class DataService extends ChangeNotifier {
       }
       operations = _mergeOperations(loaded, operations);
       await store.saveCachedOperations(operations.take(limit).toList());
+      lastDataRefresh = DateTime.now().toIso8601String();
+      await store.saveLastDataRefresh(lastDataRefresh);
       notifyListeners();
     } catch (e) {
       debugPrint('Operations refresh failed; keeping local cache: $e');
