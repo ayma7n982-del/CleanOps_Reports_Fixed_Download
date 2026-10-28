@@ -452,8 +452,7 @@ class ExcelService {
 
       final rowErrors = <String>[];
       if (name.isEmpty) rowErrors.add('الاسم مفقود');
-      if (id.isNotEmpty && !RegExp(r'^\d{9}
-      if (id.isNotEmpty && RegExp(r'^\d{9}$').hasMatch(id) && !seenIds.add(id)) {
+      if (id.isNotEmpty && !RegExp(r'^\d{9}      if (id.isNotEmpty && RegExp(r'^\d{9}$').hasMatch(id) && !seenIds.add(id)) {
         duplicates++;
         rowErrors.add('رقم الهوية مكرر في الملف');
       }
@@ -465,59 +464,6 @@ class ExcelService {
         'name': name,
         'job': job,
         'id': id.isNotEmpty ? id : uuid.v4(),
-        'phone': phone,
-        'municipality': cleanMunicipality,
-        'group': cleanGroup,
-        'municipalityCoordinatorId': coordinatorId?.trim() ?? '',
-      });
-    }
-    return ExcelImportResult(validRows: valid, errors: errors, duplicateCount: duplicates, detectedHeaderRow: headerRow + 1, detectedColumns: detected);
-  }
-
-  Future<ExcelImportResult> importWorkers({
-    required String municipality,
-    required String group,
-    String? coordinatorId,
-  }) async {
-    final file = await pickWorkersFile();
-    if (file == null) return const ExcelImportResult(validRows: [], errors: [], duplicateCount: 0);
-    return parseWorkersBytes(file.bytes!, municipality: municipality, group: group, coordinatorId: coordinatorId, fileName: file.name);
-  }
-
-  Future<String?> exportWorkers(List<Map<String, String>> workers) async {
-    final book = Excel.createExcel();
-    final sheet = book['Workers'];
-    const headers = ['الاسم الرباعي', 'المسمى الوظيفي', 'رقم الهوية', 'رقم الجوال', 'اسم البلدية', 'رقم المجموعة'];
-    sheet.appendRow(headers.map(TextCellValue.new).toList());
-    for (final w in workers) {
-      sheet.appendRow([
-        TextCellValue(w['name'] ?? ''), TextCellValue(w['job'] ?? ''), TextCellValue(w['id'] ?? ''),
-        TextCellValue(w['phone'] ?? ''), TextCellValue(w['municipality'] ?? ''), TextCellValue(w['group'] ?? ''),
-      ]);
-    }
-    final bytes = book.encode();
-    if (bytes == null || bytes.isEmpty) return null;
-    return saveExcelBytes(Uint8List.fromList(bytes), 'workers_${DateTime.now().millisecondsSinceEpoch}.xlsx');
-  }
-}
-
-
-/// Backward/semantic alias for callers that refer to this module as ExcelImportService.
-typedef ExcelImportService = ExcelService;
-).hasMatch(id)) rowErrors.add('رقم الهوية يجب أن يتكون من 9 أرقام عند إدخاله');
-      if (name.isNotEmpty && !seenNames.add(_normalize(name))) { duplicates++; rowErrors.add('اسم العامل مكرر في الملف'); }
-      if (id.isNotEmpty && RegExp(r'^\d{9}$').hasMatch(id) && !seenIds.add(id)) {
-        duplicates++;
-        rowErrors.add('رقم الهوية مكرر في الملف');
-      }
-      if (rowErrors.isNotEmpty) {
-        errors.add('الصف ${r + 1}: ${rowErrors.join('، ')}');
-        continue;
-      }
-      valid.add({
-        'name': name,
-        'job': job,
-        'id': id,
         'phone': phone,
         'municipality': cleanMunicipality,
         'group': cleanGroup,
