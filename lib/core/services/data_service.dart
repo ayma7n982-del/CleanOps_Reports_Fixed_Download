@@ -395,7 +395,7 @@ class DataService extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> _uploadAttachment(Map<String, dynamic> payload) async {
+  Future<void> _uploadAttachment(Map<String, dynamic> payload, String fallbackOperationId) async {
     if ('${payload['attachmentUrl'] ?? ''}'.isNotEmpty) return;
     final localPath = '${payload['localAttachmentPath'] ?? ''}';
     if (localPath.isEmpty) return;
@@ -405,7 +405,7 @@ class DataService extends ChangeNotifier {
     }
     final kind = '${payload['attachmentType'] ?? ''}';
     final userId = '${payload['userId'] ?? payload['reportedBy'] ?? 'unknown'}';
-    final operationId = '${payload['id'] ?? ''}';
+    final operationId = '${payload['id'] ?? fallbackOperationId}';
     if (operationId.isEmpty) {
       throw StateError('لا يمكن رفع مرفق دون معرّف العملية.');
     }
@@ -470,7 +470,7 @@ class DataService extends ChangeNotifier {
 
           final attachmentPath = payload['localAttachmentPath']?.toString();
           if (attachmentPath != null && attachmentPath.isNotEmpty) {
-            await _uploadAttachment(payload);
+            await _uploadAttachment(payload, item.id);
             // Persist the successful upload before attempting the Firestore write.
             // After an app restart, retrying won't re-upload the same attachment.
             queue = queue.map((queued) => queued.id == item.id
