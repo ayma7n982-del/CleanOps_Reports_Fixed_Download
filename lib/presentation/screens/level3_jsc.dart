@@ -445,7 +445,7 @@ class _Level3JscState extends State<Level3JscScreen> with SingleTickerProviderSt
                     title: 'غرفة عمليات الطوارئ',
                     icon: const Icon(Icons.warning_amber_rounded, color: red),
                     child: emergencies.isEmpty
-                        ? const ListTile(title: AppText('لا توجد بلاغات مفتوحة ضمن البيانات السحابية المتاحة.'))
+                        ? const ListTile(title: AppText('لا توجد بلاغات مفتوحة ضمن البيانات المتاحة.'))
                         : Column(
                             children: emergencies.take(20).map((e) {
                               final id = '${e['id']}';
@@ -463,7 +463,7 @@ class _Level3JscState extends State<Level3JscScreen> with SingleTickerProviderSt
                                       AppText('بلاغ مخلفات حربية #$id',
                                         style: const TextStyle(fontWeight: FontWeight.bold)),
                                       const SizedBox(height: 6),
-                                      AppText('${e['street'] ?? 'موقع غير محدد'} • ${e['status'] ?? 'urgent'}\\nالإحداثيات: ${latitude ?? 'غير متوفرة'}، ${longitude ?? 'غير متوفرة'}'),
+                                      AppText('${e['street'] ?? 'موقع غير محدد'} • ${e['status'] ?? 'urgent'}\nالإحداثيات: ${latitude ?? 'غير متوفرة'}، ${longitude ?? 'غير متوفرة'}'),
                                       if (pending) const Padding(
                                         padding: EdgeInsets.only(top: 6),
                                         child: AppText('هناك إجراء محلي بانتظار تأكيد المزامنة.'),
