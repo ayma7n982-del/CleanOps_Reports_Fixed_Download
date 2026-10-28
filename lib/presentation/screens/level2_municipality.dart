@@ -220,14 +220,15 @@ class _Level2MunicipalityScreenState extends State<Level2MunicipalityScreen> {
         !groups.any((g) => recordId(g) == toId) || fromId == toId) return;
     try {
       final id = DateTime.now().microsecondsSinceEpoch.toString();
+      final selectedCart = carts.firstWhere((c) => cartSelectionId(c) == cartId);
       final payload = <String, dynamic>{
         'id': id, 'municipalityCoordinatorId': u.id,
-        'fromGroupId': fromId, 'toGroupId': toId, 'cartId': cartId,
-        'cartEntity': carts.firstWhere((c) => cartSelectionId(c) == cartId)['_entity'],
-        'cartCollection': carts.firstWhere((c) => recordId(c) == cartId)['_cartCollection'],
+        'fromGroupId': fromId, 'toGroupId': toId, 'cartId': recordId(selectedCart),
+        'cartEntity': selectedCart['_entity'],
+        'cartCollection': selectedCart['_cartCollection'],
         'fromGroup': recordName(groups.firstWhere((g) => recordId(g) == fromId)),
         'toGroup': recordName(groups.firstWhere((g) => recordId(g) == toId)),
-        'cart': recordName(carts.firstWhere((c) => recordId(c) == cartId)),
+        'cart': recordName(selectedCart),
         'requestedBy': u.id, 'status': 'pending', 'createdAt': DateTime.now().toIso8601String(),
       };
       await data.enqueue('cart_redirect', 'create', payload);
