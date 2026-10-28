@@ -72,6 +72,12 @@ test('unauthenticated users cannot read messages', async () => {
 test('supervisor warning broadcast is rejected', async () => {
   await assertFails(setDoc(doc(db('head-a'),'messages','msg-1'), message('head-a','group-a','warning')));
 });
+test('worker cannot send messages to council', async () => {
+  await assertFails(setDoc(doc(db('worker-a'),'messages','msg-1'), message('worker-a','__JSC__','info')));
+});
+test('supervisor may escalate a message to council', async () => {
+  await assertSucceeds(setDoc(doc(db('head-a'),'messages','msg-1'), message('head-a','__JSC__','warning')));
+});
 test('inactive worker cannot read group messages', async () => {
   await env.withSecurityRulesDisabled(async ctx => {
     await setDoc(doc(ctx.firestore(),'users','worker-a'), {role:'worker',groupId:'group-a',isActive:false});
@@ -108,6 +114,20 @@ test('operations: inactive workforce and anonymous users are rejected', async ()
   });
   await assertFails(getDoc(doc(db('inactive-head'),'operations','trip-a')));
   await assertFails(getDoc(doc(env.unauthenticatedContext().firestore(),'operations','trip-a')));
+});
+
+test('dumpsites: workforce cannot read management dumpsites', async () => {
+  await env.withSecurityRulesDisabled(async ctx => {
+    await setDoc(doc(ctx.firestore(),'dumpsites','dump-a'), {
+      nameAr:'مكب أ', nameEn:'Dump A', capacity:100,
+      fillPercentage:50, isActive:true
+    });
+  });
+  await assertFails(getDoc(doc(db('worker-a'),'dumpsites','dump-a')));
+  await assertFails(getDoc(doc(db('head-a'),'dumpsites','dump-a')));
+  await assertSucceeds(getDoc(doc(db('coordinator'),'dumpsites','dump-a')));
+  await assertSucceeds(getDoc(doc(db('jsc'),'dumpsites','dump-a')));
+  await assertSucceeds(getDoc(doc(db('manager'),'dumpsites','dump-a')));
 });
 
 test('operations: management roles retain operational oversight', async () => {
