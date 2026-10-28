@@ -14,6 +14,7 @@ import '../../core/services/config_service.dart';
 import '../../core/services/data_service.dart';
 import '../../core/services/image_service.dart';
 import '../../core/services/report_service.dart';
+import '../../core/services/trip_lifecycle.dart';
 import 'reports_center.dart';
 import '../widgets/app_design.dart';
 import '../widgets/operations_overview.dart';
@@ -30,6 +31,7 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
   int tab = 0, trips = 0, alternativeTrips = 0, remaining = 0;
   bool emergencyLock = false, recording = false, loadingWorkers = true;
   String landfill = 'المكب المركزي';
+  int tripTargetMinutes = 90;
   Position? reportPosition;
   String? audioPath;
   Timer? timer;
@@ -261,7 +263,12 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
       return;
     }
     final d = context.read<DataService>();
-    final id = DateTime.now().microsecondsSinceEpoch.toString();
+    final startedAt = DateTime.now();
+    final lifecycle = TripLifecycle.startFields(
+      startedAt: startedAt,
+      targetMinutes: tripTargetMinutes,
+    );
+    final id = startedAt.microsecondsSinceEpoch.toString();
     setState(() => savingTrip = true);
     try {
       await d.enqueue('trip', 'create', {
@@ -272,6 +279,8 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
         'municipalityName': u.scope == 'all' ? '' : u.scope,
         'municipality': u.scope == 'all' ? '' : u.scope,
         'supervisorId': u.id,
+        'title': 'نقلة إلى $landfill',
+        ...lifecycle,
         'cartType': alternative ? 'alternative' : 'primary',
         'alternative': alternative,
         'landfill': landfill,
@@ -300,7 +309,11 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
           'isDeleted': false,
         });
       }
-      await d.addActivity('تسجيل نقلة', 'تم تسجيل ${alternative ? 'نقلة كارة بديلة' : 'نقلة كارة أساسية'} إلى $landfill مع ${tripPhotoPaths.length} صورة.', level: 'success');
+      await d.addActivity(
+        'بدء نقلة',
+        'بدأت ${alternative ? 'نقلة كارة بديلة' : 'نقلة كارة أساسية'} إلى $landfill، والمدة المستهدفة $tripTargetMinutes دقيقة، مع ${tripPhotoPaths.length} صورة.',
+        level: 'success',
+      );
       if (mounted) {
         setState(() {
           if (alternative) { alternativeTrips++; } else { trips++; }
@@ -838,10 +851,33 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
               decoration: InputDecoration(labelText: tr('المكب / نقطة التجميع')),
             ),
             const SizedBox(height: 10),
+            DropdownButtonFormField<int>(
+              value: tripTargetMinutes,
+              decoration: const InputDecoration(
+                labelText: 'المدة المستهدفة للوصول',
+                helperText: 'يُحسب موعد التأخير من لحظة بدء النقلة.',
+              ),
+              items: TripLifecycle.targetMinuteOptions.map((minutes) {
+                final label = switch (minutes) {
+                  30 => '30 دقيقة',
+                  60 => 'ساعة',
+                  90 => 'ساعة ونصف',
+                  120 => 'ساعتان',
+                  180 => '3 ساعات',
+                  240 => '4 ساعات',
+                  _ => '$minutes دقيقة',
+                };
+                return DropdownMenuItem(value: minutes, child: AppText(label));
+              }).toList(),
+              onChanged: emergencyLock || savingTrip ? null : (value) {
+                if (value != null) setState(() => tripTargetMinutes = value);
+              },
+            ),
+            const SizedBox(height: 10),
             Row(children: [
-              Expanded(child: FilledButton.icon(onPressed: emergencyLock || savingTrip ? null : () => _registerTrip(false), icon: const Icon(Icons.add), label: const AppText('نقلة أساسية'))),
+              Expanded(child: FilledButton.icon(onPressed: emergencyLock || savingTrip ? null : () => _registerTrip(false), icon: const Icon(Icons.play_arrow_rounded), label: const AppText('بدء نقلة أساسية'))),
               const SizedBox(width: 8),
-              Expanded(child: OutlinedButton.icon(onPressed: emergencyLock || savingTrip || !config.alternativeCartEnabled ? null : () => _registerTrip(true), icon: const Icon(Icons.swap_horiz), label: const AppText('نقلة بديلة'))),
+              Expanded(child: OutlinedButton.icon(onPressed: emergencyLock || savingTrip || !config.alternativeCartEnabled ? null : () => _registerTrip(true), icon: const Icon(Icons.swap_horiz), label: const AppText('بدء نقلة بديلة'))),
             ]),
             const SizedBox(height: 10),
             TextField(controller: quantity, enabled: !emergencyLock, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: tr('الكمية التقديرية (طن)'))),
