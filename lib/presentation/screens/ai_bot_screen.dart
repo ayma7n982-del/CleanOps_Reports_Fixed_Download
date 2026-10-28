@@ -139,8 +139,8 @@ class _AIBotScreenState extends State<AIBotScreen> with TickerProviderStateMixin
                         const SizedBox(width: 10),
                         Expanded(child: AppText(
                           !settings.aiEnabled
-                              ? 'المساعد غير مفعّل. فعّله من إعدادات الذكاء الاصطناعي.'
-                              : 'مفتاح API غير مضبوط. أضفه من إعدادات الذكاء الاصطناعي.',
+                              ? 'المساعد المحلي يعمل دون API. الذكاء الخارجي اختياري.'
+                              : 'المساعد المحلي جاهز. لا تحتاج إلى مفتاح API.',
                           style: const TextStyle(color: cleanOpsText, fontSize: 12),
                         )),
                       ]),
