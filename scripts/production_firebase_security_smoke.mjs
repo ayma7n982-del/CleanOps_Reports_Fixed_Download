@@ -318,34 +318,89 @@ try {
       ...sos, id: ids.sosOther, groupId: ids.groupB,
     }));
 
+  const redirectDeniedLog = {
+    id: ids.redirectDenied, _entity: 'cart_redirect',
+    municipalityCoordinatorId: ids.coordinator,
+    requestedBy: ids.supervisorA,
+    fromGroupId: ids.groupA, toGroupId: ids.groupB,
+    cartId: ids.cart, cartEntity: 'equipment', cartCollection: 'equipment',
+    status: 'applied', createdAt: new Date().toISOString(),
+  };
   expectDenied('supervisor cannot redirect municipality cart',
-    await callable('redirectCartAssignment', tokens.supervisorA, {
-      requestId: ids.redirectDenied, cartId: ids.cart,
-      cartCollection: 'equipment', fromGroupId: ids.groupA, toGroupId: ids.groupB,
-    }));
-  rememberDoc('operations', ids.redirectAllowed);
-  expectAllowed('municipality coordinator redirects managed cart between owned groups',
-    await callable('redirectCartAssignment', tokens.coordinator, {
-      requestId: ids.redirectAllowed, cartId: ids.cart,
-      cartCollection: 'equipment', fromGroupId: ids.groupA, toGroupId: ids.groupB,
-    }));
-  const cartAfter = await adminDb.collection('equipment').doc(ids.cart).get();
-  if (cartAfter.data()?.groupId !== ids.groupB) {
-    throw new Error('Cart redirect callable returned success but equipment assignment did not change.');
-  }
-  console.log('PASS verified: cart assignment changed on production Firestore.');
+    await commit(tokens.supervisorA, [
+      updateWrite(`equipment/${ids.cart}`, {
+        groupId: ids.groupB,
+        updatedBy: ids.supervisorA,
+        updatedAt: new Date().toISOString(),
+        lastRedirectRequestId: ids.redirectDenied,
+      }, ['groupId','updatedBy','updatedAt','lastRedirectRequestId']),
+      createWrite(`operations/${ids.redirectDenied}`, redirectDeniedLog),
+    ]));
 
-  expectAllowed('municipality coordinator permanently deletes managed temporary worker',
-    await callable('deleteManagedUser', tokens.coordinator, {userId: ids.deleteWorker}));
-  const deletedProfile = await adminDb.collection('users').doc(ids.deleteWorker).get();
-  if (deletedProfile.exists) throw new Error('deleteManagedUser left the temporary Firestore profile behind.');
-  let deletedAuthStillExists = true;
-  try { await auth.getUser(ids.deleteWorker); } catch (error) {
-    if (error?.code === 'auth/user-not-found') deletedAuthStillExists = false;
-    else throw error;
+  const redirectAllowedLog = {
+    id: ids.redirectAllowed, _entity: 'cart_redirect',
+    municipalityCoordinatorId: ids.coordinator,
+    requestedBy: ids.coordinator,
+    fromGroupId: ids.groupA, toGroupId: ids.groupB,
+    cartId: ids.cart, cartEntity: 'equipment', cartCollection: 'equipment',
+    status: 'applied', createdAt: new Date().toISOString(),
+  };
+  rememberDoc('operations', ids.redirectAllowed);
+  expectAllowed('municipality coordinator redirects managed cart atomically without Cloud Functions',
+    await commit(tokens.coordinator, [
+      updateWrite(`equipment/${ids.cart}`, {
+        groupId: ids.groupB,
+        updatedBy: ids.coordinator,
+        updatedAt: new Date().toISOString(),
+        lastRedirectRequestId: ids.redirectAllowed,
+      }, ['groupId','updatedBy','updatedAt','lastRedirectRequestId']),
+      createWrite(`operations/${ids.redirectAllowed}`, redirectAllowedLog),
+    ]));
+  const cartAfter = await adminDb.collection('equipment').doc(ids.cart).get();
+  if (cartAfter.data()?.groupId !== ids.groupB ||
+      cartAfter.data()?.lastRedirectRequestId !== ids.redirectAllowed) {
+    throw new Error('Direct cart redirect transaction did not update production Firestore.');
   }
-  if (deletedAuthStillExists) throw new Error('deleteManagedUser left the temporary Authentication account behind.');
-  console.log('PASS verified: managed worker removed from Auth and Firestore.');
+  console.log('PASS verified: free direct cart assignment changed on production Firestore.');
+
+  const deleteNow = new Date().toISOString();
+  rememberDoc('admin_requests', ids.deleteRequest);
+  expectAllowed('municipality coordinator queues managed worker permanent deletion without Cloud Functions',
+    await commit(tokens.coordinator, [
+      updateWrite(`users/${ids.deleteWorker}`, {
+        isActive: false,
+        status: 'pending_deletion',
+        deletionRequestedBy: ids.coordinator,
+        deletionRequestedAt: deleteNow,
+        deletionRequestId: ids.deleteRequest,
+        updatedBy: ids.coordinator,
+        updatedAt: deleteNow,
+      }, [
+        'isActive','status','deletionRequestedBy','deletionRequestedAt',
+        'deletionRequestId','updatedBy','updatedAt',
+      ]),
+      createWrite(`admin_requests/${ids.deleteRequest}`, {
+        id: ids.deleteRequest,
+        type: 'delete_user',
+        targetUserId: ids.deleteWorker,
+        requestedBy: ids.coordinator,
+        status: 'pending',
+        createdAt: deleteNow,
+      }),
+    ]));
+  const pendingProfile = await adminDb.collection('users').doc(ids.deleteWorker).get();
+  const pendingRequest = await adminDb.collection('admin_requests').doc(ids.deleteRequest).get();
+  if (pendingProfile.data()?.status !== 'pending_deletion' ||
+      pendingProfile.data()?.isActive !== false ||
+      pendingRequest.data()?.status !== 'pending') {
+    throw new Error('Queued permanent deletion was not persisted correctly.');
+  }
+  console.log('PASS verified: account access disabled and permanent deletion queued.');
+
+  if (process.env.GITHUB_ENV) {
+    fs.appendFileSync(process.env.GITHUB_ENV,
+      `SMOKE_DELETE_USER_ID=${ids.deleteWorker}\nSMOKE_DELETE_REQUEST_ID=${ids.deleteRequest}\n`);
+  }
 
   console.log('PRODUCTION FIREBASE SECURITY AND OPERATIONS SMOKE TEST PASSED.');
 } finally {
@@ -358,10 +413,17 @@ try {
     console.error(`Cleanup audit query failed: ${error}`);
   }
 
+  const keepDeletionRequest = process.env.KEEP_SMOKE_DELETE_REQUEST === '1';
+  const keptPaths = new Set([
+    `users/${ids.deleteWorker}`,
+    `admin_requests/${ids.deleteRequest}`,
+  ]);
   for (const ref of [...new Map(createdDocs.map(ref => [ref.path, ref])).values()].reverse()) {
+    if (keepDeletionRequest && keptPaths.has(ref.path)) continue;
     try { await ref.delete(); } catch (error) { console.error(`Cleanup document failed ${ref.path}: ${error}`); }
   }
   for (const uid of [...createdUids].reverse()) {
+    if (keepDeletionRequest && uid === ids.deleteWorker) continue;
     try { await auth.deleteUser(uid); } catch (error) {
       if (error?.code !== 'auth/user-not-found') console.error(`Cleanup auth user failed ${uid}: ${error}`);
     }
