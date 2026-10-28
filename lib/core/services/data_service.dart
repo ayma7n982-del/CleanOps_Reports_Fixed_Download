@@ -93,19 +93,7 @@ class DataService extends ChangeNotifier {
           sosNotificationSub = null;
           sosEmergencySub = null;
           if (account == null) return;
-          sosNotificationSub = FirebaseFirestore.instance.collection('operations')
-              .where('_entity', isEqualTo: 'notification').snapshots().listen(
-            (_) => unawaited(refreshSosInbox()),
-            onError: (Object error) => debugPrint('SOS notification listener failed: $error'),
-          );
-          // Emergency records are independently readable by L2/L3/L4. These
-          // live updates also cover notifications whose optional target could
-          // not be resolved when a supervisor was offline.
-          sosEmergencySub = FirebaseFirestore.instance.collection('operations')
-              .where('_entity', isEqualTo: 'emergency').snapshots().listen(
-            (_) => unawaited(refreshSosInbox()),
-            onError: (Object error) => debugPrint('SOS emergency listener failed: $error'),
-          );
+          unawaited(_subscribeManagementSosFeeds(account.uid));
           if (online) {
             // A queue created while signed out must retry immediately after the
             // real Firebase session becomes available instead of waiting for
@@ -122,6 +110,32 @@ class DataService extends ChangeNotifier {
       unawaited(sync());
       unawaited(refreshOperations());
       unawaited(refreshSosInbox());
+    }
+  }
+
+  Future<void> _subscribeManagementSosFeeds(String uid) async {
+    try {
+      final db = FirebaseFirestore.instance;
+      final profile = await db.collection('users').doc(uid).get();
+      if (FirebaseAuth.instance.currentUser?.uid != uid ||
+          profile.data()?['isActive'] == false ||
+          !SosAudiencePolicy.isManagementRole(
+              '${profile.data()?['role'] ?? ''}')) return;
+      // A supervisor/worker may not query every group's emergency records.
+      // Subscribe only for actual management users; Firestore rules still
+      // enforce the final read permissions on every snapshot.
+      sosNotificationSub = db.collection('operations')
+          .where('_entity', isEqualTo: 'notification').snapshots().listen(
+        (_) => unawaited(refreshSosInbox()),
+        onError: (Object e) => debugPrint('SOS notice listener failed: $e'),
+      );
+      sosEmergencySub = db.collection('operations')
+          .where('_entity', isEqualTo: 'emergency').snapshots().listen(
+        (_) => unawaited(refreshSosInbox()),
+        onError: (Object e) => debugPrint('SOS emergency listener failed: $e'),
+      );
+    } catch (error) {
+      debugPrint('SOS feed subscription deferred: $error');
     }
   }
 
