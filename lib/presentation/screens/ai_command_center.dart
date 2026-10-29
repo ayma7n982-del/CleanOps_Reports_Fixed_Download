@@ -76,7 +76,7 @@ class _AICommandCenterState extends State<AICommandCenter> {
                       final critical = ((x['emergencies'] as num?)?.toDouble() ?? 0.0);
                       return GridView.count(
                         shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
-                        crossAxisCount: horizontal ? 4 : 2, mainAxisSpacing: 10, crossAxisSpacing: 10, childAspectRatio: horizontal ? 1.25 : 0.95,
+                        crossAxisCount: horizontal ? 4 : 2, mainAxisSpacing: 10, crossAxisSpacing: 10, childAspectRatio: horizontal ? 1.20 : 0.82,
                         children: [
                           _MetricCard(icon: Icons.groups_rounded, title: 'العاملون النشطون', value: '${x['activeUsers']}', subtitle: 'من بيانات المستخدمين', progress: ((x['activeUsers'] as num?)?.toDouble() ?? 0) / maxUsers, color: const Color(0xFF00B87A)),
                           _MetricCard(icon: Icons.local_shipping_rounded, title: 'الترحيلات', value: '${x['trips']}', subtitle: 'سجلات تشغيلية', progress: (trips / (trips + 10.0)).clamp(0.0, 1.0).toDouble(), color: const Color(0xFF00B4DB)),
@@ -235,7 +235,7 @@ class _FocusModeKpis extends StatelessWidget {
                   crossAxisCount: columns,
                   mainAxisSpacing: 12,
                   crossAxisSpacing: 12,
-                  childAspectRatio: columns == 1 ? 2.4 : 1.35,
+                  childAspectRatio: columns == 1 ? 2.1 : 1.28,
                   children: [
                     _FocusKpi(icon: Icons.autorenew_rounded, title: 'الدورة الحالية', value: cycle, color: aiCyan),
                     _FocusKpi(icon: Icons.groups_rounded, title: 'العمال النشطون', value: '$workers', color: aiGreen),
@@ -427,36 +427,86 @@ class _MetricCard extends StatelessWidget {
   final String title, value, subtitle;
   final double progress;
   final Color color;
-  const _MetricCard({required this.icon, required this.title, required this.value, required this.subtitle, required this.progress, required this.color});
+  const _MetricCard({
+    required this.icon,
+    required this.title,
+    required this.value,
+    required this.subtitle,
+    required this.progress,
+    required this.color,
+  });
+
   @override
-  Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.all(14),
-    decoration: BoxDecoration(
-      color: cleanOpsSurface,
-      borderRadius: BorderRadius.circular(22),
-      border: Border.all(color: cleanOpsBorder),
-      boxShadow: const [BoxShadow(color: Color(0x09061A2A), blurRadius: 18, offset: Offset(0, 7))],
-    ),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Container(
-          padding: const EdgeInsets.all(9),
-          decoration: BoxDecoration(color: color.withOpacity(.10), borderRadius: BorderRadius.circular(14)),
-          child: Icon(icon, color: color, size: 20),
+  Widget build(BuildContext context) {
+    final feature = title.contains('طوارئ') ? 'emergency'
+        : title.contains('ترحيل') ? 'trips' : 'workers';
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Colors.white, EcoPalette.tint(feature)],
+          begin: Alignment.topRight,
+          end: Alignment.bottomLeft,
         ),
-        const Spacer(),
-        FittedBox(fit: BoxFit.scaleDown, alignment: AlignmentDirectional.centerStart, child: Text(value, style: const TextStyle(color: cleanOpsText, fontSize: 25, fontWeight: FontWeight.w900))),
-        AppText(title, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: cleanOpsText, fontSize: 12, fontWeight: FontWeight.w800)),
-        AppText(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: cleanOpsMuted, fontSize: 10)),
-        const SizedBox(height: 8),
-        ClipRRect(
-          borderRadius: BorderRadius.circular(20),
-          child: LinearProgressIndicator(minHeight: 5, value: progress, backgroundColor: color.withOpacity(.10), color: color),
-        ),
-      ],
-    ),
-  );
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: EcoPalette.accent(feature).withOpacity(.20)),
+        boxShadow: const [
+          BoxShadow(color: Color(0x100A715D), blurRadius: 11, offset: Offset(0, 4)),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              EcoPictorialIcon(feature: feature, icon: icon, size: 46),
+              const Spacer(),
+              Flexible(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    value,
+                    maxLines: 1,
+                    style: const TextStyle(
+                      color: cleanOpsText,
+                      fontSize: 27,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          AppText(
+            title,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: cleanOpsText, fontSize: 13, fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 2),
+          AppText(
+            subtitle,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(color: cleanOpsMuted, fontSize: 10),
+          ),
+          const Spacer(),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: LinearProgressIndicator(
+              minHeight: 5,
+              value: progress.clamp(0.0, 1.0),
+              backgroundColor: color.withOpacity(.11),
+              color: color,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _OperationsPulse extends StatelessWidget {
