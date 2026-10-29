@@ -148,14 +148,8 @@ jobs:
           FIREBASE_PROJECT_ID: nrc-aid
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
         run: node scripts/deploy_firestore_rules_rest.mjs
-      - name: Install Firebase CLI
-        run: npm install --no-save firebase-tools@14
-      - name: Publish collection-group index without deploying functions
+      - name: Publish and verify decision indexes through Firestore Admin API
         env:
+          FIREBASE_PROJECT_ID: nrc-aid
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-        shell: bash
-        run: |
-          node -e "require('fs').writeFileSync(process.env.RUNNER_TEMP + '/decision-firebase.json', process.env.FIREBASE_SERVICE_ACCOUNT, {mode: 0o600})"
-          export GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/decision-firebase.json"
-          npx firebase deploy --project nrc-aid --only firestore:indexes --non-interactive
-          rm -f "$RUNNER_TEMP/decision-firebase.json"
+        run: node scripts/deploy_decision_indexes_rest.mjs
