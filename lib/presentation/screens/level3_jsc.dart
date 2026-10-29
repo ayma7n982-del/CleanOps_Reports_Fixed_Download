@@ -598,14 +598,26 @@ class _Level3JscState extends State<Level3JscScreen> with SingleTickerProviderSt
                   const OperationsOverviewStrip(),
                   const SizedBox(height: 12),
                   WorkspaceOverview(actions: [
+                    if (context.read<AuthService>().currentUser?.can('operations','edit') == true)
                     WorkspaceAction('dispatch','توجيه الآليات',Icons.local_shipping,_chooseDispatch),
+                    if (context.read<AuthService>().currentUser?.can('operations','edit') == true)
                     WorkspaceAction('return','استعادة الآليات',Icons.assignment_return,_chooseEquipmentReturn),
+                    if (context.read<AuthService>().currentUser?.can('containers','view') == true)
                     WorkspaceAction('containers','الحاويات',Icons.delete_outline,
                       () => Navigator.push(context,MaterialPageRoute(
                         builder:(_)=>const ContainerManagementScreen()))),
+                    if (context.read<AuthService>().currentUser?.can('dumpsite','view') == true)
+                    WorkspaceAction('dumpsites','المكبات',Icons.landscape,
+                      () => Navigator.push(context,MaterialPageRoute(
+                        builder:(_)=>const OperationsManagementScreen()))),
+                    if (context.read<AuthService>().currentUser?.can('reports','view') == true)
                     WorkspaceAction('reports','التقارير',Icons.analytics,
                       () => Navigator.push(context,MaterialPageRoute(
                         builder:(_)=>const ReportsCenterScreen()))),
+                    if (context.read<AuthService>().currentUser?.can('notifications','view') == true)
+                    WorkspaceAction('messages','الرسائل والإشعارات',Icons.forum_outlined,
+                      () => Navigator.push(context,MaterialPageRoute(
+                        builder:(_)=>const MessagesCenterScreen()))),
                   ]),
                   const SizedBox(height: 6),
                   Text(context.watch<DataService>().automaticSyncStatus),

@@ -146,14 +146,16 @@ class _WorkspaceOverviewState extends State<WorkspaceOverview> {
       AiSectionCard(title:'يتطلب إجراءك',feature:'emergency',
         subtitle:'بحسب السجلات المتاحة وصلاحيات حسابك',
         child:Column(children:[
-          ListTile(leading:const Icon(Icons.warning_amber),
-            title:Text('بلاغات SOS مفتوحة: $emergencies'),
-            trailing:const Icon(Icons.chevron_left),
-            onTap:()=>_openEmergency(user)),
-          ListTile(leading:const Icon(Icons.delete_sweep),
-            title:Text('حاويات تحتاج متابعة: $critical'),
-            trailing:const Icon(Icons.chevron_left),
-            onTap:()=>_open(const ContainerManagementScreen())),
+          if (user.can('emergency', 'view'))
+            ListTile(leading:const Icon(Icons.warning_amber),
+              title:Text('بلاغات SOS مفتوحة: $emergencies'),
+              trailing:const Icon(Icons.chevron_left),
+              onTap:()=>_openEmergency(user)),
+          if (user.can('containers', 'view'))
+            ListTile(leading:const Icon(Icons.delete_sweep),
+              title:Text('حاويات تحتاج متابعة: $critical'),
+              trailing:const Icon(Icons.chevron_left),
+              onTap:()=>_open(const ContainerManagementScreen())),
           if(pending>0) ListTile(leading:const Icon(Icons.sync_problem),
             title:Text('بانتظار تأكيد الخادم: $pending'),
             subtitle:const Text('عمليات محفوظة محليًا ولم يتأكد تنفيذها'),
@@ -161,6 +163,7 @@ class _WorkspaceOverviewState extends State<WorkspaceOverview> {
             onTap:()=>_open(const SyncCenterPage())),
         ])),
       const SizedBox(height:12),
+      if (user.can('operations', 'view') || user.can('reports', 'view'))
       AiSectionCard(title:'البحث والأوامر',feature:'dashboard',
         child:FilledButton.tonalIcon(icon:const Icon(Icons.search),
           label:const Text('البحث الذكي في السجلات والعمليات'),
@@ -187,6 +190,9 @@ class _WorkspaceOverviewState extends State<WorkspaceOverview> {
           ]),
         ])),
       const SizedBox(height:12),
+      if (user.can('containers', 'view') ||
+          (user.can('dumpsite', 'view') &&
+           (user.role == 'donor_manager' || user.role == 'jsc_coordinator')))
       AiSectionCard(title:'الخريطة التشغيلية',feature:'dumpsite',
         child:ListTile(leading:const Icon(Icons.map_outlined),
           title:const Text('عرض المواقع على خريطة جوية'),

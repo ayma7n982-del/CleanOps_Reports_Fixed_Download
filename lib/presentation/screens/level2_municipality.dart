@@ -378,17 +378,29 @@ class _Level2MunicipalityScreenState extends State<Level2MunicipalityScreen> {
             const OperationsOverviewStrip(),
             const SizedBox(height: 12),
             WorkspaceOverview(actions: [
+              if (context.read<AuthService>().currentUser?.can('workers','view') == true)
               WorkspaceAction('workers','المجموعات والعمال',Icons.groups,
                 () => Navigator.push(context,MaterialPageRoute(
                   builder:(_)=>const OperationsManagementScreen(initialTab:0)))),
+              if (context.read<AuthService>().currentUser?.can('operations','edit') == true)
               WorkspaceAction('cart','إعادة توجيه الكارات',Icons.local_shipping,
                 _redirect),
+              if (context.read<AuthService>().currentUser?.can('containers','view') == true)
               WorkspaceAction('containers','الحاويات',Icons.delete_outline,
                 () => Navigator.push(context,MaterialPageRoute(
                   builder:(_)=>const ContainerManagementScreen()))),
+              if (context.read<AuthService>().currentUser?.can('dumpsite','view') == true)
+              WorkspaceAction('dumpsites','المكبات',Icons.landscape,
+                () => Navigator.push(context,MaterialPageRoute(
+                  builder:(_)=>const OperationsManagementScreen(initialTab:1)))),
+              if (context.read<AuthService>().currentUser?.can('reports','view') == true)
               WorkspaceAction('reports','التقارير',Icons.analytics,
                 () => Navigator.push(context,MaterialPageRoute(
                   builder:(_)=>const ReportsCenterScreen()))),
+              if (context.read<AuthService>().currentUser?.can('notifications','view') == true)
+              WorkspaceAction('messages','الرسائل والإشعارات',Icons.forum_outlined,
+                () => Navigator.push(context,MaterialPageRoute(
+                  builder:(_)=>const MessagesCenterScreen()))),
             ]),
             const SizedBox(height: 12),
             AiSectionCard(title: 'بلاغات SOS العاجلة', feature: 'emergency', child: _municipalitySosInbox()),

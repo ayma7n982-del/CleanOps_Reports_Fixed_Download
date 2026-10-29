@@ -578,8 +578,9 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
               const SizedBox(height: 12),
               const OperationsOverviewStrip(),
               const SizedBox(height: 12),
-              WorkspaceOverview(onEmergencyTap: () =>
-                _openAction(context, 'SOS / طوارئ', _emergency(config)), actions: [
+              WorkspaceOverview(onEmergencyTap: user.can('emergency','create')
+                ? () => _openAction(context, 'SOS / طوارئ', _emergency(config))
+                : null, actions: [
                 if (user.can('attendance','create'))
                   WorkspaceAction('attendance','حضور مجموعتي',Icons.fact_check,
                     () => _openAction(context,'حضور مجموعتي',_attendance(config))),
