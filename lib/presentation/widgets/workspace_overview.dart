@@ -12,6 +12,7 @@ import '../screens/live_operations_map.dart';
 import '../screens/enterprise_operations_hub.dart' show SyncCenterPage, AlertsCenterPage;
 import '../screens/container_management.dart';
 import 'app_design.dart';
+import 'eco_shortcuts.dart';
 import '../../core/constants/app_constants.dart';
 
 /// Presentation-only workspace: does not modify Firebase rules or data writes.
@@ -174,66 +175,18 @@ class _WorkspaceOverviewState extends State<WorkspaceOverview> {
       AiSectionCard(title:'اختصاراتي',feature:'operations',
         subtitle:'يمكن ترتيب الاختصارات؛ يُحفظ الترتيب على الجهاز لكل مستخدم',
         child:Column(children:[
-          LayoutBuilder(builder: (context, bounds) {
-            final columns = bounds.maxWidth < 290 ? 1 : 2;
-            return GridView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: orderedActions.length,
-              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: columns,
-                crossAxisSpacing: 9,
-                mainAxisSpacing: 9,
-                mainAxisExtent: columns == 1 ? 100 : 115,
-              ),
-              itemBuilder: (_, index) {
-                final action = orderedActions[index];
-                final accent = EcoPalette.accent(action.id);
-                final radius = BorderRadius.circular(18);
-                return Material(
-                  color: Colors.transparent,
-                  child: Ink(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [EcoPalette.tint(action.id), Colors.white],
-                      ),
-                      borderRadius: radius,
-                      border: Border.all(color: accent.withOpacity(.18)),
-                    ),
-                    child: InkWell(
-                      onTap: action.onTap,
-                      borderRadius: radius,
-                      child: Padding(
-                        padding: const EdgeInsets.all(10),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            EcoPictorialIcon(
-                              feature: action.id,
-                              icon: action.icon,
-                              size: 49,
-                            ),
-                            Text(
-                              action.title,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                color: cleanOpsText,
-                                fontSize: 12.5,
-                                height: 1.2,
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                );
-              },
-            );
-          }),
+          EcoShortcutGrid(
+            cards: [
+              for (final action in orderedActions)
+                EcoShortcutCard(
+                  feature: action.id,
+                  icon: action.icon,
+                  title: action.title,
+                  subtitle: '',
+                  onTap: action.onTap,
+                ),
+            ],
+          ),
           ExpansionTile(title:const Text('تعديل ترتيب الاختصارات'),children:[
             for(final action in orderedActions) ListTile(
               title:Text(action.title),
