@@ -1,9 +1,10 @@
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { defineSecret } from 'firebase-functions/params';
 import { onDocumentWritten } from 'firebase-functions/v2/firestore';
+import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { initializeApp } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
-import { getFirestore, FieldValue, DocumentReference, DocumentData } from 'firebase-admin/firestore';
+import { getFirestore, FieldValue, DocumentReference, DocumentData, Timestamp } from 'firebase-admin/firestore';
 import { randomBytes } from 'crypto';
 
 initializeApp();
@@ -1053,5 +1054,157 @@ export const sendExternalSms = onCall({
     }).catch(() => undefined);
     if (e instanceof HttpsError) throw e;
     throw new HttpsError('unavailable', 'External SMS was not confirmed by the provider.');
+  }
+});
+
+
+// Scheduling uses the trusted server, not a phone timer that stops when the
+// user closes the app. The scheduler re-checks live role and destination scope.
+async function validateInternalDestination(
+  uid: string, actor: DocumentData, targetGroupId: string, targetUserId: string, type: string,
+): Promise<boolean> {
+  if (!['info', 'warning', 'emergency'].includes(type)) return false;
+  if (actor.isActive === false) return false;
+  if (targetUserId) {
+    if (targetGroupId !== `__USER__:${targetUserId}`) return false;
+    const target = (await db.collection('users').doc(targetUserId).get()).data();
+    if (!target || target.isActive === false) return false;
+    if (actor.role === 'group_supervisor') {
+      return ['info','emergency'].includes(type)
+        && actor.municipalityCoordinatorId === targetUserId
+        && target.role === 'municipality_coordinator';
+    }
+    if (actor.role === 'municipality_coordinator') {
+      return isWorkforceRole(String(target.role ?? ''))
+        && target.municipalityCoordinatorId === uid;
+    }
+    return isManagementRole(String(actor.role ?? ''))
+      && isManagementRole(String(target.role ?? ''));
+  }
+  if (actor.role === 'group_supervisor') {
+    return ['info','emergency'].includes(type)
+      && typeof actor.groupId === 'string'
+      && actor.groupId.length > 0 && actor.groupId === targetGroupId;
+  }
+  if (actor.role === 'municipality_coordinator') {
+    const group = (await db.collection('operations').doc(targetGroupId).get()).data();
+    return targetGroupId === '__JSC__' ||
+      (!!group && group._entity === 'group' && group.isDeleted !== true &&
+       group.municipalityCoordinatorId === uid);
+  }
+  return ['donor_manager','jsc_coordinator'].includes(String(actor.role ?? ''))
+    && targetGroupId === '__ALL_MUNICIPALITIES__';
+}
+
+export const scheduleInternalMessage = onCall({ region: 'us-central1' }, async (request) => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in first.');
+  const uid = request.auth.uid;
+  const actor = await requireActor(uid);
+  const input = (request.data ?? {}) as Record<string, unknown>;
+  const content = String(input.content ?? '').trim();
+  const type = String(input.type ?? '');
+  const targetUserId = String(input.targetUserId ?? '').trim();
+  const targetGroupId = targetUserId ? `__USER__:${targetUserId}` : String(input.targetGroupId ?? '').trim();
+  const requestId = String(input.requestId ?? '').trim();
+  const scheduledAt = new Date(String(input.scheduledAt ?? ''));
+  const ms = scheduledAt.getTime();
+  const now = Date.now();
+  if (!/^[A-Za-z0-9_-]{8,64}$/.test(requestId) ||
+      !content || content.length > 3000 || !targetGroupId ||
+      !Number.isFinite(ms) || ms < now + 60_000 ||
+      ms > now + 30 * 24 * 60 * 60 * 1000) {
+    throw new HttpsError('invalid-argument', 'Invalid scheduled message or date.');
+  }
+  if (!(await validateInternalDestination(uid, actor, targetGroupId, targetUserId, type))) {
+    throw new HttpsError('permission-denied', 'Recipient is outside your role or municipality.');
+  }
+  const ref = db.collection('scheduled_messages').doc(`${uid}_${requestId}`);
+  try {
+    await ref.create({
+      senderId: uid, targetGroupId,
+      ...(targetUserId ? { targetUserId } : {}),
+      content, type, status: 'scheduled',
+      scheduledAt: Timestamp.fromDate(scheduledAt),
+      createdAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+  } catch (e: any) {
+    if (e?.code !== 6 && e?.code !== 'already-exists') throw e;
+    const current = (await ref.get()).data() ?? {};
+    return { requestId, status: String(current.status ?? 'scheduled'), duplicate: true };
+  }
+  return { requestId, status: 'scheduled', duplicate: false };
+});
+
+export const cancelScheduledMessage = onCall({ region: 'us-central1' }, async (request) => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in first.');
+  await requireActor(request.auth.uid);
+  const id = String((request.data as Record<string, unknown> | undefined)?.id ?? '');
+  if (!id.startsWith(`${request.auth.uid}_`) || id.length > 256) {
+    throw new HttpsError('permission-denied', 'Can cancel only your own queued message.');
+  }
+  const ref = db.collection('scheduled_messages').doc(id);
+  await db.runTransaction(async tx => {
+    const snap = await tx.get(ref);
+    if (!snap.exists || snap.data()?.senderId !== request.auth?.uid) {
+      throw new HttpsError('not-found', 'Scheduled message not found.');
+    }
+    if (snap.data()?.status !== 'scheduled') {
+      throw new HttpsError('failed-precondition', 'Message is no longer cancellable.');
+    }
+    tx.update(ref, { status: 'cancelled', updatedAt: FieldValue.serverTimestamp() });
+  });
+  return { cancelled: true };
+});
+
+export const dispatchScheduledMessages = onSchedule({
+  schedule: 'every 5 minutes', timeZone: 'UTC', region: 'us-central1',
+}, async () => {
+  const due = await db.collection('scheduled_messages')
+    .where('status', '==', 'scheduled')
+    .where('scheduledAt', '<=', Timestamp.now())
+    .limit(100).get();
+  for (const document of due.docs) {
+    try {
+      // Validate scope immediately before sending, so role revocations
+      // and group transfers prevent outdated instructions.
+      const data = document.data();
+      const actor = (await db.collection('users').doc(String(data.senderId)).get()).data();
+      const allowed = actor && await validateInternalDestination(
+        String(data.senderId), actor, String(data.targetGroupId),
+        String(data.targetUserId ?? ''), String(data.type));
+      if (!allowed) {
+        await document.ref.update({
+          status:'failed', reason:'permission-or-recipient-changed',
+          updatedAt:FieldValue.serverTimestamp(),
+        });
+        continue;
+      }
+      const messageRef = db.collection('messages').doc(`scheduled_${document.id}`);
+      await db.runTransaction(async tx => {
+        const [schedule, existing] = await Promise.all([
+          tx.get(document.ref), tx.get(messageRef),
+        ]);
+        if (schedule.data()?.status !== 'scheduled') return;
+        if (!existing.exists) {
+          tx.create(messageRef, {
+            messageId: messageRef.id,
+            senderId: data.senderId,
+            targetGroupId: data.targetGroupId,
+            ...(data.targetUserId ? { targetUserId: data.targetUserId } : {}),
+            content: data.content, type: data.type,
+            timestamp: FieldValue.serverTimestamp(), isRead: false,
+          });
+        }
+        tx.update(document.ref, {
+          status: 'sent', sentMessageId: messageRef.id,
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+      });
+    } catch (error) {
+      console.error('Scheduled message could not be processed', document.id,
+        error instanceof Error ? error.message : 'Unknown error');
+      // Remains scheduled for the next safe retry, without generating duplicate IDs.
+    }
   }
 });
