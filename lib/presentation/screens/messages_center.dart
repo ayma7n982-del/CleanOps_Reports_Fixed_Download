@@ -165,14 +165,21 @@ class _MessagesCenterScreenState extends State<MessagesCenterScreen> {
     supervisorBroadcast = false;
     final data = context.read<DataService>();
     try { await data.refreshOperations(); } catch (_) {}
+    if (!mounted) return;
     final groups = <String>{};
     for (final item in data.operations) {
-      if ('${item['_entity'] ?? ''}' == 'group' && item['isDeleted'] != true) {
+      if ('${item['_entity'] ?? ''}' == 'group' && item['isDeleted'] != true &&
+          (user.role != 'municipality_coordinator' ||
+           item['municipalityCoordinatorId'] == user.id)) {
         final id = '${item['id'] ?? item['number'] ?? ''}'.trim();
         if (id.isNotEmpty) groups.add(id);
       }
       final gid = '${item['groupId'] ?? ''}'.trim();
-      if (gid.isNotEmpty && ('${item['_entity'] ?? ''}' == 'worker' || '${item['_entity'] ?? ''}' == 'group_supervisor')) groups.add(gid);
+      if (gid.isNotEmpty &&
+          (user.role != 'municipality_coordinator' ||
+           item['municipalityCoordinatorId'] == user.id) &&
+          ('${item['_entity'] ?? ''}' == 'worker' ||
+           '${item['_entity'] ?? ''}' == 'group_supervisor')) groups.add(gid);
     }
     if ((user.groupId ?? '').isNotEmpty) groups.add(user.groupId!);
     if (groups.isNotEmpty) selectedGroup = groups.first;
@@ -201,7 +208,6 @@ class _MessagesCenterScreenState extends State<MessagesCenterScreen> {
                   if (isL1) const DropdownMenuItem(value: 'info', child: AppText('تقرير ميداني')),
                   if (!isL1) const DropdownMenuItem(value: 'warning', child: AppText('تحذير')),
                   const DropdownMenuItem(value: 'emergency', child: AppText('طوارئ / SOS')),
-                  if (isL1) const DropdownMenuItem(value: 'info', child: AppText('تقرير ميداني')),
                 ],
                 onChanged: (value) { if (value != null) setSheetState(() => type = value); },
               ),
@@ -210,6 +216,9 @@ class _MessagesCenterScreenState extends State<MessagesCenterScreen> {
                 padding: const EdgeInsets.only(bottom: 10),
                 child: AppText(type == 'emergency' ? 'سيتم توجيه الرسالة وفق نطاق الدور والصلاحيات.' : user.role == 'municipality_coordinator' ? 'ستصل الرسالة إلى المجموعة المختارة.' : 'ستصل الرسالة إلى جميع منسقي البلديات.'),
               ),
+              if (canChooseGroup && groups.isEmpty)
+                const Padding(padding: EdgeInsets.symmetric(vertical: 12),
+                  child: AppText('لا توجد مجموعات تابعة لبلديتك. لا يمكن إرسال رسالة جماعية.')),
               if (canChooseGroup && groups.isNotEmpty)
                 DropdownButtonFormField<String>(
                   value: groups.contains(selectedGroup) ? selectedGroup : groups.first,
@@ -228,7 +237,9 @@ class _MessagesCenterScreenState extends State<MessagesCenterScreen> {
               const SizedBox(height: 14),
               FilledButton.icon(
                 style: FilledButton.styleFrom(backgroundColor: type == 'emergency' ? red : null, minimumSize: const Size.fromHeight(54)),
-                onPressed: sending ? null : () async {
+                onPressed: sending || (canChooseGroup &&
+                    (selectedGroup == null || !groups.contains(selectedGroup)))
+                    ? null : () async {
                   setSheetState(() => sending = true);
                   try {
                     if (isL1 && supervisorBroadcast) {
@@ -242,12 +253,13 @@ class _MessagesCenterScreenState extends State<MessagesCenterScreen> {
                     } else {
                       await messaging.sendBroadcast(content: composer.text, type: type);
                     }
-                    if (mounted) Navigator.pop(context);
-                    if (mounted) ScaffoldMessenger.of(this.context).showSnackBar(const SnackBar(content: AppText('تم حفظ الرسالة وإرسالها. إذا لم يتوفر الإنترنت ستتم مزامنتها تلقائيًا.')));
+                    if (context.mounted) Navigator.pop(context);
+                    if (mounted) ScaffoldMessenger.of(this.context).showSnackBar(const SnackBar(
+                      content: AppText('تم تسجيل الرسالة. تحقق من حالة الاتصال للتأكد من التسليم.')));
                   } catch (e) {
                     if (mounted) ScaffoldMessenger.of(this.context).showSnackBar(SnackBar(content: AppText('تعذر إرسال الرسالة: $e')));
                   } finally {
-                    if (mounted) setSheetState(() => sending = false);
+                    if (context.mounted) setSheetState(() => sending = false);
                   }
                 },
                 icon: const Icon(Icons.send_rounded),

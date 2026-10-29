@@ -412,6 +412,16 @@ class _GlobalSearchPageState extends State<GlobalSearchPage> {
     Future<void> scan(String collection, String label) async {
       try {
         Query<Map<String, dynamic>> query = db.collection(collection).limit(500);
+        if ((actor.role == 'group_supervisor' || actor.role == 'worker') &&
+            (collection == 'operations' || collection == 'containers')) {
+          if ((actor.groupId ?? '').isEmpty) return;
+          query = db.collection(collection)
+              .where('groupId', isEqualTo: actor.groupId).limit(500);
+        }
+        if ((actor.role == 'group_supervisor' || actor.role == 'worker') &&
+            const ['equipment','dumpsites','municipalities'].contains(collection)) {
+          return;
+        }
         if (collection == 'users') {
           if (actor.role == 'municipality_coordinator') {
             query = db.collection(collection).where('municipalityCoordinatorId', isEqualTo: actor.id).limit(500);
@@ -627,7 +637,11 @@ class _GlobalSearchPageState extends State<GlobalSearchPage> {
     Widget? page;
     switch (r.label) {
       case 'مستخدم':
-        if (actor.role == 'donor_manager' || actor.role == 'municipality_coordinator') page = const UserManagementSettingsPage();
+        if (actor.role == 'donor_manager') {
+          page = const UserManagementSettingsPage();
+        } else if (actor.role == 'municipality_coordinator') {
+          page = const OperationsManagementScreen(initialTab: 0);
+        }
         break;
       case 'مكب':
         page = actor.role == 'donor_manager' ? const DumpsitesOverviewScreen() : OperationsManagementScreen(initialTab: actor.role == 'municipality_coordinator' ? 1 : 0);

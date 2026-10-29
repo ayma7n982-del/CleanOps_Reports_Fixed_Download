@@ -343,6 +343,10 @@ class MessagingService extends ChangeNotifier {
           e.code == 'invalid-argument' ||
           e.code == 'failed-precondition') {
         debugPrint('Message rejected by Firebase: $e');
+        // Rejected sends must not remain in the local conversation as sent.
+        messages.removeWhere((entry) => entry.messageId == id);
+        await _saveCache();
+        notifyListeners();
         rethrow;
       }
       // Keep the optimistic local copy for transient connectivity failures.
@@ -350,8 +354,10 @@ class MessagingService extends ChangeNotifier {
     } catch (e) {
       lastError = e.toString();
       notifyListeners();
-      // Unexpected failures must be visible to the caller, not silently
-      // interpreted as confirmed server delivery.
+      // Unexpected failures must not leave a fake sent message.
+      messages.removeWhere((entry) => entry.messageId == id);
+      await _saveCache();
+      notifyListeners();
       rethrow;
     }
   }

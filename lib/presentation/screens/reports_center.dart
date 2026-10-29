@@ -144,7 +144,9 @@ class _ReportsCenterState extends State<ReportsCenterScreen> {
     OutlinedButton.icon(onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AttendanceReportsHomeScreen())), icon: const Icon(Icons.fact_check_outlined), label: const AppText('تقارير الحضور')),
     OutlinedButton.icon(onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const MonthlyAttendanceReportScreen())), icon: const Icon(Icons.calendar_month), label: const AppText('التقرير الشهري التقويمي')),
     OutlinedButton.icon(onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const WorkReportsDashboard())), icon: const Icon(Icons.assignment_turned_in_outlined), label: const AppText('لوحة تقارير العمل')),
-    OutlinedButton.icon(onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ReportBrandingSettingsScreen())), icon: const Icon(Icons.branding_watermark_outlined), label: const AppText('شعارات وهوية التقرير')),
+    if (const ['jsc_coordinator','donor_manager'].contains(
+        context.read<AuthService>().currentUser?.role))
+      OutlinedButton.icon(onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ReportBrandingSettingsScreen())), icon: const Icon(Icons.branding_watermark_outlined), label: const AppText('شعارات وهوية التقرير')),
     OutlinedButton.icon(onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ReportApprovalScreen())), icon: const Icon(Icons.fact_check_outlined), label: const AppText('اعتماد التقارير')),
   ]);
 
