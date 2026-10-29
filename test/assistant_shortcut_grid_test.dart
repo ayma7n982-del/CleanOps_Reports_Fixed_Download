@@ -86,8 +86,20 @@ void main() {
     expect(find.text('حالة المكبات'), findsOneWidget);
     expect(tester.takeException(), isNull);
 
-    final first = tester.getTopLeft(find.text('ملخص اليوم'));
-    final second = tester.getTopLeft(find.text('تحليل المخاطر'));
-    expect((first.dy - second.dy).abs(), lessThan(8));
+    // Arabic labels may use one or two text lines, so compare the tile
+    // surfaces rather than the text baselines.
+    final firstTile = find.ancestor(
+      of: find.text('ملخص اليوم'),
+      matching: find.byType(InkWell),
+    );
+    final secondTile = find.ancestor(
+      of: find.text('تحليل المخاطر'),
+      matching: find.byType(InkWell),
+    );
+    expect(firstTile, findsOneWidget);
+    expect(secondTile, findsOneWidget);
+    final first = tester.getTopLeft(firstTile);
+    final second = tester.getTopLeft(secondTile);
+    expect((first.dy - second.dy).abs(), lessThan(1));
   });
 }
