@@ -179,7 +179,7 @@ class EcoShortcutGrid extends StatelessWidget {
             : desired;
         final scaleDelta =
             (MediaQuery.textScalerOf(context).scale(14) - 14).clamp(0.0, 36.0);
-        final tileHeight = (columns == 1 ? 83.0 : 125.0) + scaleDelta * 2.9;
+        final tileHeight = 125.0 + scaleDelta * 2.9;
         return GridView.builder(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
