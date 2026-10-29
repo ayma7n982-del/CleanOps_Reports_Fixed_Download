@@ -188,6 +188,45 @@ test('worker alert to linked coordinator is permitted, unrelated users denied', 
   }));
 });
 
+
+test('message attachments: sender may publish valid metadata, recipients may read', async () => {
+  await env.withSecurityRulesDisabled(async ctx => {
+    await setDoc(doc(ctx.firestore(),'messages','msg-1'), message('head-a','group-a'));
+  });
+  const attachmentId = 'image-a';
+  const path = ['messages','msg-1','attachments',attachmentId];
+  await assertSucceeds(setDoc(doc(db('head-a'),...path), {
+    attachmentId, path: 'message_attachments/msg-1/image-a.jpg',
+    contentType:'image/jpeg', sizeBytes:102400, senderId:'head-a',
+    createdAt:serverTimestamp(),
+  }));
+  await assertSucceeds(getDoc(doc(db('worker-a'),...path)));
+  await assertSucceeds(getDocs(collection(db('worker-a'),'messages','msg-1','attachments')));
+  await assertFails(getDoc(doc(db('worker-b'),...path)));
+  await assertFails(setDoc(doc(db('worker-a'),'messages','msg-1','attachments','evil'), {
+    attachmentId:'evil', path:'message_attachments/msg-1/evil.jpg',
+    contentType:'image/jpeg', sizeBytes:10, senderId:'worker-a',
+    createdAt:serverTimestamp(),
+  }));
+  await assertFails(deleteDoc(doc(db('head-a'),...path)));
+});
+
+test('external SMS audit is readable only by sender or recipient and never writable by client', async () => {
+  await env.withSecurityRulesDisabled(async ctx => {
+    await setDoc(doc(ctx.firestore(),'external_messages','sms-a'), {
+      senderId:'coordinator', targetUserId:'worker-a',
+      content:'Testing', channel:'sms', status:'submitted',
+    });
+  });
+  await assertSucceeds(getDoc(doc(db('coordinator'),'external_messages','sms-a')));
+  await assertSucceeds(getDoc(doc(db('worker-a'),'external_messages','sms-a')));
+  await assertFails(getDoc(doc(db('worker-b'),'external_messages','sms-a')));
+  await assertFails(setDoc(doc(db('coordinator'),'external_messages','sms-b'), {
+    senderId:'coordinator',targetUserId:'worker-a',content:'Spoofed',
+  }));
+  await assertFails(updateDoc(doc(db('coordinator'),'external_messages','sms-a'), {status:'delivered'}));
+});
+
 test('operations: active workforce can read own group but not another group', async () => {
   await env.withSecurityRulesDisabled(async ctx => {
     const admin = ctx.firestore();
