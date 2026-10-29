@@ -102,25 +102,22 @@ class _SimulationShortcutBannerState extends State<_SimulationShortcutBanner> {
         curve: Curves.easeOutCubic,
         builder: (context, value, child) => Opacity(opacity: value, child: Transform.translate(offset: Offset(0, 10 * (1 - value)), child: child)),
         child: Material(
-          color: const Color(0xFF0B2937),
-          borderRadius: BorderRadius.circular(20),
+          color: const Color(0xFFE9F8F0),
+          borderRadius: BorderRadius.circular(21),
           child: InkWell(
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(21),
             onTap: busy ? null : _run,
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
               child: Row(children: [
-                const DecoratedBox(
-                  decoration: BoxDecoration(gradient: LinearGradient(colors: [Color(0xFF18C8E8), Color(0xFF35D889)]), borderRadius: BorderRadius.all(Radius.circular(14))),
-                  child: SizedBox(width: 48, height: 48, child: Icon(Icons.science_rounded, color: Colors.white, size: 27)),
-                ),
+                const EcoPictorialIcon(feature: 'ai', icon: Icons.science_rounded, size: 57),
                 const SizedBox(width: 12),
                 const Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  AppText('تشغيل محاكاة الدورة 11', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 15)),
+                  AppText('تشغيل محاكاة الدورة 11', style: TextStyle(color: cleanOpsText, fontWeight: FontWeight.w900, fontSize: 15)),
                   SizedBox(height: 4),
-                  AppText('بلدية بني سهيلا • 5 مجموعات • 20 يوم عمل', style: TextStyle(color: Colors.white70, fontSize: 11)),
+                  AppText('بلدية بني سهيلا • 5 مجموعات • 20 يوم عمل', style: TextStyle(color: cleanOpsMuted, fontSize: 11)),
                 ])),
-                if (busy) const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF63E8C1))) else const Icon(Icons.play_circle_fill_rounded, color: Color(0xFF63E8C1), size: 27),
+                if (busy) const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: aiBlue)) else const Icon(Icons.play_circle_fill_rounded, color: aiBlue, size: 27),
               ]),
             ),
           ),
