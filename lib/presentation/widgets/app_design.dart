@@ -59,6 +59,20 @@ class EcoPictorialIcon extends StatelessWidget {
     this.size = 62,
   });
 
+  IconData get detailIcon => switch (feature) {
+    'workers' || 'users' || 'attendance' => Icons.verified_rounded,
+    'reports' || 'excel' => Icons.bar_chart_rounded,
+    'trips' || 'streets' => Icons.route_rounded,
+    'messages' => Icons.mark_chat_read_rounded,
+    'emergency' || 'notifications' => Icons.priority_high_rounded,
+    'dumpsite' || 'containers' => Icons.recycling_rounded,
+    'cycle' || 'sync' => Icons.autorenew_rounded,
+    'settings' || 'permissions' => Icons.tune_rounded,
+    'operations' => Icons.settings_suggest_rounded,
+    'ai' || 'dashboard' => Icons.auto_awesome_rounded,
+    _ => Icons.arrow_outward_rounded,
+  };
+
   @override
   Widget build(BuildContext context) {
     final accent = EcoPalette.accent(feature);
@@ -119,8 +133,8 @@ class EcoPictorialIcon extends StatelessWidget {
                   BoxShadow(color: Color(0x16073C35), blurRadius: 6),
                 ],
               ),
-              child: Icon(Icons.auto_awesome_rounded,
-                  size: size * .16, color: accent),
+              child: Icon(detailIcon,
+                  size: size * .19, color: accent),
             ),
           ),
         ],
