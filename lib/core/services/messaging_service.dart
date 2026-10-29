@@ -449,12 +449,44 @@ class MessagingService extends ChangeNotifier {
       notifyListeners();
     }
     if (config.onlineMessagingEnabled && config.readReceiptsEnabled && Firebase.apps.isNotEmpty) {
+      // Each recipient writes their own receipt; a group message's shared
+      // isRead field must never be changed by one member reading it.
+      unawaited(_writeReceipt(messageId, uid, 'read'));
       final message = messages.firstWhere((m) => m.messageId == messageId, orElse: () => throw StateError('Message not found'));
       if (message.targetGroupId == '__USER__:$uid' || message.targetUserId == uid) {
         try {
           await FirebaseFirestore.instance.collection('messages').doc(messageId).update({'isRead': true});
         } catch (_) {}
       }
+    }
+  }
+
+  Future<void> _writeReceipt(String messageId, String uid, String status) async {
+    if (!config.onlineMessagingEnabled || Firebase.apps.isEmpty) return;
+    try {
+      await FirebaseFirestore.instance.collection('messages').doc(messageId)
+          .collection('receipts').doc(uid).set({
+        'userId': uid,
+        'status': status,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+    } on FirebaseException catch (e) {
+      debugPrint('Message receipt not yet synchronized: $e');
+      // A receipt may legitimately wait for the message document to sync.
+      // Never claim that an offline acknowledgement reached the server.
+    } catch (e) {
+      debugPrint('Message receipt failed: $e');
+    }
+  }
+
+  Future<void> acknowledgeMessage(String messageId) async {
+    final uid = _uid;
+    if (uid == null) return;
+    final matches = messages.where((m) => m.messageId == messageId && m.senderId != uid);
+    if (matches.isEmpty) return;
+    await markRead(messageId);
+    if (config.readReceiptsEnabled && config.onlineMessagingEnabled && Firebase.apps.isNotEmpty) {
+      unawaited(_writeReceipt(messageId, uid, 'acknowledged'));
     }
   }
 
