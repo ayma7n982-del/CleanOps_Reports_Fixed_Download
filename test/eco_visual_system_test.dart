@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:provider/provider.dart';
+import 'package:solid_waste_operations/core/localization.dart';
 import 'package:solid_waste_operations/presentation/widgets/app_design.dart';
 import 'package:solid_waste_operations/presentation/widgets/creative_shortcuts.dart';
 
@@ -9,7 +11,9 @@ void main() {
     await tester.binding.setSurfaceSize(const Size(320, 730));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     var activated = '';
-    await tester.pumpWidget(MaterialApp(
+    await tester.pumpWidget(ChangeNotifierProvider<LocaleController>(
+      create: (_) => LocaleController(),
+      child: MaterialApp(
       home: Scaffold(
         body: SingleChildScrollView(
           child: Padding(
@@ -44,7 +48,7 @@ void main() {
           ),
         ),
       ),
-    ));
+    )));
     await tester.pumpAndSettle();
     expect(find.text('مركز التقارير والتحليلات'), findsOneWidget);
     expect(find.text('المجموعات والعمال'), findsOneWidget);
