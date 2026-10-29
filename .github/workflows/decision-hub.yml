@@ -80,6 +80,15 @@ jobs:
         run: flutter analyze --no-fatal-infos --no-fatal-warnings
       - name: Run Flutter tests
         run: flutter test
+      - name: Upload generated Arabic PDF report previews
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: CleanOps-Decision-PDF-Previews
+          path: build/decision-previews/*.pdf
+          if-no-files-found: warn
+          retention-days: 14
+
       - name: Build Android release APK
         env:
           GRADLE_OPTS: -Dorg.gradle.daemon=false -Dorg.gradle.parallel=false -Dorg.gradle.caching=false -Dkotlin.incremental=false
@@ -106,14 +115,6 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-      - name: Upload generated Arabic PDF report previews
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: CleanOps-Decision-PDF-Previews
-          path: build/decision-previews/*.pdf
-          if-no-files-found: warn
-          retention-days: 14
 
   decision-rules:
     runs-on: ubuntu-latest
@@ -148,3 +149,4 @@ jobs:
           FIREBASE_PROJECT_ID: nrc-aid
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
         run: node scripts/deploy_firestore_rules_rest.mjs
+
