@@ -110,12 +110,18 @@ service cloud.firestore {
     function messageTypeAllowed() { return request.resource.data.type in ['info', 'warning', 'emergency']; }
     function validMessageFields() {
       return activeMessenger()
-        && request.resource.data.keys().hasOnly(['messageId','senderId','targetGroupId','targetUserId','content','timestamp','type','isRead'])
+        && request.resource.data.keys().hasOnly(['messageId','senderId','targetGroupId','targetUserId','replyToMessageId','content','timestamp','type','isRead'])
         && request.resource.data.targetGroupId is string
         && (!request.resource.data.keys().hasAny(['targetUserId'])
             || (request.resource.data.targetUserId is string
                 && request.resource.data.targetUserId.size() > 0
                 && request.resource.data.targetGroupId == '__USER__:' + request.resource.data.targetUserId))
+        && (!request.resource.data.keys().hasAny(['replyToMessageId'])
+            || (request.resource.data.replyToMessageId is string
+                && request.resource.data.replyToMessageId != request.resource.data.messageId
+                && exists(/databases/$(database)/documents/messages/$(request.resource.data.replyToMessageId))
+                && (receiptSender(request.resource.data.replyToMessageId)
+                    || receiptRecipient(request.resource.data.replyToMessageId))))
         && request.resource.data.isRead == false
         && request.resource.data.messageId is string
         && request.resource.data.senderId == request.auth.uid
