@@ -53,7 +53,9 @@ class _SupplyChainDashboardState extends State<SupplyChainDashboard> {
               onChanged: (v) => setState(() => groupId = v == '' ? null : v)),
             Text('${d.period}\nأيام مكتملة حتى نهاية أمس. المقارنة بفترة سابقة مساوية.'),
             Text(quality),
+            if (!d.currentCovered) const Text('الفترة الحالية تتجاوز بداية السجل المتاح؛ الأعداد المعروضة جزئية.'),
             if (!d.historyCovered) const Text('بداية السجل المتاح لا تغطي الفترة السابقة كاملة؛ مقارنة التطور غير متاحة.'),
+            if (d.groups.isEmpty) const Text('لا توجد مجموعات متاحة ضمن نطاقك.'),
           ]),
           card('مؤشرات الأداء والمقارنة', [
             Text('النقلات المسجلة: ${d.recorded} • المكتملة: ${d.completed}'),

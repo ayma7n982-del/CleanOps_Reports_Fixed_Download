@@ -25,8 +25,10 @@ class SupplyChainAnalytics {
   final List<SupplyGroup> groups;
   final Map<String, int> distribution;
   final bool historyCovered;
+  final bool currentCovered;
   SupplyChainAnalytics._(this.start, this.end, this.previousStart, this.days,
-    this.groupId, this.trend, this.groups, this.distribution, this.historyCovered);
+    this.groupId, this.trend, this.groups, this.distribution, this.historyCovered,
+    this.currentCovered);
   factory SupplyChainAnalytics.from(DecisionAnalytics data,
       {int days = 7, String? groupId}) {
     if (![7, 14, 30].contains(days)) throw ArgumentError.value(days, 'days');
@@ -74,7 +76,8 @@ class SupplyChainAnalytics {
       distribution[key] = distribution[key]! + 1;
     }
     return SupplyChainAnalytics._(start, end, previous, days, groupId, points,
-      rows, distribution, !data.historyStart.isAfter(previous));
+      rows, distribution, !data.historyStart.isAfter(previous),
+      !data.historyStart.isAfter(start));
   }
   int get recorded => trend.fold(0, (n, p) => n + p.recorded);
   int get completed => groups.fold(0, (n, g) => n + g.current);

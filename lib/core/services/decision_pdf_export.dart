@@ -242,6 +242,7 @@ Future<Uint8List> buildDecisionPdf({required DecisionAnalytics data,
     content.add(heading('تحليل سلسلة الإمداد • SUPPLY CHAIN'));
     content.add(note('${s.scope}\n${s.period} • أيام مكتملة حتى نهاية أمس\n'
       'الفترة السابقة مساوية: ${s.days} يومًا. الحالة الحالية للحاويات مستقلة عن الفترة.\n'
+      '${s.currentCovered ? '' : 'الفترة الحالية تتجاوز بداية السجل؛ الأعداد جزئية.\n'}'
       '${s.historyCovered ? '' : 'الفترة السابقة غير مكتملة في السجل؛ مقارنة التغير غير متاحة.'}'));
     content.add(card('مؤشرات الأداء', 'نقلات مسجلة ${s.recorded} • مكتملة ${s.completed}\n'
       'الإكمال ${decisionPercent(s.completion)} • تغير النقلات ${decisionPercent(s.change)}\n'

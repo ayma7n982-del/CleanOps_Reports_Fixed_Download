@@ -38,6 +38,7 @@ void main() {
     expect(all.tons,3.5);
     final long = SupplyChainAnalytics.from(snapshot(),days:30);
     expect(long.historyCovered,isFalse);
+    expect(long.currentCovered,isFalse);
     expect(long.change,isNull);
     final empty = SupplyChainAnalytics.from(snapshot(),groupId:'missing');
     expect(empty.completion,isNull);
