@@ -147,6 +147,47 @@ test('queries for sent and own group messages respect message list rules', async
   await assertFails(getDocs(query(collection(db('worker-b'),'messages'),where('targetGroupId','==','group-a'))));
 });
 
+
+test('L2 direct message reaches only its managed workforce', async () => {
+  await assertSucceeds(setDoc(doc(db('coordinator'),'messages','msg-1'), {
+    ...message('coordinator','__USER__:worker-a'),
+    targetUserId:'worker-a',
+  }));
+  await assertFails(setDoc(doc(db('head-a'),'messages','bad-spoof'), {
+    ...message('head-a','__USER__:worker-b'),
+    targetUserId:'worker-b',messageId:'bad-spoof',
+  }));
+});
+
+test('direct messages require target ID and routing string to agree', async () => {
+  await assertFails(setDoc(doc(db('coordinator'),'messages','msg-1'), {
+    ...message('coordinator','__USER__:worker-b'),
+    targetUserId:'worker-a',
+  }));
+});
+
+test('L3 can write to active municipal coordinators but not workers', async () => {
+  await assertSucceeds(setDoc(doc(db('jsc'),'messages','msg-1'), {
+    ...message('jsc','__USER__:coordinator'),
+    targetUserId:'coordinator',
+  }));
+  await assertFails(setDoc(doc(db('jsc'),'messages','second'), {
+    ...message('jsc','__USER__:worker-b'),
+    targetUserId:'worker-b',messageId:'second',
+  }));
+});
+
+test('worker alert to linked coordinator is permitted, unrelated users denied', async () => {
+  await assertSucceeds(setDoc(doc(db('worker-a'),'messages','msg-1'), {
+    ...message('worker-a','__USER__:coordinator','emergency'),
+    targetUserId:'coordinator',
+  }));
+  await assertFails(setDoc(doc(db('worker-a'),'messages','invalid'), {
+    ...message('worker-a','__USER__:jsc','emergency'),
+    targetUserId:'jsc',messageId:'invalid',
+  }));
+});
+
 test('operations: active workforce can read own group but not another group', async () => {
   await env.withSecurityRulesDisabled(async ctx => {
     const admin = ctx.firestore();
