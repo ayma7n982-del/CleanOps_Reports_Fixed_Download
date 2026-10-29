@@ -303,7 +303,11 @@ class MessagingService extends ChangeNotifier {
         ? user.municipalityCoordinatorId! : municipalityId;
     if (municipalityTarget.isNotEmpty && (user.role == 'group_supervisor' || user.role == 'worker')) {
       await _send(content: text, type: type, targetUserId: municipalityTarget);
-      await _send(content: text, type: type, targetGroupId: '__JSC__');
+      // Field workers escalate only genuine emergency-class alerts. Other
+      // operational updates go to their municipality coordinator first.
+      if (user.role == 'group_supervisor' || type == 'emergency') {
+        await _send(content: text, type: type, targetGroupId: '__JSC__');
+      }
     } else if (user.role == 'municipality_coordinator') {
       await _send(content: text, type: type, targetGroupId: '__JSC__');
     } else if (user.role == 'jsc_coordinator') {
