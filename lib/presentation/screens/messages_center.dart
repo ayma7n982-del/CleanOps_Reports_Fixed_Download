@@ -288,17 +288,39 @@ class _MessagesCenterScreenState extends State<MessagesCenterScreen> {
                         ),
                       ],
                       const SizedBox(height: 12),
-                      FilledButton.icon(
-                        onPressed: () async {
-                          await messaging.acknowledgeMessage(message.messageId);
-                          if (sheetContext.mounted) {
-                            ScaffoldMessenger.of(sheetContext).showSnackBar(
-                              const SnackBar(content: AppText('تم تسجيل طلب تأكيد الاستلام للمزامنة.')));
-                          }
-                        },
-                        icon: const Icon(Icons.task_alt_rounded),
-                        label: const AppText('تأكيد استلام الرسالة'),
-                      ),
+                      if (Firebase.apps.isEmpty)
+                        const AppText('تأكيد الاستلام ينتظر اتصال Firebase.',
+                          style: TextStyle(color: cleanOpsMuted))
+                      else
+                        StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+                          stream: FirebaseFirestore.instance.collection('messages')
+                              .doc(message.messageId).collection('receipts').doc(uid).snapshots(),
+                          builder: (context, snapshot) {
+                            if (snapshot.hasError) return const AppText(
+                              'تعذر قراءة حالة التأكيد؛ تحقق من قواعد Firebase.');
+                            final status = snapshot.data?.data()?['status'];
+                            final waiting = snapshot.data?.metadata.hasPendingWrites == true;
+                            if (status == 'acknowledged') {
+                              return Chip(
+                                avatar: Icon(waiting ? Icons.cloud_upload_rounded
+                                    : Icons.verified_rounded, color: aiGreen),
+                                label: AppText(waiting ? 'التأكيد ينتظر المزامنة'
+                                    : 'تم تأكيد الاستلام على الخادم'),
+                              );
+                            }
+                            return FilledButton.icon(
+                              onPressed: () async {
+                                await messaging.acknowledgeMessage(message.messageId);
+                                if (sheetContext.mounted) {
+                                  ScaffoldMessenger.of(sheetContext).showSnackBar(
+                                    const SnackBar(content: AppText('تم تسجيل طلب التأكيد للمزامنة؛ انتظر إشعار الخادم.')));
+                                }
+                              },
+                              icon: const Icon(Icons.task_alt_rounded),
+                              label: const AppText('تأكيد استلام الرسالة'),
+                            );
+                          },
+                        ),
                     ],
                     const SizedBox(height: 12),
                     Align(alignment: AlignmentDirectional.centerEnd, child: TextButton(
