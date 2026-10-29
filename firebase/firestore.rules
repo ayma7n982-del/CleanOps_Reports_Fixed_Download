@@ -705,7 +705,11 @@ service cloud.firestore {
         || (role() == 'group_supervisor' && (validSupervisorTripCreate() || request.resource.data._entity == 'trip_photo' || (request.resource.data._entity == 'attendance' && userDoc().isActive != false && userDoc().groupId is string && userDoc().groupId.size() > 0 && request.resource.data.groupId == userDoc().groupId && request.resource.data.reportedBy == request.auth.uid && request.resource.data.status in ['present','absent','leave','permission','excused_absence','unexcused_absence','external_task']) || request.resource.data._entity == 'street_photo' || (request.resource.data._entity == 'emergency' && validSupervisorSosCreate()) || request.resource.data._entity == 'notification' || request.resource.data._entity == 'report'))
       );
       allow update: if signedIn() && (
-        validSosAcknowledgment()
+        // Fast path for the exact own-group trip completion. Evaluating the
+        // unrelated SOS/equipment branches first exceeds the rules 1000-
+        // expression limit on real trips and incorrectly denies supervisors.
+        (role() == 'group_supervisor' && validSupervisorTripUpdate())
+        || validSosAcknowledgment()
         || validJscSosReferral()
         || validJscSosReopen()
         || validJscSosSecure()
@@ -713,7 +717,7 @@ service cloud.firestore {
         || (isL4() && (resource.data._entity == 'report' || resource.data._entity == 'user'))
         || (isL2() && (resource.data._entity == 'group' || resource.data._entity == 'worker' || validOperationsCartAssignmentUpdate(id)))
         || (isL3() && (resource.data._entity == 'heavy_machinery' || resource.data._entity == 'notification' || resource.data._entity == 'report'))
-        || (role() == 'group_supervisor' && (validSupervisorTripUpdate() || resource.data._entity == 'trip_photo' || (resource.data._entity == 'attendance' && userDoc().isActive != false && resource.data.groupId == userDoc().groupId && request.resource.data.groupId == resource.data.groupId && request.resource.data.workerId == resource.data.workerId && request.resource.data.reportedBy == resource.data.reportedBy && resource.data.reportedBy == request.auth.uid && request.resource.data.status in ['present','absent','leave','permission','excused_absence','unexcused_absence','external_task']) || resource.data._entity == 'street_photo' || resource.data._entity == 'notification' || resource.data._entity == 'report'))
+        || (role() == 'group_supervisor' && (resource.data._entity == 'trip_photo' || (resource.data._entity == 'attendance' && userDoc().isActive != false && resource.data.groupId == userDoc().groupId && request.resource.data.groupId == resource.data.groupId && request.resource.data.workerId == resource.data.workerId && request.resource.data.reportedBy == resource.data.reportedBy && resource.data.reportedBy == request.auth.uid && request.resource.data.status in ['present','absent','leave','permission','excused_absence','unexcused_absence','external_task']) || resource.data._entity == 'street_photo' || resource.data._entity == 'notification' || resource.data._entity == 'report'))
       );
       allow delete: if isL2() && resource.data._entity == 'group';
     }
