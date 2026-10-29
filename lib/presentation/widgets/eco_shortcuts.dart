@@ -32,7 +32,6 @@ class EcoShortcutCard extends StatelessWidget {
     final tint = EcoPalette.tint(feature);
     final rtl = Directionality.of(context) == TextDirection.rtl;
     final radius = BorderRadius.circular(19);
-    final scale = MediaQuery.textScalerOf(context);
     final headline = Text(
       title,
       maxLines: 2,
