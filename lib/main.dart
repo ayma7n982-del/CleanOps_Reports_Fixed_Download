@@ -1849,8 +1849,8 @@ class EnterpriseApp extends StatelessWidget {
           labelStyle: const TextStyle(color: cleanOpsMuted),
           hintStyle: const TextStyle(color: cleanOpsMuted),
         ),
-        filledButtonTheme: FilledButtonThemeData(style: FilledButton.styleFrom(minimumSize: const Size(0, 44), padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)), textStyle: GoogleFonts.cairo(fontSize: 12, fontWeight: FontWeight.w800))),
-        outlinedButtonTheme: OutlinedButtonThemeData(style: OutlinedButton.styleFrom(minimumSize: const Size(0, 44), padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)), side: const BorderSide(color: Color(0x33259E91)), textStyle: GoogleFonts.cairo(fontSize: 12, fontWeight: FontWeight.w800))),
+        filledButtonTheme: FilledButtonThemeData(style: FilledButton.styleFrom(minimumSize: const Size(0, 44), padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(17)), textStyle: GoogleFonts.cairo(fontSize: 12, fontWeight: FontWeight.w800))),
+        outlinedButtonTheme: OutlinedButtonThemeData(style: OutlinedButton.styleFrom(minimumSize: const Size(0, 44), padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(17)), side: const BorderSide(color: Color(0x33259E91)), textStyle: GoogleFonts.cairo(fontSize: 12, fontWeight: FontWeight.w800))),
         textButtonTheme: TextButtonThemeData(style: TextButton.styleFrom(minimumSize: const Size(0, 40), padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), textStyle: GoogleFonts.cairo(fontSize: 12, fontWeight: FontWeight.w800))),
         cardTheme: CardThemeData(
           elevation: 0,
