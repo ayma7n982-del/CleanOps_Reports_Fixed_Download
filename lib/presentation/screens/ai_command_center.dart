@@ -153,7 +153,7 @@ class _FocusHeader extends StatelessWidget {
   Widget build(BuildContext context) => Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          gradient: const LinearGradient(colors: [Color(0xFF03111F), Color(0xFF0A2A43), Color(0xFF006A72)], begin: Alignment.topLeft, end: Alignment.bottomRight),
+          gradient: const LinearGradient(colors: [Color(0xFF06463D), Color(0xFF0B765F), Color(0xFF119A85)], begin: Alignment.topRight, end: Alignment.bottomLeft),
           borderRadius: BorderRadius.circular(26),
           boxShadow: const [BoxShadow(color: Color(0x2200B4DB), blurRadius: 24, offset: Offset(0, 10))],
         ),
@@ -345,7 +345,7 @@ class _Hero extends StatelessWidget {
     return Container(
       padding: EdgeInsets.all(width < 500 ? 17 : 22),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(colors: [Color(0xFF03111F), Color(0xFF0A2A43), Color(0xFF006A72)], begin: Alignment.topLeft, end: Alignment.bottomRight),
+        gradient: const LinearGradient(colors: [Color(0xFF06463D), Color(0xFF0B765F), Color(0xFF119A85)], begin: Alignment.topRight, end: Alignment.bottomLeft),
         borderRadius: BorderRadius.circular(30),
         boxShadow: const [BoxShadow(color: Color(0x2200B4DB), blurRadius: 28, offset: Offset(0, 12))],
       ),
