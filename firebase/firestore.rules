@@ -220,6 +220,23 @@ service cloud.firestore {
           && getAfter(/databases/$(database)/documents/admin_requests/$(request.resource.data.deletionRequestId)).data.status == 'pending'
         )
         || (
+          // Explicit deactivation is permitted during an active cycle.
+          // Freezing remains blocked until cycleHasEnded below.
+          isL2()
+          && workforceManagedByL2()
+          && requestedWorkforceManagedByL2()
+          && isWorkforceRole(resource.data.role)
+          && resource.data.isActive != false
+          && request.resource.data.role == resource.data.role
+          && request.resource.data.username == resource.data.username
+          && request.resource.data.isActive == false
+          && request.resource.data.status == 'deactivated'
+          && request.resource.data.deactivatedBy == request.auth.uid
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'isActive','status','deactivatedAt','deactivatedBy','updatedAt','updatedBy'
+          ])
+        )
+        || (
           isL2()
           && workforceManagedByL2()
           && requestedWorkforceManagedByL2()

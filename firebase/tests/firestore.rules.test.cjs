@@ -512,3 +512,65 @@ test('municipality may acknowledge only SOS assigned to its account', async () =
     updatedAt:'2026-10-28T10:00:00Z',
   }));
 });
+
+
+test('L2 can deactivate only its active workforce without ending cycle', async () => {
+  await env.withSecurityRulesDisabled(async ctx => {
+    const admin = ctx.firestore();
+    await setDoc(doc(admin,'users','worker-a'), {
+      role:'worker',username:'worker-a',groupId:'group-a',
+      municipalityCoordinatorId:'coordinator',isActive:true,status:'active',
+      cycleId:'cycle-active',
+    });
+    await setDoc(doc(admin,'work_cycles','cycle-active'), {
+      status:'active',
+      startDate:Timestamp.fromDate(new Date(Date.now()-3600000)),
+      endDate:Timestamp.fromDate(new Date(Date.now()+86400000)),
+    });
+  });
+  await assertSucceeds(updateDoc(doc(db('coordinator'),'users','worker-a'), {
+    isActive:false,status:'deactivated',
+    deactivatedBy:'coordinator',deactivatedAt:Timestamp.now(),
+    updatedAt:Timestamp.now(),
+  }));
+  await assertFails(updateDoc(doc(db('worker-a'),'users','worker-a'), {status:'active'}));
+});
+
+test('L2 cannot deactivate manager or a worker outside its municipality', async () => {
+  await env.withSecurityRulesDisabled(async ctx => {
+    const admin = ctx.firestore();
+    await setDoc(doc(admin,'users','outsider'), {
+      role:'worker',username:'outsider',groupId:'outside',
+      municipalityCoordinatorId:'other-coordinator',isActive:true,status:'active',
+    });
+    await setDoc(doc(admin,'users','manager'), {
+      role:'donor_manager',username:'manager',isActive:true,status:'active',
+    });
+  });
+  const change = {isActive:false,status:'deactivated',
+    deactivatedBy:'coordinator',deactivatedAt:Timestamp.now()};
+  await assertFails(updateDoc(doc(db('coordinator'),'users','outsider'), change));
+  await assertFails(updateDoc(doc(db('coordinator'),'users','manager'), change));
+});
+
+test('L2 cannot freeze a worker before cycle end or bypass changed-field limits', async () => {
+  await env.withSecurityRulesDisabled(async ctx => {
+    const admin = ctx.firestore();
+    await setDoc(doc(admin,'users','worker-a'), {
+      role:'worker',username:'worker-a',groupId:'group-a',
+      municipalityCoordinatorId:'coordinator',isActive:true,status:'active',
+      cycleId:'cycle-active',
+    });
+    await setDoc(doc(admin,'work_cycles','cycle-active'), {
+      status:'active',startDate:Timestamp.fromDate(new Date(Date.now()-3600000)),
+      endDate:Timestamp.fromDate(new Date(Date.now()+86400000)),
+    });
+  });
+  await assertFails(updateDoc(doc(db('coordinator'),'users','worker-a'), {
+    isActive:false,status:'frozen',frozenBy:'coordinator',frozenAt:Timestamp.now(),
+  }));
+  await assertFails(updateDoc(doc(db('coordinator'),'users','worker-a'), {
+    isActive:false,status:'deactivated',deactivatedBy:'coordinator',role:'donor_manager',
+  }));
+});
+

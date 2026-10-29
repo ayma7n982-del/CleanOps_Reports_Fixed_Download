@@ -286,6 +286,76 @@ try {
       groupId: ids.groupA,
     }, '?updateMask.fieldPaths=groupId'));
 
+  // Production smoke uses temporary workers only; every update is checked with
+  // the authenticated user token, not the admin SDK.
+  const date = new Date().toISOString();
+  expectAllowed('L2 can edit managed worker details on production', 
+    await rest('PATCH', `users/${ids.workerA}`, tokens.coordinator, {
+      name: 'Smoke Worker Edited', phone: '0590000000',
+      updatedBy: ids.coordinator, updatedAt: date,
+    }, '?updateMask.fieldPaths=name&updateMask.fieldPaths=phone&updateMask.fieldPaths=updatedBy&updateMask.fieldPaths=updatedAt'));
+  const edited = await adminDb.collection('users').doc(ids.workerA).get();
+  if (edited.data()?.name !== 'Smoke Worker Edited') {
+    throw new Error('Production edit was not persisted.');
+  }
+  console.log('PASS verified: managed worker edit was persisted on production.');
+
+  expectAllowed('L2 returns worker A to group A for a controlled swap test',
+    await rest('PATCH', `users/${ids.workerA}`, tokens.coordinator, {
+      groupId: ids.groupA, updatedBy: ids.coordinator, updatedAt: date,
+    }, '?updateMask.fieldPaths=groupId&updateMask.fieldPaths=updatedBy&updateMask.fieldPaths=updatedAt'));
+
+  expectAllowed('L2 swaps two managed workers in one atomic commit',
+    await commit(tokens.coordinator, [
+      updateWrite(`users/${ids.workerA}`, {
+        groupId: ids.groupB, updatedBy: ids.coordinator, updatedAt: date,
+      }, ['groupId','updatedBy','updatedAt']),
+      updateWrite(`users/${ids.workerB}`, {
+        groupId: ids.groupA, updatedBy: ids.coordinator, updatedAt: date,
+      }, ['groupId','updatedBy','updatedAt']),
+    ]));
+  const swappedA = await adminDb.collection('users').doc(ids.workerA).get();
+  const swappedB = await adminDb.collection('users').doc(ids.workerB).get();
+  if (swappedA.data()?.groupId !== ids.groupB ||
+      swappedB.data()?.groupId !== ids.groupA) {
+    throw new Error('Production swap was not persisted atomically.');
+  }
+  console.log('PASS verified: atomic worker swap on production.');
+
+  // Distinguish freeze (only after cycle expiry) from manual deactivation.
+  const endedCycle = `${prefix}_ended_cycle`;
+  await adminSet('work_cycles', endedCycle, {
+    name:'CleanOps Temporary Ended Smoke Cycle',
+    status:'active',createdBy:ids.manager,
+    startDate:new Date(Date.now() - 3*86400000),
+    endDate:new Date(Date.now() - 2*86400000),
+  });
+  await adminDb.collection('users').doc(ids.workerB).update({cycleId:endedCycle});
+  expectAllowed('L2 freezes worker on an ended cycle',
+    await rest('PATCH', `users/${ids.workerB}`, tokens.coordinator, {
+      isActive:false,status:'frozen',frozenBy:ids.coordinator,
+      frozenAt:date,updatedAt:date,
+    }, '?updateMask.fieldPaths=isActive&updateMask.fieldPaths=status&updateMask.fieldPaths=frozenBy&updateMask.fieldPaths=frozenAt&updateMask.fieldPaths=updatedAt'));
+  const frozen = await adminDb.collection('users').doc(ids.workerB).get();
+  if (frozen.data()?.isActive !== false || frozen.data()?.status !== 'frozen') {
+    throw new Error('Production worker freeze was not confirmed.');
+  }
+  console.log('PASS verified: expired-cycle worker freeze on production.');
+
+  expectAllowed('L2 deactivates worker during active work without freezing',
+    await rest('PATCH', `users/${ids.workerA}`, tokens.coordinator, {
+      isActive:false,status:'deactivated',deactivatedBy:ids.coordinator,
+      deactivatedAt:date,updatedAt:date,
+    }, '?updateMask.fieldPaths=isActive&updateMask.fieldPaths=status&updateMask.fieldPaths=deactivatedBy&updateMask.fieldPaths=deactivatedAt&updateMask.fieldPaths=updatedAt'));
+  const deactivated = await adminDb.collection('users').doc(ids.workerA).get();
+  if (deactivated.data()?.isActive !== false || deactivated.data()?.status !== 'deactivated') {
+    throw new Error('Production worker deactivation was not confirmed.');
+  }
+  expectDenied('deactivated worker cannot read operations',
+    await rest('GET', `operations/${ids.tripA}`, tokens.workerA));
+  console.log('PASS verified: deactivated worker loses access on production.');
+
+
   const dumpsite = {
     nameAr: 'مكب اختبار مؤقت',
     nameEn: 'Temporary Smoke Dumpsite',
