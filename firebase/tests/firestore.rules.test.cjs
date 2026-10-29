@@ -658,7 +658,7 @@ test('decision hub: global broadcasts restricted to L3/L4 and visible on supervi
     {...broadcast,createdBy:'coordinator',coordinatorName:'Municipality'}));
   await assertSucceeds(setDoc(doc(db('jsc'),'strategic_decisions','decision-1'),broadcast));
   await assertSucceeds(getDocs(query(collection(db('head-b'),'strategic_decisions'),
-    where('scopeKey','==','global'))));
+    where('scopeKey','==','global'), where('kind','==','broadcast'))));
   await assertFails(getDoc(doc(env.unauthenticatedContext().firestore(),
     'strategic_decisions','decision-1')));
 });
@@ -731,4 +731,13 @@ test('decision hub: plans are manager-only immutable and municipality-scoped', a
   await assertFails(setDoc(doc(db('head-a'),'strategic_plans','plan'),plan));
   await assertSucceeds(setDoc(doc(db('coordinator'),'strategic_plans','plan'),plan));
   await assertFails(updateDoc(doc(db('coordinator'),'strategic_plans','plan'),{status:'changed'}));
+});
+
+test('decision hub: own-group status retry can read missing or existing event id only', async () => {
+  await seedDecisionGroup();
+  await env.withSecurityRulesDisabled(async ctx =>
+    setDoc(doc(ctx.firestore(),'containers','c1'),{id:'c1',status:'empty',
+      issueStatus:'none',groupId:'group-a',municipalityId:'coordinator',updatedBy:'head-a'}));
+  await assertSucceeds(getDoc(doc(db('head-a'),'containers','c1','status_events','missing')));
+  await assertFails(getDoc(doc(db('head-b'),'containers','c1','status_events','missing')));
 });

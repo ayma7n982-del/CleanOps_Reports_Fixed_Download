@@ -394,7 +394,13 @@ service cloud.firestore {
     }
 
     match /containers/{containerId}/status_events/{eventId} {
-      allow read: if decisionManager() && (isL3OrL4()
+      // A transaction retries by reading its stable event id, including before
+      // the event exists. Own-group workforce may get that document only.
+      allow get: if activeSignedIn() && (
+        decisionManager() && (isL3OrL4() || get(/databases/$(database)/documents/containers/$(containerId)).data.municipalityId == request.auth.uid)
+        || ((role() == 'worker' || role() == 'group_supervisor')
+          && get(/databases/$(database)/documents/containers/$(containerId)).data.groupId == userDoc().get('groupId', '')));
+      allow list: if decisionManager() && (isL3OrL4()
         || resource.data.municipalityId == request.auth.uid);
       allow create: if activeSignedIn()
         && (isL3() || ((role() == 'worker' || role() == 'group_supervisor')
@@ -829,10 +835,10 @@ service cloud.firestore {
       return activeSignedIn() && (
         isL3OrL4() || (isL2() && d.municipalityCoordinatorId == request.auth.uid)
         || (role() == 'group_supervisor' && (
-          (d.groupId != '' && d.groupId == userDoc().get('groupId', ''))
-          || (d.kind == 'broadcast' && (
-            d.scopeKey == 'global'
-            || d.scopeKey == 'municipality:' + userDoc().get('municipalityCoordinatorId', '')
+          (d.get('groupId', '') != '' && d.get('groupId', '') == userDoc().get('groupId', ''))
+          || (d.get('kind', '') == 'broadcast' && (
+            d.get('scopeKey', '') == 'global'
+            || d.get('scopeKey', '') == 'municipality:' + userDoc().get('municipalityCoordinatorId', '')
           ))
         ))
       );

@@ -32,7 +32,7 @@ class _DecisionDirectiveBannerState extends State<DecisionDirectiveBanner> {
     final queries = <String, Query<Map<String, dynamic>>>{
       if ((u.groupId ?? '').isNotEmpty)
         'group': db.where('groupId', isEqualTo: u.groupId),
-      'global': db.where('scopeKey', isEqualTo: 'global'),
+      'global': db.where('scopeKey', isEqualTo: 'global').where('kind', isEqualTo: 'broadcast'),
       if ((u.municipalityCoordinatorId ?? '').isNotEmpty)
         'municipality': db.where('scopeKey',
           isEqualTo: 'municipality:${u.municipalityCoordinatorId}')

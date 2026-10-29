@@ -159,7 +159,7 @@ class _ActionDecisionHubScreenState extends State<ActionDecisionHubScreen> {
               ]),
             )),
           );
-        }))));
+        })));
   }
   Widget _sectionExport(DecisionHubService s, String section, String title) =>
     OutlinedButton.icon(onPressed: _exporting ? null : () => _export(s, section: section),
@@ -395,7 +395,7 @@ class _ActionDecisionHubScreenState extends State<ActionDecisionHubScreen> {
            'والقبعات والصديريات ونسّق تزويد المجموعة.')], color: Colors.teal)),
     ...a.dumpsites.where((d) => (decisionNumber(d['fillPercentage']) ?? -1) >= 85)
       .map((d) {
-        final alternatives = a.dumpsites.where((x) => x['id'] != d['id'] &&
+        final alternatives = a.dumpsites.where((x) => x['isActive'] == true && x['id'] != d['id'] &&
           decisionNumber(x['fillPercentage']) != null &&
           decisionNumber(x['fillPercentage'])! < 85 &&
           (decisionNumber(x['capacity']) ?? 0) > 0).toList()

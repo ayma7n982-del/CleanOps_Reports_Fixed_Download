@@ -369,7 +369,8 @@ class _Level2MunicipalityScreenState extends State<Level2MunicipalityScreen> {
   Widget _dashboardBody() => ListView(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
           children: [
-            if (context.watch<AuthService>().currentUser case final currentUser?) const ActionDecisionHubEntry(), AiHero(
+            const ActionDecisionHubEntry(),
+            if (context.watch<AuthService>().currentUser case final currentUser?) AiHero(
               user: currentUser,
               eyebrow: 'LEVEL 2 • MUNICIPAL COMMAND',
               title: 'لوحة تشغيل البلدية',
