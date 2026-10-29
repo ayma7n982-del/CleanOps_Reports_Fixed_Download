@@ -452,8 +452,7 @@ class _GlobalSearchPageState extends State<GlobalSearchPage> {
         return true;
       }
       final scope = _actor.scope.trim();
-      if (scope.isEmpty || scope == 'assigned_only') return false;
-      if (scope == 'all') return true;
+      if (scope.isEmpty || scope == 'assigned_only' || scope == 'all') return false;
       return FastSmartSearch.normalize('${row['municipalityName'] ?? row['municipality'] ?? row['municipalityId'] ?? ''}') ==
           FastSmartSearch.normalize(scope);
     }
@@ -501,27 +500,55 @@ class _GlobalSearchPageState extends State<GlobalSearchPage> {
 
   Future<void> _loadRemoteSources() async {
     if (remoteLoading || !mounted) return;
-    if (Firebase.apps.isEmpty || (context.read<AuthService>().offlineSession && !_dataService.online)) {
-      setState(() => remoteWarning = 'وضع عدم الاتصال: البحث يعمل على البيانات المحلية المحفوظة.');
+    if (Firebase.apps.isEmpty) {
+      setState(() => remoteWarning = 'البحث يعمل على البيانات المحلية؛ Firebase غير مهيأ.');
       return;
     }
+    final canFetchServer = _dataService.online &&
+        !context.read<AuthService>().offlineSession;
     setState(() { remoteLoading = true; remoteWarning = null; });
     final db = FirebaseFirestore.instance;
     final pending = <Future<void>>[];
     var failures = 0;
 
+    // Restrict remote cached records as well as server results. The offline
+    // Firestore cache is shared by the installation, so role scoping matters.
+    bool visibleRemote(String collection, Map<String, dynamic> record) {
+      if (record['isDeleted'] == true) return false;
+      if (collection == 'users') return true; // Users are scoped at query level.
+      if (_actor.role == 'municipality_coordinator' ||
+          _actor.role == 'jsc_coordinator' ||
+          _actor.role == 'group_supervisor' || _actor.role == 'worker') {
+        return _canSeeOperation(record);
+      }
+      return true;
+    }
+
     void add(String collection, String label, Query<Map<String, dynamic>> query,
         {String Function(Map<String, dynamic>)? categoryFor}) {
       pending.add(() async {
-        try {
-          final snapshot = await query.limit(800).get().timeout(const Duration(seconds: 9));
+        final limited = query.limit(800);
+        void apply(QuerySnapshot<Map<String, dynamic>> snapshot) {
           if (!mounted || context.read<AuthService>().currentUser?.id != _actor.id) return;
-          _index.replaceSource(
-            collection, label,
-            snapshot.docs.map((doc) => {...doc.data(), 'id': doc.id}),
-            categoryFor: categoryFor,
-          );
+          final docs = snapshot.docs
+              .map((doc) => {...doc.data(), 'id': doc.id})
+              .where((doc) => visibleRemote(collection, doc));
+          _index.replaceSource(collection, label, docs, categoryFor: categoryFor);
           _applyQuery();
+        }
+
+        // Cached Firestore data is normally available without any network wait.
+        try {
+          final cached = await limited.get(const GetOptions(source: Source.cache))
+              .timeout(const Duration(seconds: 2));
+          if (cached.docs.isNotEmpty) apply(cached);
+        } catch (_) {
+          // A first-time install legitimately has no cached query.
+        }
+        if (!canFetchServer) return;
+        try {
+          final snapshot = await limited.get().timeout(const Duration(seconds: 9));
+          apply(snapshot);
         } catch (_) {
           failures++;
         }
@@ -569,9 +596,11 @@ class _GlobalSearchPageState extends State<GlobalSearchPage> {
     if (!mounted) return;
     setState(() {
       remoteLoading = false;
-      remoteWarning = failures > 0
-          ? 'تعذر تحديث بعض الأقسام من الشبكة؛ النتائج المحلية ما زالت متاحة.'
-          : null;
+      remoteWarning = !canFetchServer
+          ? 'وضع عدم الاتصال: البحث يعمل على البيانات المحلية المخزنة.'
+          : failures > 0
+              ? 'تعذر تحديث بعض الأقسام من الشبكة؛ النتائج المحلية ما زالت متاحة.'
+              : null;
     });
   }
 
