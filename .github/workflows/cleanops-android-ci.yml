@@ -87,6 +87,16 @@ jobs:
           flutter build apk --debug
           test -s build/app/outputs/flutter-apk/app-debug.apk
           ls -lh build/app/outputs/flutter-apk/app-debug.apk
+      - name: Show APK output locations if build failed
+        if: failure()
+        shell: bash
+        run: |
+          echo "Expected Flutter output directory:"
+          ls -la build/app/outputs/flutter-apk/ || true
+          echo "All generated Android APK files:"
+          find build android/app/build -type f -name '*.apk' -print 2>/dev/null || true
+          echo "Android Gradle output directories:"
+          ls -la build/app/outputs/apk/debug/ android/app/build/outputs/apk/debug/ 2>/dev/null || true
       - name: Upload installable debug APK
         uses: actions/upload-artifact@v4
         with:

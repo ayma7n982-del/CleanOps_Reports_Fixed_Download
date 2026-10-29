@@ -1,3 +1,12 @@
+// Flutter expects Android outputs in the repository-level build directory.
+// Do not let Gradle default to android/app/build, which leaves flutter build apk
+// unable to find the generated artifact even when assembleDebug succeeds.
+rootProject.layout.buildDirectory.set(rootProject.layout.projectDirectory.dir("../build"))
+
+subprojects { project ->
+    project.layout.buildDirectory.set(rootProject.layout.buildDirectory.dir(project.name))
+}
+
 allprojects {
     repositories {
         google()
