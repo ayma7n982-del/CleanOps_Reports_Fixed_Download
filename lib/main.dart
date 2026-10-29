@@ -1765,15 +1765,87 @@ class EnterpriseApp extends StatelessWidget {
         appBarTheme: const AppBarTheme(
           backgroundColor: Color(0xFFF3F8F5),
           foregroundColor: Color(0xFF173B35),
+          surfaceTintColor: Colors.transparent,
           elevation: 0,
           centerTitle: false,
+          titleTextStyle: TextStyle(
+            color: Color(0xFF173B35),
+            fontSize: 21,
+            fontWeight: FontWeight.w900,
+            fontFamily: 'Cairo',
+          ),
+          iconTheme: IconThemeData(color: Color(0xFF173B35), size: 24),
+        ),
+        iconTheme: const IconThemeData(color: Color(0xFF087F6B)),
+        listTileTheme: const ListTileThemeData(
+          iconColor: Color(0xFF087F6B),
+          textColor: Color(0xFF173B35),
+          contentPadding: EdgeInsets.symmetric(horizontal: 14, vertical: 2),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.all(Radius.circular(17)),
+          ),
+        ),
+        chipTheme: ChipThemeData(
+          backgroundColor: const Color(0xFFE9F8F1),
+          selectedColor: const Color(0xFFD1F3E5),
+          disabledColor: const Color(0xFFF1F5F2),
+          side: const BorderSide(color: Color(0xFFD0E7DC)),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          labelStyle: const TextStyle(
+            color: Color(0xFF173B35), fontWeight: FontWeight.w700, fontSize: 12,
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
+        ),
+        bottomSheetTheme: const BottomSheetThemeData(
+          backgroundColor: Colors.white,
+          surfaceTintColor: Colors.transparent,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.vertical(top: Radius.circular(27)),
+          ),
+          showDragHandle: true,
+        ),
+        dialogTheme: DialogThemeData(
+          backgroundColor: Colors.white,
+          surfaceTintColor: Colors.transparent,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(23),
+          ),
+        ),
+        floatingActionButtonTheme: FloatingActionButtonThemeData(
+          backgroundColor: const Color(0xFF087F6B),
+          foregroundColor: Colors.white,
+          elevation: 5,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+        ),
+        elevatedButtonTheme: ElevatedButtonThemeData(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: const Color(0xFF087F6B),
+            foregroundColor: Colors.white,
+            elevation: 1,
+            minimumSize: const Size(0, 44),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+          ),
+        ),
+        progressIndicatorTheme: const ProgressIndicatorThemeData(
+          color: Color(0xFF087F6B),
+          linearTrackColor: Color(0xFFE1F1E9),
+        ),
+        snackBarTheme: SnackBarThemeData(
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: const Color(0xFF173B35),
+          contentTextStyle: const TextStyle(color: Colors.white),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         ),
         inputDecorationTheme: InputDecorationTheme(
           filled: true,
-          fillColor: cleanOpsSurface2,
-          border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: cleanOpsBorder)),
+          fillColor: const Color(0xFFF0F8F4),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(18), borderSide: const BorderSide(color: Color(0xFFCFE7DC))),
           enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: cleanOpsBorder)),
-          focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: Color(0xFF087F6B), width: 1.6)),
+          focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(18), borderSide: const BorderSide(color: Color(0xFF087F6B), width: 1.6)),
           labelStyle: const TextStyle(color: cleanOpsMuted),
           hintStyle: const TextStyle(color: cleanOpsMuted),
         ),
