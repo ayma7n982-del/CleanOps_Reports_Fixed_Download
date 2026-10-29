@@ -655,12 +655,28 @@ class OperationsAdminService {
   }
 
   Future<void> deactivateUser(String userId, {required String actorId}) async {
-    await _users.doc(userId).update({
+    if (FirebaseAuth.instance.currentUser?.uid != actorId || actorId == userId) {
+      throw StateError('لا توجد صلاحية لإلغاء تنشيط هذا الحساب.');
+    }
+    final ref = _users.doc(userId);
+    final before = await ref.get(const GetOptions(source: Source.server));
+    final info = before.data();
+    if (!before.exists || info?['municipalityCoordinatorId'] != actorId ||
+        !const ['worker', 'group_supervisor'].contains(info?['role']) ||
+        info?['isActive'] == false) {
+      throw StateError('الحساب غير نشط أو لا يتبع بلديتك.');
+    }
+    await ref.update({
       'isActive': false,
       'status': 'deactivated',
       'deactivatedBy': actorId,
       'deactivatedAt': FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
     });
+    final after = await ref.get(const GetOptions(source: Source.server));
+    if (after.data()?['isActive'] != false ||
+        after.data()?['status'] != 'deactivated') {
+      throw StateError('لم يؤكد خادم Firebase إلغاء التنشيط.');
+    }
   }
 }

@@ -583,6 +583,7 @@ class _WorkforceTabState extends State<_WorkforceTab> {
   String role = 'worker';
   String cycleId = '';
   bool busy = false;
+  final Set<String> _deactivating = <String>{};
 
   @override
   void dispose() {
@@ -742,7 +743,7 @@ class _WorkforceTabState extends State<_WorkforceTab> {
                       } : null));
                     }),
                     SizedBox(width: 170, child: AiActionTile(title: 'نقل عامل', feature: 'trips', onTap: () => _transferDialog(context, svc, u.id, cycleId))),
-                    SizedBox(width: 170, child: AiActionTile(title: 'تبديل عاملين', feature: 'workers', onTap: () => _swapDialog(context, svc, u.id))),
+                    SizedBox(width: 170, child: AiActionTile(title: 'تبديل عاملين', feature: 'workers', onTap: () => _swapDialog(context, svc, u.id, cycleId))),
                   ],
                 ),
               ),
@@ -796,7 +797,10 @@ class _WorkforceTabState extends State<_WorkforceTab> {
                                   icon: const Icon(Icons.drive_file_move_outline),
                                 ),
                               if (active)
-                                IconButton(tooltip: 'Deactivate', onPressed: () => svc.deactivateUser(d.id, actorId: u.id), icon: const Icon(Icons.person_off_rounded, color: Colors.red))
+                                IconButton(tooltip: 'إلغاء تنشيط المستخدم',
+                                  onPressed: _deactivating.contains(d.id) ? null
+                                      : () => _confirmDeactivate(svc, u.id, d.id, '${x['name'] ?? d.id}'),
+                                  icon: const Icon(Icons.person_off_rounded, color: Colors.red))
                               else
                                 Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
@@ -860,68 +864,171 @@ class _WorkforceTabState extends State<_WorkforceTab> {
     }
   }
 
-  Future<void> _transferDialog(BuildContext context, OperationsAdminService svc, String actor, String cycle, {String? workerId}) async {
-    final worker = TextEditingController(text: workerId ?? '');
-    final group = TextEditingController();
-    await showDialog(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const AppText('نقل عامل'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(controller: worker, decoration: InputDecoration(labelText: tr('معرّف العامل'))),
-            const SizedBox(height: 8),
-            TextField(controller: group, decoration: InputDecoration(labelText: tr('المجموعة الجديدة'))),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const AppText('إلغاء')),
-          FilledButton(
-            onPressed: () async {
-              if (worker.text.trim().isEmpty || group.text.trim().isEmpty) return;
-              await svc.transferWorker(userId: worker.text.trim(), toGroupId: group.text.trim(), toCycleId: cycle, actorId: actor);
-              if (context.mounted) Navigator.pop(context);
-            },
-            child: const AppText('تنفيذ'),
-          ),
-        ],
-      ),
-    );
-    worker.dispose();
-    group.dispose();
+  /// Selection is limited to the municipality's actual workers and groups.
+  Future<void> _transferDialog(BuildContext context, OperationsAdminService svc,
+      String actor, String cycle, {String? workerId}) async {
+    try {
+      final users = await svc.cycleUsers(cycle, actorId: actor).first;
+      final groups = await FirebaseFirestore.instance.collection('operations')
+          .where('_entity', isEqualTo: 'group')
+          .where('municipalityCoordinatorId', isEqualTo: actor)
+          .get(const GetOptions(source: Source.server));
+      if (!mounted) return;
+      final workers = users.docs.where((x) =>
+          x.data()['role'] == 'worker' && x.data()['isActive'] != false).toList();
+      final destinations = groups.docs.where((x) => x.data()['isDeleted'] != true).toList();
+      if (workers.isEmpty || destinations.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: AppText('لا توجد مجموعات أو عمال نشطون ضمن بلديتك.')));
+        return;
+      }
+      String? selected = workers.any((x) => x.id == workerId) ? workerId : null;
+      String? destination;
+      var saving = false;
+      await showDialog<void>(context: context, barrierDismissible: false,
+          builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, update) {
+          final activeWorker = workers.where((x) => x.id == selected).toList();
+          final currentGroup = activeWorker.isEmpty ? null : activeWorker.first.data()['groupId'];
+          final choices = destinations.where((x) => x.id != currentGroup).toList();
+          return AlertDialog(title: const AppText('نقل عامل إلى مجموعة'),
+            content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
+              DropdownButtonFormField<String>(isExpanded: true, value: selected,
+                decoration: const InputDecoration(labelText: 'العامل'),
+                items: workers.map((x) => DropdownMenuItem(value: x.id,
+                  child: Text('${x.data()['name'] ?? x.id}', overflow: TextOverflow.ellipsis))).toList(),
+                onChanged: saving ? null : (v) => update(() { selected = v; destination = null; })),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(key: ValueKey(selected), isExpanded: true,
+                value: choices.any((x) => x.id == destination) ? destination : null,
+                decoration: const InputDecoration(labelText: 'المجموعة الجديدة'),
+                items: choices.map((x) => DropdownMenuItem(value: x.id,
+                  child: Text('${x.data()['name'] ?? x.data()['groupName'] ?? x.id}',
+                    overflow: TextOverflow.ellipsis))).toList(),
+                onChanged: saving || selected == null ? null :
+                  (v) => update(() => destination = v)),
+              if (choices.isEmpty) const AppText('لا توجد مجموعة أخرى متاحة للنقل.'),
+            ])),
+            actions: [
+              TextButton(onPressed: saving ? null : () => Navigator.pop(dialogContext),
+                child: const AppText('إلغاء')),
+              FilledButton(onPressed: saving || selected == null || destination == null
+                  ? null : () async {
+                update(() => saving = true);
+                try {
+                  await svc.transferWorker(userId: selected!, toGroupId: destination!,
+                    toCycleId: cycle, actorId: actor);
+                  if (dialogContext.mounted) Navigator.pop(dialogContext);
+                  if (mounted) ScaffoldMessenger.of(this.context).showSnackBar(const SnackBar(
+                    content: AppText('تم تأكيد نقل العامل على Firebase.')));
+                } catch (e) {
+                  if (dialogContext.mounted) ScaffoldMessenger.of(dialogContext)
+                    .showSnackBar(SnackBar(content: Text('فشل نقل العامل: $e')));
+                } finally {
+                  if (dialogContext.mounted) update(() => saving = false);
+                }
+              }, child: Text(saving ? 'جارٍ النقل...' : 'تأكيد النقل')),
+            ]);
+        }));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(this.context).showSnackBar(
+        SnackBar(content: Text('تعذر تحميل خيارات النقل: $e')));
+    }
   }
 
-  Future<void> _swapDialog(BuildContext context, OperationsAdminService svc, String actor) async {
-    final a = TextEditingController();
-    final b = TextEditingController();
-    await showDialog(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const AppText('تبديل عاملين'),
-        content: Row(
-          children: [
-            Expanded(child: TextField(controller: a, decoration: InputDecoration(labelText: tr('الأول')))),
-            const SizedBox(width: 8),
-            Expanded(child: TextField(controller: b, decoration: InputDecoration(labelText: tr('الثاني')))),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const AppText('إلغاء')),
-          FilledButton(
-            onPressed: () async {
-              if (a.text.trim().isEmpty || b.text.trim().isEmpty) return;
-              await svc.swapWorkers(firstUserId: a.text.trim(), secondUserId: b.text.trim(), actorId: actor);
-              if (context.mounted) Navigator.pop(context);
-            },
-            child: const AppText('تبديل'),
-          ),
-        ],
-      ),
-    );
-    a.dispose();
-    b.dispose();
+  Future<void> _swapDialog(BuildContext context, OperationsAdminService svc,
+      String actor, String cycle) async {
+    try {
+      final snap = await svc.cycleUsers(cycle, actorId: actor).first;
+      if (!mounted) return;
+      final workers = snap.docs.where((x) => x.data()['role'] == 'worker'
+          && x.data()['isActive'] != false).toList();
+      if (workers.length < 2) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: AppText('يلزم وجود عاملين نشطين على الأقل.')));
+        return;
+      }
+      String? first, second;
+      var saving = false;
+      await showDialog<void>(context: context, barrierDismissible: false,
+        builder: (dialogContext) => StatefulBuilder(builder: (dialogContext, update) {
+          final a = workers.where((w) => w.id == first).toList();
+          final b = workers.where((w) => w.id == second).toList();
+          final valid = a.isNotEmpty && b.isNotEmpty && first != second &&
+            a.first.data()['groupId'] != b.first.data()['groupId'];
+          return AlertDialog(title: const AppText('تبديل عاملين بين مجموعتين'),
+            content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
+              DropdownButtonFormField<String>(value: first, isExpanded: true,
+                decoration: const InputDecoration(labelText: 'العامل الأول'),
+                items: workers.map((w) => DropdownMenuItem(value: w.id,
+                  child: Text('${w.data()['name'] ?? w.id}', overflow: TextOverflow.ellipsis))).toList(),
+                onChanged: saving ? null : (v) => update(() {
+                  first = v;
+                  if (second == first) second = null;
+                })),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                key: ValueKey(first), value: second, isExpanded: true,
+                decoration: const InputDecoration(labelText: 'العامل الثاني'),
+                items: workers.where((w) => w.id != first).map((w) =>
+                  DropdownMenuItem(value: w.id,
+                    child: Text('${w.data()['name'] ?? w.id}', overflow: TextOverflow.ellipsis))).toList(),
+                onChanged: saving ? null : (v) => update(() => second = v)),
+              if (a.isNotEmpty && b.isNotEmpty && !valid)
+                const AppText('اختر عاملين من مجموعتين مختلفتين.'),
+            ])),
+            actions: [
+              TextButton(onPressed: saving ? null : () => Navigator.pop(dialogContext),
+                child: const AppText('إلغاء')),
+              FilledButton(onPressed: saving || !valid ? null : () async {
+                update(() => saving = true);
+                try {
+                  await svc.swapWorkers(firstUserId: first!, secondUserId: second!, actorId: actor);
+                  if (dialogContext.mounted) Navigator.pop(dialogContext);
+                  if (mounted) ScaffoldMessenger.of(this.context).showSnackBar(const SnackBar(
+                    content: AppText('تم تبديل العاملين على Firebase.')));
+                } catch (e) {
+                  if (dialogContext.mounted) ScaffoldMessenger.of(dialogContext)
+                    .showSnackBar(SnackBar(content: Text('فشل تبديل العاملين: $e')));
+                } finally {
+                  if (dialogContext.mounted) update(() => saving = false);
+                }
+              }, child: Text(saving ? 'جارٍ التبديل...' : 'تأكيد التبديل')),
+            ]);
+        }));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(this.context).showSnackBar(
+        SnackBar(content: Text('تعذر تحميل العمال: $e')));
+    }
   }
+
+  Future<void> _confirmDeactivate(OperationsAdminService svc,
+      String actor, String userId, String displayName) async {
+    if (_deactivating.contains(userId)) return;
+    final approved = await showDialog<bool>(context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const AppText('تأكيد إلغاء التنشيط'),
+        content: Text('هل تريد إلغاء تنشيط $displayName؟ لن يتم حذف حسابه.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false),
+            child: const AppText('إلغاء')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, true),
+            child: const AppText('تأكيد')),
+        ]));
+    if (approved != true || !mounted) return;
+    setState(() => _deactivating.add(userId));
+    try {
+      await svc.deactivateUser(userId, actorId: actor);
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: AppText('أكد خادم Firebase إلغاء التنشيط.')));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('تعذر إلغاء التنشيط: $e')));
+    } finally {
+      if (mounted) setState(() => _deactivating.remove(userId));
+    }
+  }
+
 }
 
 String _fmt(DateTime d) => '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
