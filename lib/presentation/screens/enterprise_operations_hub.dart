@@ -1,3 +1,4 @@
+import 'action_decision_hub.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
@@ -68,6 +69,7 @@ class EnterpriseOperationsHubPage extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
         children: [
+        const ActionDecisionHubEntry(),
         AiHero(user: user, eyebrow: 'CLEANOPS OPERATIONS HUB', title: 'مركز الإدارة والتشغيل', subtitle: 'مركز بسيط للوصول إلى أهم الأصول والبحث والتنبيهات.'),
         const SizedBox(height: 14),
         FutureBuilder<Map<String, dynamic>>(

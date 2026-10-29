@@ -1,3 +1,4 @@
+import 'action_decision_hub.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../core/localization.dart';
 import 'package:flutter/material.dart';
@@ -368,6 +369,7 @@ class _Level2MunicipalityScreenState extends State<Level2MunicipalityScreen> {
   Widget _dashboardBody() => ListView(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
           children: [
+            const ActionDecisionHubEntry(),
             if (context.watch<AuthService>().currentUser case final currentUser?) AiHero(
               user: currentUser,
               eyebrow: 'LEVEL 2 • MUNICIPAL COMMAND',

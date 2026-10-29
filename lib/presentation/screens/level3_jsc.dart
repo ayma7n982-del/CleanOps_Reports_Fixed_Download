@@ -1,3 +1,4 @@
+import 'action_decision_hub.dart';
 import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -588,6 +589,7 @@ class _Level3JscState extends State<Level3JscScreen> with SingleTickerProviderSt
             : ListView(
                 padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
                 children: [
+                  const ActionDecisionHubEntry(),
                   AiHero(
                     user: context.read<AuthService>().currentUser!,
                     eyebrow: 'LEVEL 3 • JSC CONTROL',

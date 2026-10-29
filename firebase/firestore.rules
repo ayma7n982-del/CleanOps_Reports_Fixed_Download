@@ -304,6 +304,27 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    function validContainerStatusTrace(id) {
+      let n = request.resource.data;
+      let d = resource.data;
+      let eventPath = /databases/$(database)/documents/containers/$(id)/status_events/$(n.get('lastStatusEventId', 'missing'));
+      return activeSignedIn()
+        && (isL3() || ((role() == 'worker' || role() == 'group_supervisor')
+          && d.groupId == userDoc().get('groupId', '')
+          && n.groupId == d.groupId && n.municipalityId == d.municipalityId))
+        && n.updatedBy == request.auth.uid
+        && n.status in ['empty','partial','full']
+        && n.issueStatus == d.issueStatus
+        && n.diff(d).affectedKeys().hasOnly(['status','updatedAt','updatedBy','fullSince','lastStatusEventId'])
+        && n.lastStatusEventId is string && n.lastStatusEventId.size() > 0
+        && getAfter(eventPath).data.createdBy == request.auth.uid
+        && getAfter(eventPath).data.at == request.time
+        && getAfter(eventPath).data.status == n.status
+        && getAfter(eventPath).data.previousStatus == d.status
+        && ((n.status == 'full' && n.fullSince == request.time)
+          || (n.status != 'full' && n.fullSince == null));
+    }
+
     // ---------------- Smart Container Management ----------------
     match /containers/{id} {
       allow read: if isL3OrL4()
@@ -329,7 +350,7 @@ service cloud.firestore {
         && request.resource.data.gpsCoordinates.lng <= 180
         && request.resource.data.status in ['empty','partial','full']
         && request.resource.data.issueStatus == 'none';
-      allow update: if isL3()
+      allow update: if validContainerStatusTrace(id) || isL3()
         || (role() == 'group_supervisor'
           && userDoc().isActive != false
           && userDoc().groupId is string && userDoc().groupId.size() > 0
@@ -370,6 +391,40 @@ service cloud.firestore {
                 && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['issueStatus','feedbackNotes','updatedAt','updatedBy']))
             ));
       allow delete: if false;
+    }
+
+    match /containers/{containerId}/status_events/{eventId} {
+      // A transaction retries by reading its stable event id, including before
+      // the event exists. Own-group workforce may get that document only.
+      allow get: if activeSignedIn() && (
+        decisionManager() && (isL3OrL4() || get(/databases/$(database)/documents/containers/$(containerId)).data.municipalityId == request.auth.uid)
+        || ((role() == 'worker' || role() == 'group_supervisor')
+          && get(/databases/$(database)/documents/containers/$(containerId)).data.groupId == userDoc().get('groupId', '')));
+      allow list: if decisionManager() && (isL3OrL4()
+        || resource.data.municipalityId == request.auth.uid);
+      allow create: if activeSignedIn()
+        && (isL3() || ((role() == 'worker' || role() == 'group_supervisor')
+          && request.resource.data.groupId == userDoc().get('groupId', '')))
+        && request.resource.data.keys().hasOnly(['containerId','status','previousStatus',
+          'groupId','municipalityId','createdBy','at'])
+        && request.resource.data.containerId == containerId
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.at == request.time
+        && request.resource.data.status in ['empty','partial','full']
+        && getAfter(/databases/$(database)/documents/containers/$(containerId)).data.status == request.resource.data.status
+        && getAfter(/databases/$(database)/documents/containers/$(containerId)).data.lastStatusEventId == eventId
+        && getAfter(/databases/$(database)/documents/containers/$(containerId)).data.groupId == request.resource.data.groupId
+        && getAfter(/databases/$(database)/documents/containers/$(containerId)).data.municipalityId == request.resource.data.municipalityId
+        && get(/databases/$(database)/documents/containers/$(containerId)).data.status == request.resource.data.previousStatus
+        && (request.resource.data.status != request.resource.data.previousStatus
+          || (request.resource.data.status == 'full'
+            && get(/databases/$(database)/documents/containers/$(containerId)).data.get('fullSince', null) == null));
+      allow update, delete: if false;
+    }
+    // Collection-group reads are explicitly scoped by municipality for L2.
+    match /{path=**}/status_events/{eventId} {
+      allow read: if decisionManager() && (isL3OrL4()
+        || resource.data.municipalityId == request.auth.uid);
     }
 
     // ---------------- Existing operations ----------------
@@ -768,6 +823,217 @@ service cloud.firestore {
     }
     match /ai_state/{document=**} {
       allow read: if activeSignedIn();
+      allow write: if false;
+    }
+
+
+    // ---- Decision hub: additive rules; existing role ceilings remain intact. ----
+    function decisionManager() {
+      return activeSignedIn() && (isL2() || isL3() || isL4());
+    }
+    function decisionRead(d) {
+      return activeSignedIn() && (
+        isL3OrL4() || (isL2() && d.municipalityCoordinatorId == request.auth.uid)
+        || (role() == 'group_supervisor' && (
+          (d.get('groupId', '') != '' && d.get('groupId', '') == userDoc().get('groupId', ''))
+          || (d.get('kind', '') == 'temporary_coverage'
+            && d.get('additionalGroupId', '') != ''
+            && d.get('additionalGroupId', '') == userDoc().get('groupId', ''))
+          || (d.get('kind', '') == 'broadcast' && (
+            d.get('scopeKey', '') == 'global'
+            || d.get('scopeKey', '') == 'municipality:' + userDoc().get('municipalityCoordinatorId', '')
+          ))
+        ))
+      );
+    }
+    function decisionGroup(d) {
+      return d.groupId is string && d.groupId.size() > 0
+        && exists(/databases/$(database)/documents/operations/$(d.groupId))
+        && get(/databases/$(database)/documents/operations/$(d.groupId)).data._entity == 'group'
+        && get(/databases/$(database)/documents/operations/$(d.groupId)).data.get('isDeleted', false) != true
+        && get(/databases/$(database)/documents/operations/$(d.groupId)).data.get('isActive', true) == true
+        && get(/databases/$(database)/documents/operations/$(d.groupId)).data.municipalityCoordinatorId == d.municipalityCoordinatorId
+        && (!isL2() || d.municipalityCoordinatorId == request.auth.uid);
+    }
+    function validDecisionContainer(d) {
+      let path = /databases/$(database)/documents/containers/$(d.details.get('containerId', 'missing'));
+      return exists(path) && get(path).data.status == 'full'
+        && get(path).data.groupId == d.groupId
+        && get(path).data.municipalityId == d.municipalityCoordinatorId
+        && (d.kind != 'health' || (
+          get(path).data.get('fullSince', null) is timestamp
+          && get(path).data.fullSince < request.time - duration.value(12, 'h')
+        ));
+    }
+    function validDecisionCoverage(d) {
+      let id = d.details.get('assignmentId', 'missing');
+      let path = /databases/$(database)/documents/operations/$(id);
+      return exists(path)
+        && get(path).data.get('isActive', true) == true
+        && get(path).data.get('isDeleted', false) == false
+        && get(path).data.municipalityCoordinatorId == d.municipalityCoordinatorId
+        && (
+          (d.details.assignmentType == 'worker'
+            && get(path).data._entity == 'worker'
+            && get(path).data.get('isReserve', false) == true
+            && !(get(path).data.get('status', '') in ['frozen','deleted','inactive'])
+            && d.details.workerName == get(path).data.get('name', '')
+            && d.details.workerJob == get(path).data.get('job', '')
+            && d.get('additionalGroupId', '') == ''
+            && d.details.assignmentLockId == id
+            && getAfter(/databases/$(database)/documents/temporary_assignments/$(id)).data.decisionId == d.id
+            && getAfter(/databases/$(database)/documents/temporary_assignments/$(id)).data.groupId == d.groupId
+            && getAfter(/databases/$(database)/documents/temporary_assignments/$(id)).data.validUntil == d.expiresAt)
+          || (d.details.assignmentType == 'group'
+            && get(path).data._entity == 'group' && id != d.groupId
+            && d.get('additionalGroupId', '') == id
+            && id in get(/databases/$(database)/documents/operations/$(d.groupId)).data.get('adjacentGroupIds', []))
+        );
+    }
+    function validDecisionRoute(d) {
+      let source = /databases/$(database)/documents/dumpsites/$(d.details.get('sourceId', 'missing'));
+      let alternate = /databases/$(database)/documents/dumpsites/$(d.details.get('alternativeId', 'missing'));
+      return exists(source) && exists(alternate)
+        && d.details.sourceId != d.details.alternativeId
+        && get(source).data.isActive == true && get(alternate).data.isActive == true
+        && get(source).data.fillPercentage >= 85
+        && get(alternate).data.fillPercentage < 85
+        && get(alternate).data.capacity > 0
+        && d.details.sourceName == get(source).data.nameAr
+        && d.details.alternativeName == get(alternate).data.nameAr
+        && d.details.requestLeveling == true;
+    }
+    function validSurplusDestination(d) {
+      let id = d.details.get('destinationGroupId', 'missing');
+      let path = /databases/$(database)/documents/operations/$(id);
+      return exists(path) && id != d.groupId && get(path).data._entity == 'group'
+        && get(path).data.get('isActive', true) == true
+        && get(path).data.get('isDeleted', false) == false
+        && (!isL2() || get(path).data.municipalityCoordinatorId == request.auth.uid);
+    }
+    function validDecisionCreate(id) {
+      let d = request.resource.data;
+      return decisionManager()
+        && userDoc().get('policies', {}).get('operations', {}).get('create', true) != false
+        && d.keys().hasOnly(['id','kind','title','body','groupId','municipalityCoordinatorId',
+          'targetId','scopeKey','status','priority','shiftDate','expiresAt','details',
+          'targetCycleId','createdBy','coordinatorName','createdAt','schemaVersion','additionalGroupId'])
+        && d.id == id && d.createdBy == request.auth.uid
+        && d.coordinatorName == userDoc().get('name', '')
+        && d.createdAt == request.time && d.schemaVersion == 1
+        && d.title is string && d.title.size() > 0 && d.title.size() <= 200
+        && d.body is string && d.body.size() > 0 && d.body.size() <= 2000
+        && d.details is map && d.targetId is string
+        && d.municipalityCoordinatorId is string
+        && (
+          (d.kind == 'broadcast' && d.status == 'issued' && d.groupId == ''
+            && d.expiresAt is timestamp && d.expiresAt > request.time
+            && d.expiresAt <= request.time + duration.value(25, 'h')
+            && ((isL2() && d.scopeKey == 'municipality:' + request.auth.uid
+                && d.municipalityCoordinatorId == request.auth.uid)
+              || (isL3OrL4() && d.scopeKey == 'global' && d.municipalityCoordinatorId == '')))
+          || (d.kind in ['stagnation','collection','temporary_coverage','health','ppe','dumpsite_redirect']
+            && d.status == 'issued' && decisionGroup(d)
+            && d.scopeKey == 'municipality:' + d.municipalityCoordinatorId
+            && d.expiresAt is timestamp && d.expiresAt > request.time
+            && d.expiresAt <= request.time + duration.value(25, 'h')
+            && (!(d.kind in ['collection','health']) || validDecisionContainer(d))
+            && (d.kind != 'temporary_coverage' || validDecisionCoverage(d))
+            && (d.kind != 'dumpsite_redirect' || validDecisionRoute(d)))
+          || (d.kind in ['expand_manpower','increase_carts','reallocate_surplus']
+            && d.status == 'approved' && decisionGroup(d)
+            && d.scopeKey == 'municipality:' + d.municipalityCoordinatorId
+            && d.targetCycleId is string && d.targetCycleId.size() > 0
+            && d.targetCycleId.size() <= 80
+            && d.details.delta is int && d.details.delta >= -3 && d.details.delta <= 50
+            && (d.kind != 'reallocate_surplus' || validSurplusDestination(d)))
+        );
+    }
+    function validDecisionTransition() {
+      let d = resource.data;
+      let n = request.resource.data;
+      return activeSignedIn() && role() == 'group_supervisor'
+        && d.groupId != '' && d.groupId == userDoc().get('groupId', '')
+        && d.kind != 'broadcast' && d.status != 'approved'
+        && (
+          (d.status == 'issued' && n.status == 'acknowledged'
+            && d.expiresAt > request.time
+            && n.acknowledgedBy == request.auth.uid && n.acknowledgedAt == request.time
+            && n.diff(d).affectedKeys().hasOnly(['status','acknowledgedBy','acknowledgedAt']))
+          || (d.status == 'acknowledged' && n.status == 'completed'
+            && n.completedBy == request.auth.uid && n.completedAt == request.time
+            && n.completionNote is string && n.completionNote.size() >= 10
+            && n.completionNote.size() <= 1000
+            && n.diff(d).affectedKeys().hasOnly(['status','completedBy','completedAt','completionNote']))
+        );
+    }
+    match /strategic_decisions/{id} {
+      allow read: if decisionRead(resource.data);
+      allow create: if validDecisionCreate(id);
+      allow update: if validDecisionTransition();
+      allow delete: if false;
+    }
+    function validTemporaryAssignmentLock(workerId) {
+      let d = request.resource.data;
+      let action = getAfter(/databases/$(database)/documents/strategic_decisions/$(d.decisionId)).data;
+      return decisionManager()
+        && d.keys().hasOnly(['decisionId','workerId','groupId',
+          'municipalityCoordinatorId','validUntil','createdBy','createdAt'])
+        && d.workerId == workerId && d.createdBy == request.auth.uid
+        && d.createdAt == request.time && d.validUntil is timestamp
+        && d.validUntil > request.time
+        && action.createdBy == request.auth.uid
+        && action.kind == 'temporary_coverage'
+        && action.details.assignmentType == 'worker'
+        && action.details.assignmentId == workerId
+        && action.groupId == d.groupId
+        && action.municipalityCoordinatorId == d.municipalityCoordinatorId
+        && action.expiresAt == d.validUntil
+        && (!isL2() || d.municipalityCoordinatorId == request.auth.uid);
+    }
+    match /temporary_assignments/{workerId} {
+      allow read: if decisionManager() && (
+        isL3OrL4() || resource.data.municipalityCoordinatorId == request.auth.uid);
+      allow create: if validTemporaryAssignmentLock(workerId);
+      allow update: if resource.data.validUntil <= request.time
+        && validTemporaryAssignmentLock(workerId);
+      allow delete: if false;
+    }
+
+    match /strategic_plans/{id} {
+      allow read: if decisionManager() && (
+        isL3OrL4() || resource.data.municipalityCoordinatorId == request.auth.uid);
+      allow create: if decisionManager()
+        && request.resource.data.keys().hasOnly(['id','targetCycleId','status',
+          'municipalityCoordinatorId','decisionIds','recommendations','sourceCycleId',
+          'createdBy','coordinatorName','createdAt','schemaVersion'])
+        && request.resource.data.id == id
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.coordinatorName == userDoc().get('name', '')
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.status == 'approved'
+        && request.resource.data.schemaVersion == 1
+        && request.resource.data.targetCycleId is string
+        && request.resource.data.targetCycleId.size() > 0
+        && request.resource.data.targetCycleId.size() <= 80
+        && request.resource.data.decisionIds is list
+        && request.resource.data.recommendations is list
+        && request.resource.data.decisionIds.size() > 0
+        && request.resource.data.decisionIds.size() <= 100
+        && request.resource.data.decisionIds.size() == request.resource.data.recommendations.size()
+        && ((isL2() && request.resource.data.municipalityCoordinatorId == request.auth.uid)
+          || (isL3OrL4() && request.resource.data.municipalityCoordinatorId == ''));
+      allow update, delete: if false;
+    }
+    // Optional independent collections; legacy work_cycles and operations remain
+    // the authoritative existing sources. No new writes to these are permitted.
+    match /trips/{id} {
+      allow read: if decisionManager() && (
+        isL3OrL4() || resource.data.municipalityCoordinatorId == request.auth.uid);
+      allow write: if false;
+    }
+    match /cycles/{id} {
+      allow read: if decisionManager();
       allow write: if false;
     }
 

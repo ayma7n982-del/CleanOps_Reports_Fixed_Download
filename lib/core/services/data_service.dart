@@ -653,7 +653,8 @@ class DataService extends ChangeNotifier {
           }
           final cloudPayload = Map<String, dynamic>.from(payload)
             ..remove('localAttachmentPath')
-            ..remove('attachmentType');
+            ..remove('attachmentType')
+            ..remove('_trackStatus');
 
           final collection = item.entity == 'audit' ? 'audit' : (item.entity == 'container' ? 'containers' : 'operations');
           final docId = payload['id']?.toString() ?? item.id;
@@ -669,10 +670,42 @@ class DataService extends ChangeNotifier {
           } else if (item.entity == 'container') {
             // Containers have their own Firestore collection and strict field-level rules.
             // Do not inject the generic _entity marker into this collection.
-            await ref.set({
-              ...cloudPayload,
-              'updatedAt': FieldValue.serverTimestamp(),
-            }, SetOptions(merge: true));
+            final db = FirebaseFirestore.instance;
+            if (item.operation == 'create') {
+              // Own-group container creation is authorized without reading a
+              // nonexistent document; no status interval exists yet.
+              await ref.set({...cloudPayload, 'updatedAt': FieldValue.serverTimestamp()},
+                SetOptions(merge: true));
+            } else {
+            await db.runTransaction((tx) async {
+              final current = await tx.get(ref);
+              final before = current.data();
+              final eventRef = ref.collection('status_events').doc(item.id);
+              final event = payload['_trackStatus'] == true && before != null ?
+                  await tx.get(eventRef) : null;
+              // A retry must never replay an older status over a newer one.
+              if (event?.exists == true) return;
+              final status = cloudPayload['status'];
+              final track = payload['_trackStatus'] == true && before != null && const ['empty', 'partial', 'full'].contains(status) &&
+                  (before['status'] != status || (status == 'full' && before['fullSince'] == null));
+              tx.set(ref, {
+                ...cloudPayload,
+                'updatedAt': FieldValue.serverTimestamp(),
+                if (track) 'fullSince': status == 'full' ? FieldValue.serverTimestamp() : null,
+                if (track) 'lastStatusEventId': item.id,
+              }, SetOptions(merge: true));
+              if (track) {
+                tx.set(eventRef, {
+                  'containerId': docId, 'status': status,
+                  'previousStatus': before['status'],
+                  'groupId': cloudPayload['groupId'],
+                  'municipalityId': cloudPayload['municipalityId'],
+                  'createdBy': FirebaseAuth.instance.currentUser!.uid,
+                  'at': FieldValue.serverTimestamp(),
+                });
+              }
+            });
+            }
           } else if (item.entity == 'cart_redirect') {
             final actorId = FirebaseAuth.instance.currentUser?.uid ?? '';
             final cartId = '${payload['cartId'] ?? ''}'.trim();

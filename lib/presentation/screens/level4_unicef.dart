@@ -1,3 +1,4 @@
+import 'action_decision_hub.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../core/localization.dart';
@@ -27,6 +28,7 @@ class Level4UnicefScreen extends StatelessWidget {
       child: Scaffold(
         appBar: AppBar(title: const AppText('مدير المنظومة'), actions: [IconButton(tooltip: tr('البحث الذكي'), onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const GlobalSearchPage())), icon: const Icon(Icons.search_rounded))]),
         body: ListView(padding: const EdgeInsets.fromLTRB(14, 14, 14, 120), children: [
+          const ActionDecisionHubEntry(),
           AiHero(user: user, eyebrow: 'LEVEL 4 • SYSTEM COMMAND', title: 'لوحة المنظومة', subtitle: 'رؤية مختصرة للحاويات والمكبات والبحث التشغيلي.'),
           const SizedBox(height: 10),
           // Prominent temporary simulation shortcut: visible near the top of the dashboard.
