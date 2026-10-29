@@ -227,6 +227,40 @@ test('external SMS audit is readable only by sender or recipient and never writa
   await assertFails(updateDoc(doc(db('coordinator'),'external_messages','sms-a'), {status:'delivered'}));
 });
 
+
+test('reply metadata is accepted only for a readable parent message', async () => {
+  await env.withSecurityRulesDisabled(async ctx => {
+    await setDoc(doc(ctx.firestore(),'messages','original'), {
+      ...message('head-a','__USER__:coordinator'), messageId:'original',
+    });
+    await setDoc(doc(ctx.firestore(),'messages','hidden'), {
+      ...message('head-b','group-b'), messageId:'hidden',
+    });
+  });
+  await assertSucceeds(setDoc(doc(db('coordinator'),'messages','reply'), {
+    ...message('coordinator','__USER__:head-a'), messageId:'reply',
+    targetUserId:'head-a',replyToMessageId:'original',
+  }));
+  await assertFails(setDoc(doc(db('coordinator'),'messages','bad-reply'), {
+    ...message('coordinator','__USER__:head-a'), messageId:'bad-reply',
+    targetUserId:'head-a',replyToMessageId:'hidden',
+  }));
+});
+
+test('scheduled message audit is visible only to sender and cannot be forged', async () => {
+  await env.withSecurityRulesDisabled(async ctx => {
+    await setDoc(doc(ctx.firestore(),'scheduled_messages','coordinator_request'), {
+      senderId:'coordinator', targetGroupId:'group-a', type:'info',
+      content:'Future task',status:'scheduled', scheduledAt:Timestamp.now(),
+    });
+  });
+  await assertSucceeds(getDoc(doc(db('coordinator'),'scheduled_messages','coordinator_request')));
+  await assertFails(getDoc(doc(db('worker-a'),'scheduled_messages','coordinator_request')));
+  await assertFails(setDoc(doc(db('coordinator'),'scheduled_messages','fake'), {
+    senderId:'coordinator',content:'Spoofed', status:'scheduled',
+  }));
+});
+
 test('operations: active workforce can read own group but not another group', async () => {
   await env.withSecurityRulesDisabled(async ctx => {
     const admin = ctx.firestore();
