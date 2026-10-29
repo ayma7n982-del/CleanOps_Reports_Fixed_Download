@@ -365,6 +365,55 @@ class MessagingService extends ChangeNotifier {
     }
   }
 
+  Future<String> scheduleInternalMessage({
+    required String content,
+    required String type,
+    required DateTime sendAt,
+    String? targetGroupId,
+    String? targetUserId,
+  }) async {
+    final user = _user;
+    if (user == null || !canSend(type)) {
+      throw StateError('ليس لديك صلاحية جدولة هذه الرسالة.');
+    }
+    if (Firebase.apps.isEmpty || !config.onlineMessagingEnabled) {
+      throw StateError('جدولة الرسائل تتطلب اتصال Firebase.');
+    }
+    final text = content.trim();
+    if (text.isEmpty || text.length > 3000) {
+      throw ArgumentError('نص الرسالة مطلوب وبحد أقصى 3000 حرف.');
+    }
+    if (targetGroupId == null && targetUserId == null) {
+      throw ArgumentError('يجب تحديد وجهة الرسالة.');
+    }
+    try {
+      final response = await FirebaseFunctions.instanceFor(region: 'us-central1')
+          .httpsCallable('scheduleInternalMessage')
+          .call<Map<String, dynamic>>({
+        'requestId': _uuid.v4(),
+        'content': text,
+        'type': type,
+        'scheduledAt': sendAt.toUtc().toIso8601String(),
+        if (targetGroupId != null) 'targetGroupId': targetGroupId,
+        if (targetUserId != null) 'targetUserId': targetUserId,
+      });
+      return '${response.data['status'] ?? 'unknown'}';
+    } on FirebaseFunctionsException catch (e) {
+      throw StateError(e.message ?? 'تعذر تسجيل جدولة الرسالة.');
+    }
+  }
+
+  Future<void> cancelScheduledMessage(String scheduleId) async {
+    if (Firebase.apps.isEmpty) throw StateError('Firebase غير متاح.');
+    try {
+      await FirebaseFunctions.instanceFor(region: 'us-central1')
+          .httpsCallable('cancelScheduledMessage')
+          .call<Map<String, dynamic>>({'id': scheduleId});
+    } on FirebaseFunctionsException catch (e) {
+      throw StateError(e.message ?? 'تعذر إلغاء الجدولة.');
+    }
+  }
+
   Future<String> sendExternalSms({
     required String targetUserId,
     required String content,
