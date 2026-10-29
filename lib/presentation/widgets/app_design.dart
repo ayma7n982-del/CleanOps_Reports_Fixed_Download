@@ -138,24 +138,15 @@ class AiFeatureIcon extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final icon = _iconFor(feature);
-    final accent = switch (feature) {
-      'emergency' || 'notifications' => const Color(0xFFFF9D45),
-      'messages' => const Color(0xFF259E91),
-      'reports' => const Color(0xFF45A9A0),
-      'trips' => const Color(0xFF35B9A2),
-      'workers' || 'users' => const Color(0xFF72C96A),
-      'ai' || 'dashboard' => const Color(0xFF0B8D76),
-      'containers' => const Color(0xFF39C6A5),
-      _ => aiCyan,
-    };
+    final accent = EcoPalette.accent(feature);
     return Container(
       width: size * 1.65,
       height: size * 1.65,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(size * .52),
         gradient: filled
-            ? LinearGradient(colors: [accent.withOpacity(.96), aiBlue.withOpacity(.88)], begin: Alignment.topLeft, end: Alignment.bottomRight)
-            : LinearGradient(colors: [accent.withOpacity(.14), aiBlue.withOpacity(.08)]),
+            ? LinearGradient(colors: [Color.lerp(accent, Colors.white, .22)!, accent], begin: Alignment.topRight, end: Alignment.bottomLeft)
+            : LinearGradient(colors: [EcoPalette.tint(feature), Colors.white]),
         border: Border.all(color: accent.withOpacity(filled ? .42 : .25)),
         boxShadow: filled ? [BoxShadow(color: accent.withOpacity(.20), blurRadius: 18, spreadRadius: 1)] : null,
       ),
@@ -215,11 +206,10 @@ class AiGlassCard extends StatelessWidget {
       decoration: BoxDecoration(
         gradient: gradient,
         color: gradient == null ? (color ?? cleanOpsSurface) : null,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: cleanOpsBorder),
-        boxShadow: [
-          BoxShadow(color: aiCyan.withOpacity(.08), blurRadius: 26, offset: const Offset(0, 8)),
-          BoxShadow(color: aiGreen.withOpacity(.025), blurRadius: 40, offset: const Offset(0, 16))
+        borderRadius: BorderRadius.circular(23),
+        border: Border.all(color: EcoPalette.border),
+        boxShadow: const [
+          BoxShadow(color: Color(0x130B8269), blurRadius: 19, offset: Offset(0, 7)),
         ],
       ),
       child: child,
@@ -228,9 +218,9 @@ class AiGlassCard extends StatelessWidget {
         ? card
         : Material(
             color: Colors.transparent,
-            borderRadius: BorderRadius.circular(24),
+            borderRadius: BorderRadius.circular(23),
             child: InkWell(
-              borderRadius: BorderRadius.circular(24),
+              borderRadius: BorderRadius.circular(23),
               onTap: onTap,
               splashColor: aiCyan.withOpacity(.10),
               highlightColor: aiGreen.withOpacity(.045),
@@ -303,7 +293,7 @@ class AiHero extends StatelessWidget {
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.all(20),
     decoration: BoxDecoration(
-      gradient: const LinearGradient(colors: [aiDark, aiDark2, Color(0xFF006A72)], begin: Alignment.topLeft, end: Alignment.bottomRight),
+      gradient: const LinearGradient(colors: [Color(0xFF06463D), Color(0xFF0B765F), Color(0xFF119A85)], begin: Alignment.topRight, end: Alignment.bottomLeft),
       borderRadius: BorderRadius.circular(30),
       boxShadow: [BoxShadow(color: aiBlue.withOpacity(.18), blurRadius: 28, offset: const Offset(0, 12))],
     ),
