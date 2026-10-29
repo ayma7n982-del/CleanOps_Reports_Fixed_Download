@@ -32,9 +32,8 @@ jobs:
           npm --prefix firebase/tests install
       - name: Verify rules in emulator before deploy
         run: npx firebase emulators:exec --project cleanops-messaging-rules-test --only firestore "npm --prefix firebase/tests test"
-      - name: Authenticate Google Cloud
-        uses: google-github-actions/auth@v2
-        with:
-          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-      - name: Deploy Firestore rules only
-        run: npx firebase deploy --only firestore:rules --project nrc-aid --non-interactive
+      - name: Publish verified Firestore rules through Firebase Rules API
+        env:
+          FIREBASE_PROJECT_ID: nrc-aid
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: node scripts/deploy_firestore_rules_rest.mjs
