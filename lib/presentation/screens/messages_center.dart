@@ -25,6 +25,8 @@ class _MessagesCenterScreenState extends State<MessagesCenterScreen> {
   String? selectedGroup;
   bool sending = false;
   bool supervisorBroadcast = false;
+  String recipientMode = 'broadcast';
+  String? selectedRecipient;
   String messageFilter = 'all';
   String searchText = '';
   final searchController = TextEditingController();
@@ -305,9 +307,14 @@ class _MessagesCenterScreenState extends State<MessagesCenterScreen> {
     type = user.role == 'group_supervisor' ? 'emergency' : 'info';
     selectedGroup = null;
     supervisorBroadcast = false;
+    recipientMode = 'broadcast';
+    selectedRecipient = null;
     final data = context.read<DataService>();
     try { await data.refreshOperations(); } catch (_) {}
     if (!mounted) return;
+    final directRecipients = await _loadDirectRecipients(user);
+    if (!mounted) return;
+    if (directRecipients.isNotEmpty) selectedRecipient = directRecipients.first.$1;
     final groups = <String>{};
     for (final item in data.operations) {
       if ('${item['_entity'] ?? ''}' == 'group' && item['isDeleted'] != true &&
@@ -334,7 +341,7 @@ class _MessagesCenterScreenState extends State<MessagesCenterScreen> {
       builder: (sheetContext) => StatefulBuilder(builder: (context, setSheetState) {
         final isL1 = user.role == 'group_supervisor';
         final isManagement = user.role == 'municipality_coordinator' || user.role == 'jsc_coordinator' || user.role == 'donor_manager';
-        final canChooseGroup = user.role == 'municipality_coordinator';
+        final canChooseGroup = user.role == 'municipality_coordinator' && recipientMode == 'broadcast';
         return Padding(
           padding: EdgeInsets.fromLTRB(18, 16, 18, MediaQuery.of(context).viewInsets.bottom + 18),
           child: ListView(
@@ -342,6 +349,33 @@ class _MessagesCenterScreenState extends State<MessagesCenterScreen> {
             children: [
               Row(children: [const Icon(Icons.forum_rounded, color: aiCyan), const SizedBox(width: 10), const Expanded(child: AppText('إرسال رسالة داخلية', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900))), IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.close))]),
               const SizedBox(height: 14),
+              if (isManagement && directRecipients.isNotEmpty) ...[
+                Wrap(spacing: 8, runSpacing: 8, children: [
+                  ChoiceChip(
+                    label: const AppText('بث جماعي'),
+                    selected: recipientMode == 'broadcast',
+                    onSelected: (_) => setSheetState(() => recipientMode = 'broadcast'),
+                  ),
+                  ChoiceChip(
+                    label: const AppText('رسالة مباشرة'),
+                    selected: recipientMode == 'direct',
+                    onSelected: (_) => setSheetState(() => recipientMode = 'direct'),
+                  ),
+                ]),
+                const SizedBox(height: 12),
+                if (recipientMode == 'direct')
+                  DropdownButtonFormField<String>(
+                    value: directRecipients.any((entry) => entry.$1 == selectedRecipient)
+                        ? selectedRecipient : directRecipients.first.$1,
+                    isExpanded: true,
+                    decoration: const InputDecoration(labelText: 'المستلم المسموح'),
+                    items: directRecipients.map((entry) => DropdownMenuItem(
+                      value: entry.$1,
+                      child: Text(entry.$2, overflow: TextOverflow.ellipsis),
+                    )).toList(),
+                    onChanged: (value) => setSheetState(() => selectedRecipient = value),
+                  ),
+              ],
               DropdownButtonFormField<String>(
                 value: type,
                 decoration: InputDecoration(labelText: tr('نوع الرسالة')),
@@ -356,7 +390,7 @@ class _MessagesCenterScreenState extends State<MessagesCenterScreen> {
               const SizedBox(height: 10),
               if (isManagement) Padding(
                 padding: const EdgeInsets.only(bottom: 10),
-                child: AppText(type == 'emergency' ? 'سيتم توجيه الرسالة وفق نطاق الدور والصلاحيات.' : user.role == 'municipality_coordinator' ? 'ستصل الرسالة إلى المجموعة المختارة.' : 'ستصل الرسالة إلى جميع منسقي البلديات.'),
+                child: AppText(recipientMode == 'direct' ? 'ستصل إلى الشخص المختار فقط، وفق صلاحيات حسابك.' : type == 'emergency' ? 'سيتم توجيه الرسالة وفق نطاق الدور والصلاحيات.' : user.role == 'municipality_coordinator' ? 'ستصل الرسالة إلى المجموعة المختارة.' : 'ستصل الرسالة إلى جميع منسقي البلديات.'),
               ),
               if (canChooseGroup && groups.isEmpty)
                 const Padding(padding: EdgeInsets.symmetric(vertical: 12),
@@ -375,11 +409,28 @@ class _MessagesCenterScreenState extends State<MessagesCenterScreen> {
                 onChanged: (value) => setSheetState(() => supervisorBroadcast = value),
               ),
               const SizedBox(height: 10),
+              Wrap(spacing: 7, runSpacing: 7, children: [
+                for (final template in const [
+                  ('تعليمات', 'تعليمات تشغيلية: '),
+                  ('متابعة', 'يرجى متابعة المهمة وإبلاغنا بالنتيجة: '),
+                  ('طوارئ', 'تنبيه عاجل: يرجى اتخاذ الإجراء اللازم في الموقع: '),
+                ])
+                  ActionChip(
+                    avatar: const Icon(Icons.description_outlined, size: 16),
+                    label: Text(template.$1),
+                    onPressed: () {
+                      composer.text = template.$2;
+                      composer.selection = TextSelection.collapsed(offset: composer.text.length);
+                      setSheetState(() {});
+                    },
+                  ),
+              ]),
+              const SizedBox(height: 10),
               TextField(controller: composer, minLines: 4, maxLines: 8, textInputAction: TextInputAction.newline, decoration: InputDecoration(labelText: tr('محتوى الرسالة'), hintText: tr('اكتب الرسالة هنا...'))),
               const SizedBox(height: 14),
               FilledButton.icon(
                 style: FilledButton.styleFrom(backgroundColor: type == 'emergency' ? red : null, minimumSize: const Size.fromHeight(54)),
-                onPressed: sending || (canChooseGroup &&
+                onPressed: sending || (recipientMode == 'direct' && selectedRecipient == null) || (canChooseGroup &&
                     (selectedGroup == null || !groups.contains(selectedGroup)))
                     ? null : () async {
                   setSheetState(() => sending = true);
@@ -390,6 +441,8 @@ class _MessagesCenterScreenState extends State<MessagesCenterScreen> {
                       final target = await _resolveCoordinator(user, data);
                       if (target == null || target.isEmpty) throw StateError('لم يتم العثور على منسق البلدية المرتبط بهذه المجموعة.');
                       await messaging.sendToUser(targetUserId: target, content: composer.text, type: type);
+                    } else if (recipientMode == 'direct' && selectedRecipient != null) {
+                      await messaging.sendToUser(targetUserId: selectedRecipient!, content: composer.text, type: type);
                     } else if (user.role == 'municipality_coordinator') {
                       await messaging.sendBroadcast(content: composer.text, type: type, groupId: selectedGroup);
                     } else {
@@ -412,6 +465,32 @@ class _MessagesCenterScreenState extends State<MessagesCenterScreen> {
         );
       }),
     );
+  }
+
+  Future<List<(String, String)>> _loadDirectRecipients(AppUser user) async {
+    if (Firebase.apps.isEmpty) return [];
+    if (!const ['municipality_coordinator','jsc_coordinator','donor_manager'].contains(user.role)) return [];
+    try {
+      Query<Map<String, dynamic>> query = FirebaseFirestore.instance.collection('users');
+      if (user.role == 'municipality_coordinator') {
+        query = query.where('municipalityCoordinatorId', isEqualTo: user.id);
+      }
+      final docs = await query.limit(200).get();
+      return docs.docs.where((doc) {
+        final data = doc.data();
+        if (doc.id == user.id || data['isActive'] == false) return false;
+        final role = '${data['role'] ?? ''}';
+        return user.role == 'municipality_coordinator'
+            ? const ['worker', 'group_supervisor'].contains(role)
+            : const ['municipality_coordinator', 'jsc_coordinator', 'donor_manager'].contains(role);
+      }).map((doc) {
+        final name = '${doc.data()['name'] ?? doc.id}';
+        return (doc.id, '$name • ${doc.data()['role'] ?? ''}');
+      }).toList();
+    } catch (e) {
+      debugPrint('Authorized direct recipients unavailable: $e');
+      return [];
+    }
   }
 
   Future<String?> _resolveCoordinator(AppUser user, DataService data) async {
