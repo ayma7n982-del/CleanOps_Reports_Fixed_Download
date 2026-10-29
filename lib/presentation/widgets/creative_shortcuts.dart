@@ -36,12 +36,16 @@ class CreativeShortcutGrid extends StatelessWidget {
       final available = constraints.maxWidth.isFinite
           ? constraints.maxWidth
           : MediaQuery.sizeOf(context).width - 32;
-      final idealColumns = available >= 980 ? 4 : available >= 640 ? 3 : available < 300 ? 1 : 2;
+      // Two balanced tiles even on a small Android screen. Drop to one
+      // column only when text would genuinely become unreadable.
+      final idealColumns = available >= 980 ? 4 : available >= 640 ? 3 : available < 260 ? 1 : 2;
       final columns = maxColumns == null
           ? idealColumns
           : (idealColumns < maxColumns! ? idealColumns : maxColumns!);
       final scale = (MediaQuery.textScalerOf(context).scale(14) - 14).clamp(0.0, 26.0);
-      final height = (columns == 1 ? 132.0 : emphasize ? 171.0 : 158.0) + scale * 2.2;
+      // The old 171px tile left a very large empty gap below its icon.
+      // Compact cards retain both title and subtitle without dead space.
+      final height = (columns == 1 ? 105.0 : 132.0) + scale * 2.5;
       return GridView.builder(
         shrinkWrap: true,
         physics: const NeverScrollableScrollPhysics(),
@@ -94,8 +98,8 @@ class _CreativeShortcutCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final accent = item.accent ?? EcoPalette.accent(item.feature);
     final tint = EcoPalette.tint(item.feature);
-    final narrow = MediaQuery.sizeOf(context).width < 340;
-    final borderRadius = BorderRadius.circular(21);
+    final radius = BorderRadius.circular(20);
+    final isRtl = Directionality.of(context) == TextDirection.rtl;
     return Semantics(
       button: true,
       label: item.title,
@@ -103,78 +107,107 @@ class _CreativeShortcutCard extends StatelessWidget {
         color: Colors.transparent,
         child: Ink(
           decoration: BoxDecoration(
+            borderRadius: radius,
             gradient: LinearGradient(
+              colors: [Colors.white, tint],
               begin: Alignment.topRight,
               end: Alignment.bottomLeft,
-              colors: [tint, Color.lerp(tint, Colors.white, .5)!],
             ),
-            borderRadius: borderRadius,
             border: Border.all(color: accent.withOpacity(.19)),
             boxShadow: const [
               BoxShadow(
                 color: Color(0x100A715D),
-                blurRadius: 15,
-                offset: Offset(0, 5),
+                blurRadius: 11,
+                offset: Offset(0, 4),
               ),
             ],
           ),
           child: InkWell(
-            borderRadius: borderRadius,
             onTap: item.onTap,
-            child: Padding(
-              padding: EdgeInsets.symmetric(
-                horizontal: narrow ? 9 : 12,
-                vertical: emphasize ? 13 : 10,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Row(
-                    children: [
-                      EcoPictorialIcon(
-                        feature: item.feature,
-                        icon: _icon(item.feature),
-                        size: emphasize ? 61 : 53,
+            borderRadius: radius,
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final horizontal = constraints.maxWidth >= 265 &&
+                    constraints.maxHeight <= 135;
+                final iconSize = horizontal ? 48.0 : 49.0;
+                final art = EcoPictorialIcon(
+                  feature: item.feature,
+                  icon: _icon(item.feature),
+                  size: iconSize,
+                );
+                final label = Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      item.title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: cleanOpsText,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w900,
+                        height: 1.24,
                       ),
-                      const Spacer(),
-                      CircleAvatar(
-                        radius: 14,
-                        backgroundColor: Colors.white.withOpacity(.88),
-                        child: Icon(
-                          Directionality.of(context) == TextDirection.rtl
-                              ? Icons.chevron_left_rounded : Icons.chevron_right_rounded,
-                          size: 19,
-                          color: accent,
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      item.subtitle,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Color(0xFF54736C),
+                        fontSize: 10,
+                        fontWeight: FontWeight.w600,
+                        height: 1.23,
+                      ),
+                    ),
+                  ],
+                );
+                return Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 11, vertical: 9,
+                  ),
+                  child: horizontal
+                      ? Row(children: [
+                          art,
+                          const SizedBox(width: 11),
+                          Expanded(child: label),
+                          Icon(
+                            isRtl
+                                ? Icons.chevron_left_rounded
+                                : Icons.chevron_right_rounded,
+                            color: accent, size: 19,
+                          ),
+                        ])
+                      : Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisAlignment: MainAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                art,
+                                const Spacer(),
+                                Icon(
+                                  isRtl
+                                      ? Icons.arrow_back_rounded
+                                      : Icons.arrow_forward_rounded,
+                                  color: accent,
+                                  size: 19,
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            Expanded(
+                              child: Align(
+                                alignment: AlignmentDirectional.topStart,
+                                child: label,
+                              ),
+                            ),
+                          ],
                         ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 5),
-                  Text(
-                    item.title,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: cleanOpsText,
-                      fontSize: emphasize ? 14.5 : 13.5,
-                      fontWeight: FontWeight.w900,
-                      height: 1.21,
-                    ),
-                  ),
-                  Text(
-                    item.subtitle,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Color(0xFF5E7D77),
-                      fontSize: 10.5,
-                      height: 1.25,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ),
+                );
+              },
             ),
           ),
         ),
