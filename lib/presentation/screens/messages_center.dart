@@ -207,6 +207,9 @@ class _MessagesCenterScreenState extends State<MessagesCenterScreen> {
                     AppText('المرسل: ${message.senderName.isEmpty ? message.senderId : message.senderName}'),
                     AppText('الوجهة: ${message.targetGroupId ?? message.targetUserId ?? "غير محددة"}'),
                     AppText('الوقت: ${DateFormat('yyyy/MM/dd • HH:mm').format(message.timestamp)}'),
+                    if (message.replyToMessageId != null)
+                      AppText('رد على رسالة: ${message.replyToMessageId}',
+                        style: const TextStyle(color: aiCyan, fontSize: 11)),
                     const SizedBox(height: 12),
                     if (isMine && message.deliveryStatus == 'sent' && Firebase.apps.isNotEmpty)
                       StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
@@ -265,6 +268,14 @@ class _MessagesCenterScreenState extends State<MessagesCenterScreen> {
                       ),
                     ],
                     if (!isMine) ...[
+                      if (messaging.canSend('info')) ...[
+                        const SizedBox(height: 10),
+                        OutlinedButton.icon(
+                          onPressed: () => _openReply(message, messaging),
+                          icon: const Icon(Icons.reply_rounded),
+                          label: const AppText('الرد على الرسالة'),
+                        ),
+                      ],
                       const SizedBox(height: 12),
                       FilledButton.icon(
                         onPressed: () async {
@@ -559,6 +570,62 @@ class _MessagesCenterScreenState extends State<MessagesCenterScreen> {
         );
       }),
     );
+  }
+
+  Future<void> _openReply(MessageItem original, MessagingService messaging) async {
+    final reply = TextEditingController();
+    bool busy = false;
+    try {
+      await showModalBottomSheet<void>(
+        context: context,
+        backgroundColor: cleanOpsSurface,
+        isScrollControlled: true,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(26))),
+        builder: (sheetContext) => StatefulBuilder(builder: (context, setSheetState) {
+          return SafeArea(
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(18, 16, 18,
+                MediaQuery.viewInsetsOf(context).bottom + 18),
+              child: ListView(shrinkWrap: true, children: [
+                const AppText('الرد على الرسالة',
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
+                const SizedBox(height: 10),
+                AppText(original.content, maxLines: 3,
+                  style: const TextStyle(color: cleanOpsMuted)),
+                const SizedBox(height: 12),
+                TextField(controller: reply, minLines: 3, maxLines: 6,
+                  decoration: const InputDecoration(labelText: 'نص الرد')),
+                const SizedBox(height: 14),
+                FilledButton.icon(
+                  onPressed: busy ? null : () async {
+                    setSheetState(() => busy = true);
+                    try {
+                      await messaging.sendToUser(
+                        targetUserId: original.senderId,
+                        content: reply.text, type: 'info',
+                        replyToMessageId: original.messageId);
+                      if (sheetContext.mounted) Navigator.pop(sheetContext);
+                      if (mounted) ScaffoldMessenger.of(this.context).showSnackBar(
+                        const SnackBar(content: AppText('أُدرج الرد في قائمة الإرسال؛ تحقق من حالة الخادم.')));
+                    } catch (e) {
+                      if (mounted) ScaffoldMessenger.of(this.context).showSnackBar(
+                        SnackBar(content: AppText('تعذر الرد: $e')));
+                    } finally {
+                      if (sheetContext.mounted) setSheetState(() => busy = false);
+                    }
+                  },
+                  icon: const Icon(Icons.reply_rounded),
+                  label: AppText(busy ? 'جارٍ الحفظ...' : 'إرسال الرد'),
+                ),
+              ]),
+            ),
+          );
+        }),
+      );
+    } finally {
+      reply.dispose();
+    }
   }
 
   Future<void> _showScheduledMessages(AppUser user, MessagingService messaging) async {
