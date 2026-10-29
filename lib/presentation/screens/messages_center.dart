@@ -168,7 +168,36 @@ class _MessagesCenterScreenState extends State<MessagesCenterScreen> {
       padding: const EdgeInsets.only(bottom: 10),
       child: AiGlassCard(
         color: unread ? style.$1.withOpacity(.08) : null,
-        onTap: unread ? () => messaging.markRead(message.messageId) : null,
+        onTap: () {
+          if (unread) messaging.markRead(message.messageId);
+          showModalBottomSheet<void>(
+            context: context,
+            isScrollControlled: true,
+            backgroundColor: cleanOpsSurface,
+            shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+            builder: (sheetContext) => SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  const AppText('تفاصيل الرسالة', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
+                  const SizedBox(height: 12),
+                  AppText(message.content, style: const TextStyle(fontSize: 16, height: 1.5)),
+                  const SizedBox(height: 16),
+                  AppText('المرسل: ${message.senderName.isEmpty ? message.senderId : message.senderName}'),
+                  AppText('الوجهة: ${message.targetGroupId ?? message.targetUserId ?? "غير محددة"}'),
+                  AppText('الوقت: ${DateFormat('yyyy/MM/dd • HH:mm').format(message.timestamp)}'),
+                  const SizedBox(height: 12),
+                  const AppText('حالة قراءة المجموعة غير متاحة لكل مستلم بعد.', style: TextStyle(color: cleanOpsMuted, fontSize: 12)),
+                  const SizedBox(height: 12),
+                  Align(alignment: AlignmentDirectional.centerEnd, child: TextButton(
+                    onPressed: () => Navigator.pop(sheetContext),
+                    child: const AppText('إغلاق'),
+                  )),
+                ]),
+              ),
+            ),
+          );
+        },
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
