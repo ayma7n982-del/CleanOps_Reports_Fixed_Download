@@ -1140,22 +1140,71 @@ class SupervisorCardSection extends StatelessWidget {
 
 
 class _SupervisorActionCard extends StatelessWidget {
-  final IconData icon; final String title; final String subtitle; final Color color; final VoidCallback onTap; final bool emergency;
-  const _SupervisorActionCard({required this.icon, required this.title, required this.subtitle, required this.color, required this.onTap, this.emergency = false});
-  @override Widget build(BuildContext context) => Material(
-    color: emergency ? red.withOpacity(.12) : cleanOpsSurface,
-    borderRadius: BorderRadius.circular(24),
-    child: InkWell(
-      borderRadius: BorderRadius.circular(24), onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(borderRadius: BorderRadius.circular(24), border: Border.all(color: color.withOpacity(.35)), boxShadow: [BoxShadow(color: color.withOpacity(.07), blurRadius: 20)]),
-        child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-          Container(width: 62, height: 62, decoration: BoxDecoration(shape: BoxShape.circle, gradient: LinearGradient(colors: [color.withOpacity(.95), aiBlue.withOpacity(.85)]), boxShadow: [BoxShadow(color: color.withOpacity(.22), blurRadius: 20)]), child: Icon(icon, color: Colors.white, size: 31)),
-          const SizedBox(height: 12), AppText(title, textAlign: TextAlign.center, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900)),
-          const SizedBox(height: 5), AppText(subtitle, textAlign: TextAlign.center, style: const TextStyle(fontSize: 10, color: cleanOpsMuted)),
-        ]),
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final Color color;
+  final VoidCallback onTap;
+  final bool emergency;
+  const _SupervisorActionCard({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.color,
+    required this.onTap,
+    this.emergency = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final feature = emergency ? 'emergency' : 'operations';
+    final tint = EcoPalette.tint(feature);
+    final radius = BorderRadius.circular(19);
+    return Material(
+      color: Colors.transparent,
+      child: Ink(
+        decoration: BoxDecoration(
+          borderRadius: radius,
+          gradient: LinearGradient(
+            colors: [tint, Colors.white],
+            begin: Alignment.topRight,
+            end: Alignment.bottomLeft,
+          ),
+          border: Border.all(color: color.withOpacity(.24)),
+        ),
+        child: InkWell(
+          borderRadius: radius,
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+            child: Row(
+              children: [
+                EcoPictorialIcon(feature: feature, icon: icon, size: 61),
+                const SizedBox(width: 11),
+                Expanded(child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    AppText(title, maxLines: 1, overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: cleanOpsText,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w900,
+                      )),
+                    const SizedBox(height: 4),
+                    AppText(subtitle, maxLines: 2, overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: cleanOpsMuted,
+                        fontSize: 11,
+                      )),
+                  ],
+                )),
+                Icon(Icons.chevron_left_rounded, color: color, size: 22),
+              ],
+            ),
+          ),
+        ),
       ),
-    ),
-  );
+    );
+  }
 }
