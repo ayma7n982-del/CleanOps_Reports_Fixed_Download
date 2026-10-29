@@ -671,13 +671,20 @@ class DataService extends ChangeNotifier {
             // Containers have their own Firestore collection and strict field-level rules.
             // Do not inject the generic _entity marker into this collection.
             final db = FirebaseFirestore.instance;
+            if (item.operation == 'create') {
+              // Own-group container creation is authorized without reading a
+              // nonexistent document; no status interval exists yet.
+              await ref.set({...cloudPayload, 'updatedAt': FieldValue.serverTimestamp()},
+                SetOptions(merge: true));
+            } else {
             await db.runTransaction((tx) async {
               final current = await tx.get(ref);
               final before = current.data();
               final eventRef = ref.collection('status_events').doc(item.id);
-              final event = await tx.get(eventRef);
+              final event = payload['_trackStatus'] == true && before != null ?
+                  await tx.get(eventRef) : null;
               // A retry must never replay an older status over a newer one.
-              if (event.exists) return;
+              if (event?.exists == true) return;
               final status = cloudPayload['status'];
               final track = payload['_trackStatus'] == true && before != null && const ['empty', 'partial', 'full'].contains(status) &&
                   (before['status'] != status || (status == 'full' && before['fullSince'] == null));
@@ -698,6 +705,7 @@ class DataService extends ChangeNotifier {
                 });
               }
             });
+            }
           } else if (item.entity == 'cart_redirect') {
             final actorId = FirebaseAuth.instance.currentUser?.uid ?? '';
             final cartId = '${payload['cartId'] ?? ''}'.trim();

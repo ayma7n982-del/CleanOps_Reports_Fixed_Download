@@ -1,8 +1,4 @@
-import 'dart:async';
-import 'dart:typed_data';
-import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
 import 'package:provider/provider.dart';
 import '../../core/services/auth_service.dart';
 import '../../core/services/config_service.dart';
@@ -34,7 +30,6 @@ class ActionDecisionHubScreen extends StatefulWidget {
 }
 class _ActionDecisionHubScreenState extends State<ActionDecisionHubScreen> {
   DecisionHubService? _service;
-  final _chartKey = GlobalKey();
   final _cycle = TextEditingController();
   bool _exporting = false;
   @override
@@ -42,8 +37,7 @@ class _ActionDecisionHubScreenState extends State<ActionDecisionHubScreen> {
     super.didChangeDependencies();
     final user = context.watch<AuthService>().currentUser;
     final shift = context.watch<ConfigService>().shift;
-    if (_service?.user.id == user?.id && _service?.shiftText == shift &&
-        _service?.user.role == user?.role && _service?.user.isActive == user?.isActive) return;
+    if (_service?.user == user && _service?.shiftText == shift) return;
     _service?.dispose();
     _service = DecisionHubService.allowed(user) ?
         (DecisionHubService(user: user!, shiftText: shift)..start()) : null;
@@ -67,16 +61,8 @@ class _ActionDecisionHubScreenState extends State<ActionDecisionHubScreen> {
     if (_exporting) return;
     setState(() => _exporting = true);
     try {
-      Uint8List? image;
-      final boundary = _chartKey.currentContext?.findRenderObject();
-      if (boundary is RenderRepaintBoundary && !boundary.debugNeedsPaint) {
-        final picture = await boundary.toImage(pixelRatio: 1.5);
-        final bytes = await picture.toByteData(format: ui.ImageByteFormat.png);
-        image = bytes?.buffer.asUint8List();
-        picture.dispose();
-      }
       await exportDecisionPdf(data: service.analytics, decisions: service.decisions,
-        coordinator: service.user.name, chartImage: image, section: section, plans: service.plans,
+        coordinator: service.user.name, section: section, plans: service.plans,
         quality: service.complete ? 'بيانات مكتملة من الخادم' :
             'بيانات جزئية أو مخزنة محليًا؛ لا تصلح لإثبات غياب النشاط');
     } catch (error) {
@@ -128,8 +114,7 @@ class _ActionDecisionHubScreenState extends State<ActionDecisionHubScreen> {
                     if (service.writeErrors.isNotEmpty) _notice(
                       'رفض الخادم ${service.writeErrors.length} قرارًا. لم تُنفذ هذه الطلبات؛ '
                       'يمكن إعادة المحاولة بعد معالجة الاتصال أو الصلاحيات.'),
-                    RepaintBoundary(key: _chartKey,
-                      child: DecisionExecutiveCharts(data: data)),
+                    DecisionExecutiveCharts(data: data),
                     const SizedBox(height: 8),
                     OutlinedButton.icon(onPressed: _exporting ? null : () => _export(service),
                       icon: const Icon(Icons.picture_as_pdf_outlined),
@@ -226,7 +211,7 @@ class _ActionDecisionHubScreenState extends State<ActionDecisionHubScreen> {
         'الحالة المسجلة: ممتلئة. تُسجل أولوية التفريغ ووقت إصدار التكليف.',
         [if (g != null) _issueButton(s, label: 'توجيه طاقم تفريغ فوري',
           kind: 'collection', groupId: g.id, owner: g.owner,
-          targetId: '${c['id']}', title: 'تفريغ حاوية بأولوية عاجلة',
+          targetId: '${c['id']}_${c['fullSince'] ?? 'legacy'}', title: 'تفريغ حاوية بأولوية عاجلة',
           body: 'كلّف طاقم التفريغ للموقع ${c['locationName'] ?? c['id']} وأكد إتمامه.',
           details: {'containerId': c['id'], 'locationName': c['locationName'] ?? ''})
         else const Text('يلزم ربط الحاوية بمجموعة نشطة قبل إرسال طاقم.')],
@@ -267,7 +252,7 @@ class _ActionDecisionHubScreenState extends State<ActionDecisionHubScreen> {
     if (result == null || !mounted) return;
     await _perform(() => s.issue(kind: 'broadcast', title: 'تعميم إداري عاجل',
       body: result, groupId: '', owner: s.user.role == 'municipality_coordinator'
-          ? s.user.id : '', targetId: 'broadcast'));
+          ? s.user.id : '', targetId: 'broadcast_${DateTime.now().microsecondsSinceEpoch}'));
   }
   Future<void> _coverage(DecisionHubService s, DecisionAnalytics a, DecisionGroup group) async {
     final adjacent = group.row['adjacentGroupIds'];
@@ -343,7 +328,7 @@ class _ActionDecisionHubScreenState extends State<ActionDecisionHubScreen> {
              semanticsLabel: 'اكتمال أدلة التوصية'),
            Text('استيفاء شروط القاعدة: ${decisionPercent(r.confidence)}'),
            FilledButton(onPressed: disabled ? null :
-             () => _perform(() => s.approve(r, next)),
+             () => _approveRecommendation(s, r, next),
              child: Text(existing != null ? 'التوصية معتمدة' :
                r.kind == 'increase_carts' ? 'اعتماد دعم الكارات' :
                r.kind == 'reallocate_surplus' ? 'اعتماد تدوير الفائض' :
@@ -366,6 +351,35 @@ class _ActionDecisionHubScreenState extends State<ActionDecisionHubScreen> {
     ]);
   }
 
+  Future<void> _approveRecommendation(DecisionHubService s,
+      DecisionRecommendation recommendation, String cycle) async {
+    String destination = '';
+    if (recommendation.kind == 'reallocate_surplus') {
+      final targets = s.analytics.recommendations.where((r) =>
+        r.kind == 'expand_manpower' && r.group.id != recommendation.group.id &&
+        (s.user.role != 'municipality_coordinator' || r.group.owner == s.user.id)).toList();
+      if (targets.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('لا توجد مجموعة احتياج مؤهلة لاستقبال الفائض حاليًا.')));
+        return;
+      }
+      String? chosen;
+      final selected = await showDialog<String>(context: context, builder: (c) =>
+        StatefulBuilder(builder: (c, update) => AlertDialog(
+          title: const Text('اختر منطقة الاحتياج المستفيدة'),
+          content: DropdownButtonFormField<String>(value: chosen, isExpanded: true,
+            items: targets.map((r) => DropdownMenuItem(value: r.group.id,
+              child: Text(r.group.name))).toList(),
+            onChanged: (v) => update(() => chosen = v)),
+          actions: [TextButton(onPressed: () => Navigator.pop(c), child: const Text('إلغاء')),
+            FilledButton(onPressed: chosen == null ? null : () => Navigator.pop(c, chosen),
+              child: const Text('اعتماد تدوير الفائض'))])));
+      if (selected == null || !mounted) return;
+      destination = selected;
+    }
+    await _perform(() => s.approve(recommendation, cycle, destinationGroupId: destination));
+  }
+
   Widget _health(DecisionHubService s, DecisionAnalytics a) => _list([
     _sectionExport(s, 'health', 'تقرير الصحة والبيئة والنسب PDF'),
     ...a.healthHazards.map((c) {
@@ -374,7 +388,7 @@ class _ActionDecisionHubScreenState extends State<ActionDecisionHubScreen> {
         '${c['locationName'] ?? c['id']} • ممتلئة منذ أكثر من 12 ساعة موثقة.',
         [if (g != null) _issueButton(s, label: 'إخلاء طارئ وتطهير الموقع',
           kind: 'health', groupId: g.id, owner: g.owner,
-          targetId: '${c['id']}', title: 'إخلاء وتطهير عاجل',
+          targetId: '${c['id']}_${c['fullSince'] ?? 'legacy'}', title: 'إخلاء وتطهير عاجل',
           body: 'أخلِ الحاوية ${c['locationName'] ?? c['id']} وطهّر الموقع '
             'مع مراعاة معدات الوقاية، ثم وثّق التنفيذ.',
           details: {'containerId': c['id'], 'fullSince': c['fullSince']})

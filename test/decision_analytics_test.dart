@@ -13,6 +13,13 @@ DecisionAnalytics calc(List<DecisionRow> ops, {List<DecisionRow> containers = co
     dumpsites: dumpsites, trips: [], cycles: [], now: at ?? now,
     shiftText: '08:00 - 16:00');
 void main() {
+  test('operational roster takes priority over login accounts in the same group', () {
+    final a = DecisionAnalytics.calculate(operations: [group('a', 'm'),worker('roster', 'a')],
+      users: [{'id':'login','role':'worker','groupId':'a'}], containers: [],
+      dumpsites: [], trips: [], cycles: [], now: now, shiftText:'08:00 - 16:00');
+    expect(a.workers,1);
+    expect(a.groups.single.workers.single['id'],'roster');
+  });
   test('missing attendance remains unknown rather than absent', () {
     final a = calc([group('a', 'm'), worker('w1', 'a'), worker('w2', 'a'),
       {'id': 'p', '_entity': 'attendance', 'workerId': 'w1', 'groupId': 'a',

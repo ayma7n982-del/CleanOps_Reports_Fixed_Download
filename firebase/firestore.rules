@@ -891,6 +891,14 @@ service cloud.firestore {
         && d.details.alternativeName == get(alternate).data.nameAr
         && d.details.requestLeveling == true;
     }
+    function validSurplusDestination(d) {
+      let id = d.details.get('destinationGroupId', 'missing');
+      let path = /databases/$(database)/documents/operations/$(id);
+      return exists(path) && id != d.groupId && get(path).data._entity == 'group'
+        && get(path).data.get('isActive', true) == true
+        && get(path).data.get('isDeleted', false) == false
+        && (!isL2() || get(path).data.municipalityCoordinatorId == request.auth.uid);
+    }
     function validDecisionCreate(id) {
       let d = request.resource.data;
       return decisionManager()
@@ -925,7 +933,8 @@ service cloud.firestore {
             && d.scopeKey == 'municipality:' + d.municipalityCoordinatorId
             && d.targetCycleId is string && d.targetCycleId.size() > 0
             && d.targetCycleId.size() <= 80
-            && d.details.delta is int && d.details.delta >= -3 && d.details.delta <= 50)
+            && d.details.delta is int && d.details.delta >= -3 && d.details.delta <= 50
+            && (d.kind != 'reallocate_surplus' || validSurplusDestination(d)))
         );
     }
     function validDecisionTransition() {

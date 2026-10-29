@@ -158,20 +158,28 @@ class DecisionHubService extends ChangeNotifier {
     });
   }
 
-  Future<bool> approve(DecisionRecommendation recommendation, String targetCycleId) {
+  Future<bool> approve(DecisionRecommendation recommendation, String targetCycleId, {String destinationGroupId = ''}) {
     if (targetCycleId.isEmpty) throw ArgumentError('اسم الدورة القادمة مطلوب.');
     final g = recommendation.group;
+    if (recommendation.kind == 'reallocate_surplus' &&
+        (destinationGroupId.isEmpty || destinationGroupId == g.id ||
+         !analytics.recommendations.any((r) => r.kind == 'expand_manpower' &&
+           r.group.id == destinationGroupId &&
+           (user.role != 'municipality_coordinator' || r.group.owner == user.id)))) {
+      throw StateError('اختر مجموعة احتياج مؤهلة قبل تدوير الفائض.');
+    }
     if (!complete || !analytics.groups.any((x) => x.id == g.id)) {
       throw StateError('يلزم اكتمال بيانات الخادم قبل اعتماد التوصية.');
     }
     return _write('strategic_decisions',
       key(recommendation.kind, g.id, cycleId: targetCycleId), {
         'kind': recommendation.kind, 'title': recommendation.title,
-        'body': recommendation.reason, 'groupId': g.id,
+        'body': recommendation.reason + (destinationGroupId.isEmpty ? '' : '\nالمجموعة المستفيدة: $destinationGroupId'), 'groupId': g.id,
         'municipalityCoordinatorId': g.owner, 'scopeKey': 'municipality:${g.owner}',
         'targetId': targetCycleId, 'targetCycleId': targetCycleId,
         'status': 'approved', 'priority': 'planning',
-        'details': recommendation.toMap(),
+        'details': {...recommendation.toMap(), if (destinationGroupId.isNotEmpty)
+          'destinationGroupId': destinationGroupId},
       });
   }
 

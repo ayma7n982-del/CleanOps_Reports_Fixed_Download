@@ -11,12 +11,17 @@ DecisionAnalytics data() => DecisionAnalytics.calculate(
     {'id': 'w', '_entity': 'worker', 'groupId': 'g'},
     {'id': 'a', '_entity': 'attendance', 'groupId': 'g', 'workerId': 'w',
       'createdAt': '2026-10-29T08:30:00', 'status': 'present'},
+    for (var day = 24; day <= 28; day++)
+      {'id': 'a$day', '_entity': 'attendance', 'groupId': 'g', 'workerId': 'w',
+        'createdAt': '2026-10-$day' 'T08:30:00', 'status': 'present'},
     {'id': 't', '_entity': 'trip', 'groupId': 'g', 'status': 'completed',
       'createdAt': '2026-10-29T09:00:00', 'estimatedQuantity': 2, 'quantityUnit': 'ton',
       'ppe': {'boots': true, 'gloves': false}},
   ],
   users: [], containers: [{'id': 'c', 'status': 'full', 'groupId': 'g',
-    'fullSince': '2026-10-28T00:00:00'}],
+    'fullSince': '2026-10-28T00:00:00',
+    'statusHistory':[for(var day=24;day<=28;day++)
+      {'status':'full','at':'2026-10-$day' 'T09:00:00'}]}],
   dumpsites: [{'id': 'd', 'nameAr': 'المكب المركزي', 'capacity': 100,
     'fillPercentage': 90}], trips: [], cycles: [],
   now: DateTime(2026, 10, 29, 10), shiftText: '08:00 - 16:00');

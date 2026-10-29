@@ -229,7 +229,9 @@ class DecisionAnalytics {
         final time = decisionDate(r['startedAt'] ?? r['createdAt'] ?? r['date']);
         return time != null && !time.isBefore(start) && !time.isAfter(now);
       }
-      final workers = allWorkers.values.where(belongs).toList();
+      final candidates = allWorkers.values.where(belongs).toList();
+      final roster = candidates.where((w) => w['_entity'] == 'worker').toList();
+      final workers = roster.isNotEmpty ? roster : candidates;
       final ids = workers.map((w) => '${w['workerId'] ?? w['id']}').toSet();
       final today = attendance.where((a) {
         final time = decisionDate(a['createdAt'] ?? a['date']);
