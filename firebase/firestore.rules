@@ -110,8 +110,12 @@ service cloud.firestore {
     function messageTypeAllowed() { return request.resource.data.type in ['info', 'warning', 'emergency']; }
     function validMessageFields() {
       return activeMessenger()
-        && request.resource.data.keys().hasOnly(['messageId','senderId','targetGroupId','content','timestamp','type','isRead'])
+        && request.resource.data.keys().hasOnly(['messageId','senderId','targetGroupId','targetUserId','content','timestamp','type','isRead'])
         && request.resource.data.targetGroupId is string
+        && (!request.resource.data.keys().hasAny(['targetUserId'])
+            || (request.resource.data.targetUserId is string
+                && request.resource.data.targetUserId.size() > 0
+                && request.resource.data.targetGroupId == '__USER__:' + request.resource.data.targetUserId))
         && request.resource.data.isRead == false
         && request.resource.data.messageId is string
         && request.resource.data.senderId == request.auth.uid
@@ -130,6 +134,31 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/users/$(userDoc().municipalityCoordinatorId)).data.role == 'municipality_coordinator'
         && get(/databases/$(database)/documents/users/$(userDoc().municipalityCoordinatorId)).data.isActive != false;
     }
+    function hasDirectTarget() {
+      return request.resource.data.keys().hasAny(['targetUserId'])
+        && request.resource.data.targetUserId is string
+        && exists(/databases/$(database)/documents/users/$(request.resource.data.targetUserId))
+        && get(/databases/$(database)/documents/users/$(request.resource.data.targetUserId)).data.isActive != false;
+    }
+    function managedDirectTarget() {
+      return hasDirectTarget() && isL2()
+        && get(/databases/$(database)/documents/users/$(request.resource.data.targetUserId)).data.role in ['group_supervisor', 'worker']
+        && (
+          get(/databases/$(database)/documents/users/$(request.resource.data.targetUserId)).data.municipalityCoordinatorId == request.auth.uid
+          || groupManagedByL2(get(/databases/$(database)/documents/users/$(request.resource.data.targetUserId)).data.groupId)
+        );
+    }
+    function seniorDirectTarget() {
+      return hasDirectTarget() && isL3OrL4()
+        && get(/databases/$(database)/documents/users/$(request.resource.data.targetUserId)).data.role in
+            ['donor_manager', 'jsc_coordinator', 'municipality_coordinator'];
+    }
+    function workerCoordinatorDirectTarget() {
+      return hasDirectTarget() && role() == 'worker'
+        && userDoc().municipalityCoordinatorId is string
+        && request.resource.data.targetUserId == userDoc().municipalityCoordinatorId
+        && get(/databases/$(database)/documents/users/$(request.resource.data.targetUserId)).data.role == 'municipality_coordinator';
+    }
     function messageRecipientRead() {
       return activeMessenger() && (resource.data.senderId == request.auth.uid
         || (resource.data.keys().hasAny(['targetGroupId']) && resource.data.targetGroupId == '__USER__:' + request.auth.uid)
@@ -140,6 +169,9 @@ service cloud.firestore {
     function messageCreateAllowed() {
       return validMessageFields() && (
         supervisorOwnGroupTarget()
+        || managedDirectTarget()
+        || seniorDirectTarget()
+        || workerCoordinatorDirectTarget()
         || 
         ((isL4() || isL3()) && request.resource.data.targetGroupId == '__ALL_MUNICIPALITIES__')
         || (isL2() && request.resource.data.targetGroupId is string && request.resource.data.targetGroupId != null
