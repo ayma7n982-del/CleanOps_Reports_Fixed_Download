@@ -59,6 +59,12 @@ class _MessagesCenterScreenState extends State<MessagesCenterScreen> {
         appBar: AppBar(
           title: const AppText('مركز الرسائل'),
           actions: [
+            if (const ['municipality_coordinator','jsc_coordinator','donor_manager'].contains(user.role))
+              IconButton(
+                tooltip: 'الرسائل الخارجية SMS',
+                icon: const Icon(Icons.sms_outlined),
+                onPressed: () => _openExternalSms(user, messaging),
+              ),
             if (messaging.syncing) const Padding(padding: EdgeInsets.all(14), child: SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))),
             Badge(
               isLabelVisible: messaging.unreadCount > 0,
@@ -465,6 +471,123 @@ class _MessagesCenterScreenState extends State<MessagesCenterScreen> {
         );
       }),
     );
+  }
+
+  Future<void> _openExternalSms(AppUser user, MessagingService messaging) async {
+    final recipients = await _loadDirectRecipients(user);
+    if (!mounted) return;
+    if (recipients.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: AppText('لا يوجد مستلمون مصرح بهم أو لم يمكن تحميلهم.')));
+      return;
+    }
+    final body = TextEditingController();
+    String? recipientId = recipients.first.$1;
+    bool busy = false;
+    try {
+      await showModalBottomSheet<void>(
+        context: context,
+        backgroundColor: cleanOpsSurface,
+        isScrollControlled: true,
+        shape: const RoundedRectangleBorder(
+            borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
+        builder: (sheetContext) => StatefulBuilder(builder: (context, setSheetState) {
+          return SafeArea(
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(18, 16, 18,
+                  MediaQuery.viewInsetsOf(context).bottom + 18),
+              child: ListView(
+                shrinkWrap: true,
+                children: [
+                  const AppText('رسالة خارجية SMS',
+                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
+                  const SizedBox(height: 8),
+                  const AppText('يحدد الخادم رقم الهاتف من حساب المستلم ويُراجع صلاحياتك. قبول المزود لا يعني وصول الرسالة إلى الهاتف.',
+                    style: TextStyle(color: cleanOpsMuted, fontSize: 12)),
+                  const SizedBox(height: 14),
+                  DropdownButtonFormField<String>(
+                    isExpanded: true,
+                    value: recipientId,
+                    decoration: const InputDecoration(labelText: 'المستلم'),
+                    items: recipients.map((entry) => DropdownMenuItem(
+                      value: entry.$1,
+                      child: Text(entry.$2, overflow: TextOverflow.ellipsis),
+                    )).toList(),
+                    onChanged: busy ? null : (value) =>
+                        setSheetState(() => recipientId = value),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: body,
+                    maxLength: 500,
+                    minLines: 3,
+                    maxLines: 6,
+                    decoration: const InputDecoration(labelText: 'نص SMS'),
+                  ),
+                  const SizedBox(height: 12),
+                  FilledButton.icon(
+                    onPressed: busy || recipientId == null ? null : () async {
+                      setSheetState(() => busy = true);
+                      try {
+                        final status = await messaging.sendExternalSms(
+                          targetUserId: recipientId!, content: body.text);
+                        if (sheetContext.mounted) Navigator.pop(sheetContext);
+                        if (mounted) ScaffoldMessenger.of(this.context).showSnackBar(
+                          SnackBar(content: AppText(
+                            status == 'submitted'
+                              ? 'قبل مزود SMS طلب الرسالة؛ التسليم النهائي غير مؤكد.'
+                              : 'حالة طلب SMS: $status')));
+                      } catch (e) {
+                        if (mounted) ScaffoldMessenger.of(this.context).showSnackBar(
+                          SnackBar(content: AppText('تعذر إرسال SMS: $e')));
+                      } finally {
+                        if (sheetContext.mounted) setSheetState(() => busy = false);
+                      }
+                    },
+                    icon: const Icon(Icons.send_rounded),
+                    label: AppText(busy ? 'جارٍ الإرسال...' : 'إرسال SMS عبر الخادم'),
+                  ),
+                  const SizedBox(height: 18),
+                  const AppText('آخر الطلبات الخارجية', style: TextStyle(fontWeight: FontWeight.w800)),
+                  StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                    stream: FirebaseFirestore.instance.collection('external_messages')
+                        .where('senderId', isEqualTo: user.id).limit(15).snapshots(),
+                    builder: (context, snapshot) {
+                      if (snapshot.hasError) {
+                        return const AppText('السجل غير متاح قبل نشر قواعد الرسائل الخارجية.',
+                          style: TextStyle(color: cleanOpsMuted, fontSize: 12));
+                      }
+                      if (!snapshot.hasData) return const LinearProgressIndicator();
+                      final docs = snapshot.data!.docs;
+                      if (docs.isEmpty) {
+                        return const AppText('لا توجد طلبات SMS مسجلة.',
+                          style: TextStyle(color: cleanOpsMuted, fontSize: 12));
+                      }
+                      return Column(children: [
+                        for (final item in docs)
+                          ListTile(
+                            dense: true,
+                            leading: const Icon(Icons.sms_outlined, color: aiCyan),
+                            title: AppText('${item.data()['content'] ?? ''}', maxLines: 2),
+                            subtitle: AppText('المستلم: ${item.data()['targetUserId'] ?? ''}'),
+                            trailing: AppText(
+                              item.data()['status'] == 'submitted' ? 'قبله المزود'
+                                : item.data()['status'] == 'failed' ? 'فشل'
+                                : 'قيد المعالجة',
+                              style: const TextStyle(fontSize: 11)),
+                          ),
+                      ]);
+                    },
+                  ),
+                ],
+              ),
+            ),
+          );
+        }),
+      );
+    } finally {
+      body.dispose();
+    }
   }
 
   Future<List<(String, String)>> _loadDirectRecipients(AppUser user) async {
