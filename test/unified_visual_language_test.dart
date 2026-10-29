@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:solid_waste_operations/presentation/widgets/assistant_shortcut_grid.dart';
 import 'package:solid_waste_operations/presentation/widgets/creative_shortcuts.dart';
 import 'package:solid_waste_operations/presentation/widgets/eco_shortcuts.dart';
+import 'package:solid_waste_operations/presentation/widgets/app_design.dart';
 
 void main() {
   testWidgets('every role uses one compact card geometry in RTL',
@@ -70,6 +71,12 @@ void main() {
     final h2 = tester.getSize(tiles.at(2)).height;
     expect(h1, closeTo(h2, 1));
     expect(h1, lessThan(140));
+    // The approved Arabic mockup places the illustrated icon to the RIGHT
+    // of its caption, not above it or on the left.
+    final iconCenter = tester.getCenter(find.byType(EcoPictorialIcon).first);
+    final titleCenter = tester.getCenter(find.text('المجموعات والعمال'));
+    expect(iconCenter.dx, greaterThan(titleCenter.dx));
+    expect((iconCenter.dy - titleCenter.dy).abs(), lessThan(46));
     await tester.tap(find.text('المجموعات والعمال'));
     await tester.pump();
     await tester.tap(find.text('تحليل المخاطر'));
