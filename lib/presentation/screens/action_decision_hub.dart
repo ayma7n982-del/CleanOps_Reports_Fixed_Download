@@ -88,7 +88,7 @@ class _ActionDecisionHubScreenState extends State<ActionDecisionHubScreen> {
                   child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                     Container(padding: const EdgeInsets.all(22),
                       decoration: BoxDecoration(
-                        gradient: const LinearGradient(colors: [Color(0xFF12304A), Color(0xFF087D78)]),
+                        gradient: const LinearGradient(colors: [Color(0xFF06463D), Color(0xFF119A85)]),
                         borderRadius: BorderRadius.circular(24)),
                       child: const Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                         Text('CLEANOPS  •  DECISION INTELLIGENCE',
