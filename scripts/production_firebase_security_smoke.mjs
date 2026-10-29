@@ -15,7 +15,7 @@ const googleServices = JSON.parse(fs.readFileSync('android/app/google-services.j
 const apiKey = googleServices.client?.[0]?.api_key?.[0]?.current_key;
 if (!apiKey) throw new Error('Firebase Web API key not found in google-services.json.');
 
-const suffix = (process.env.GITHUB_RUN_ID || Date.now().toString()).replace(/[^0-9A-Za-z_-]/g, '');
+const suffix = `${process.env.GITHUB_RUN_ID || Date.now().toString()}_${process.env.GITHUB_RUN_ATTEMPT || '1'}`.replace(/[^0-9A-Za-z_-]/g, '');
 const prefix = `__cleanops_smoke_${suffix}`;
 const app = initializeApp({credential: cert(serviceAccount), projectId});
 const auth = getAuth(app);
@@ -104,7 +104,8 @@ function fields(data) {
   const out = {};
   for (const [key, value] of Object.entries(data)) {
     if (value === null || value === undefined) continue;
-    if (typeof value === 'string') out[key] = {stringValue: value};
+    if (value instanceof Date) out[key] = {timestampValue: value.toISOString()};
+    else if (typeof value === 'string') out[key] = {stringValue: value};
     else if (typeof value === 'boolean') out[key] = {booleanValue: value};
     else if (Number.isInteger(value)) out[key] = {integerValue: String(value)};
     else if (typeof value === 'number') out[key] = {doubleValue: value};
@@ -232,6 +233,33 @@ try {
     expectAllowed(`${role} retains management read access`,
       await rest('GET', `operations/${ids.tripB}`, tokens[role]));
   }
+
+  const groupMessageId = `${prefix}_message_group`;
+  const crossedMessageId = `${prefix}_message_cross`;
+  const broadcastMessageId = `${prefix}_message_municipalities`;
+  const groupMessage = {
+    messageId: groupMessageId, senderId: ids.supervisorA,
+    targetGroupId: ids.groupA, content: 'CleanOps temporary smoke message',
+    timestamp: new Date(), type: 'info', isRead: false,
+  };
+  rememberDoc('messages', groupMessageId);
+  expectAllowed('supervisor sends real message to own group',
+    await rest('PATCH', `messages/${groupMessageId}`, tokens.supervisorA, groupMessage));
+  expectAllowed('worker reads message sent to own group',
+    await rest('GET', `messages/${groupMessageId}`, tokens.workerA));
+  expectDenied('other group worker cannot read group message',
+    await rest('GET', `messages/${groupMessageId}`, tokens.workerB));
+  rememberDoc('messages', crossedMessageId);
+  expectDenied('supervisor cannot send to a different group',
+    await rest('PATCH', `messages/${crossedMessageId}`, tokens.supervisorA,
+      {...groupMessage, messageId: crossedMessageId, targetGroupId: ids.groupB}));
+  rememberDoc('messages', broadcastMessageId);
+  expectAllowed('manager broadcasts to all municipalities',
+    await rest('PATCH', `messages/${broadcastMessageId}`, tokens.manager,
+      {...groupMessage, messageId: broadcastMessageId,
+       senderId: ids.manager, targetGroupId: '__ALL_MUNICIPALITIES__'}));
+  expectAllowed('coordinator reads all-municipality message',
+    await rest('GET', `messages/${broadcastMessageId}`, tokens.coordinator));
 
   const ownCreate = {
     id: ids.ownCreate, _entity: 'trip', groupId: ids.groupA,
@@ -484,7 +512,18 @@ try {
     console.error(`Cleanup audit query failed: ${error}`);
   }
 
-  const keepDeletionRequest = process.env.KEEP_SMOKE_DELETE_REQUEST === '1';
+  // Only retain the temporary deletion target when the corresponding
+  // request was actually queued. Earlier failures must clean test accounts.
+  let keepDeletionRequest = false;
+  if (process.env.KEEP_SMOKE_DELETE_REQUEST === '1') {
+    try {
+      const queued = await adminDb.collection('admin_requests').doc(ids.deleteRequest).get();
+      keepDeletionRequest = queued.exists && queued.data()?.status === 'pending' &&
+        queued.data()?.targetUserId === ids.deleteWorker;
+    } catch (error) {
+      console.error('Could not verify temporary deletion request:', error);
+    }
+  }
   const keptPaths = new Set([
     `users/${ids.deleteWorker}`,
     `admin_requests/${ids.deleteRequest}`,
