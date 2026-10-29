@@ -1,0 +1,40 @@
+name: Message attachment Storage rules validation
+on:
+  push:
+    paths:
+      - 'firebase/storage.rules'
+      - 'firebase/firestore.rules'
+      - 'firebase/tests/storage.rules.test.cjs'
+      - 'firebase/tests/package.json'
+      - '.github/workflows/message-storage-rules.yml'
+  pull_request:
+    paths:
+      - 'firebase/storage.rules'
+      - 'firebase/firestore.rules'
+      - 'firebase/tests/storage.rules.test.cjs'
+      - 'firebase/tests/package.json'
+      - '.github/workflows/message-storage-rules.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: message-storage-rules-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: ${{ github.event_name == 'push' }}
+jobs:
+  storage-security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Install emulator CLI and tests
+        run: |
+          npm install --no-save firebase-tools@14
+          npm --prefix firebase/tests install
+      - name: Verify attachment authorization and size restrictions
+        run: npx firebase emulators:exec --project cleanops-messaging-storage-test --only firestore,storage "npm --prefix firebase/tests run test:storage"
