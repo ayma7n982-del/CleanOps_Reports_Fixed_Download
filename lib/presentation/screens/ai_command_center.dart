@@ -11,6 +11,7 @@ import '../../core/services/operations_admin_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import '../widgets/app_design.dart';
+import '../widgets/eco_shortcuts.dart';
 import 'ai_bot_screen.dart';
 import 'operations_management.dart';
 import 'messages_center.dart';
@@ -681,23 +682,7 @@ class _QuickActions extends StatelessWidget {
     return _Panel(
       title: 'اختصارات تشغيلية ذكية',
       feature: 'operations',
-      child: LayoutBuilder(
-        builder: (context, box) {
-          final cols = box.maxWidth >= 900 ? 4 : box.maxWidth >= 620 ? 3 : 2;
-          return GridView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: actions.length,
-            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: cols,
-              mainAxisSpacing: 11,
-              crossAxisSpacing: 11,
-              mainAxisExtent: cols == 2 ? 150 : 144,
-            ),
-            itemBuilder: (_, i) => actions[i],
-          );
-        },
-      ),
+      child: EcoShortcutGrid(cards: actions),
     );
   }
 }
@@ -705,20 +690,21 @@ class _QuickActions extends StatelessWidget {
 class _Quick extends StatelessWidget {
   final String feature, title, subtitle;
   final String? badge;
-  final VoidCallback? onTap;
+  final VoidCallback onTap;
   const _Quick({
     required this.feature,
     required this.title,
     required this.subtitle,
     this.badge,
-    this.onTap,
+    required this.onTap,
   });
 
   @override
-  Widget build(BuildContext context) {
-    final accent = EcoPalette.accent(feature);
-    final tint = EcoPalette.tint(feature);
-    final icon = switch (feature) {
+  Widget build(BuildContext context) => EcoShortcutCard(
+    feature: feature,
+    title: title,
+    subtitle: badge == null ? subtitle : '$badge • $subtitle',
+    icon: switch (feature) {
       'emergency' => Icons.warning_amber_rounded,
       'messages' => Icons.forum_rounded,
       'reports' => Icons.insert_chart_outlined_rounded,
@@ -730,68 +716,9 @@ class _Quick extends StatelessWidget {
       'ai' => Icons.auto_awesome_rounded,
       'containers' => Icons.delete_outline_rounded,
       _ => Icons.hub_rounded,
-    };
-    return Semantics(
-      button: onTap != null,
-      label: title,
-      child: AiGlassCard(
-        onTap: onTap,
-        padding: const EdgeInsets.all(12),
-        gradient: LinearGradient(
-          colors: [tint, Color.lerp(tint, Colors.white, .48)!],
-          begin: Alignment.topRight,
-          end: Alignment.bottomLeft,
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Row(children: [
-              EcoPictorialIcon(feature: feature, icon: icon, size: 50),
-              const Spacer(),
-              if (badge != null)
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 5),
-                  decoration: BoxDecoration(
-                    color: accent.withOpacity(.11),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(badge!,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: accent,
-                      fontSize: 9,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                ),
-            ]),
-            const SizedBox(height: 8),
-            AppText(title,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: cleanOpsText,
-                fontSize: 13.2,
-                fontWeight: FontWeight.w900,
-              ),
-            ),
-            const SizedBox(height: 3),
-            AppText(subtitle,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: cleanOpsMuted,
-                fontSize: 10,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+    },
+    onTap: onTap,
+  );
 }
 
 class _RiskPanel extends StatelessWidget {
