@@ -393,25 +393,52 @@ class OperationsAdminService {
     });
   }
 
-  /// Delete directly on Firebase using a privileged callable function.
-  /// GitHub is only used to publish code; it is not part of the runtime path.
-  /// Never report success until the server confirms both account removals.
+  /// Permanently delete through the Firebase callable, never through GitHub.
+  /// The server returns ok only after it verifies that both Auth and Firestore
+  /// no longer contain the account. No success is assumed from a queued request.
   Future<void> deleteManagedUser(String userId, {required String actorId}) async {
     final uid = userId.trim();
     final actor = actorId.trim();
     if (uid.isEmpty || actor.isEmpty || uid == actor) {
-      throw StateError('لا يمكن حذف الحساب الحالي.');
+      throw const UserProvisionException('لا يمكن حذف حسابك الحالي.');
     }
     try {
-      final response = await FirebaseFunctions.instanceFor(region: 'us-central1')
-          .httpsCallable('deleteManagedUser')
-          .call(<String, dynamic>{'userId': uid});
-      final data = response.data;
-      if (data is! Map || data['ok'] != true || data['userId'] != uid) {
-        throw StateError('لم يؤكد Firebase حذف الحساب نهائيًا.');
+      final response = await FirebaseFunctions.instanceFor(
+        app: Firebase.app(),
+        region: 'us-central1',
+      ).httpsCallable('deleteManagedUser').call(<String, dynamic>{'userId': uid});
+      final result = response.data;
+      if (result is! Map || result['ok'] != true || result['userId'] != uid) {
+        throw const UserProvisionException(
+          'لم يؤكد خادم Firebase حذف الحساب من المصادقة وقاعدة البيانات.',
+        );
       }
     } on FirebaseFunctionsException catch (error) {
-      throw StateError(error.message ?? 'تعذر حذف الحساب مباشرة من Firebase. تحقق من نشر وظيفة deleteManagedUser وصلاحيات الحساب.');
+      final code = error.code.toLowerCase();
+      final message = (error.message ?? '').toLowerCase();
+      if (code == 'not-found' || code == 'not_found' ||
+          message.contains('not_found') || message.contains('not found')) {
+        throw const UserProvisionException(
+          'خدمة حذف المستخدمين غير متاحة في Firebase. يجب نشر وظيفة '
+          'deleteManagedUser في مشروع nrc-aid (منطقة us-central1) '
+          'ثم إعادة المحاولة. لم يتم تأكيد الحذف.',
+        );
+      }
+      if (code == 'permission-denied' || code == 'unauthenticated') {
+        throw const UserProvisionException(
+          'رفض Firebase الحذف بسبب الصلاحيات أو انتهاء تسجيل الدخول. '
+          'تحقق من صلاحيات حسابك وسجل الدخول مجددًا.',
+        );
+      }
+      if (code == 'unavailable' || code == 'deadline-exceeded') {
+        throw const UserProvisionException(
+          'تعذر الوصول إلى Firebase أو انتهت مهلة الاتصال. '
+          'تحقق من الشبكة وحالة الحساب قبل إعادة المحاولة.',
+        );
+      }
+      throw UserProvisionException(
+        'رفض Firebase حذف الحساب: ${error.message ?? error.code}',
+      );
     }
   }
 
