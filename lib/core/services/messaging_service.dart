@@ -1,6 +1,9 @@
 import 'dart:async';
+import 'dart:typed_data';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
@@ -309,6 +312,57 @@ class MessagingService extends ChangeNotifier {
       throw StateError('رئيس المجموعة يستطيع إرسال رسالة مباشرة إلى منسق بلديته فقط.');
     }
     await _send(content: content, type: type, targetUserId: targetUserId.trim());
+  }
+
+  /// Add up to five compressed photos only after the parent message reaches
+  /// Firestore. Attachment uploads require network; they are never mislabeled
+  /// as offline-synchronized message text.
+  Future<void> addMessageImages(String messageId, List<Uint8List> images) async {
+    final actor = _user;
+    if (actor == null || Firebase.apps.isEmpty || !config.onlineMessagingEnabled) {
+      throw StateError('رفع الصور يحتاج اتصال Firebase.');
+    }
+    final matches = messages.where((m) => m.messageId == messageId &&
+        m.senderId == actor.id && m.deliveryStatus == 'sent');
+    if (matches.isEmpty) {
+      throw StateError('انتظر تأكيد حفظ الرسالة على الخادم قبل إرفاق الصور.');
+    }
+    if (images.isEmpty || images.length > 5) {
+      throw ArgumentError('اختر من صورة واحدة إلى خمس صور.');
+    }
+    for (final original in images) {
+      Uint8List compressed = original;
+      for (final quality in const [75, 60, 45, 30, 20]) {
+        compressed = await FlutterImageCompress.compressWithList(
+          original, quality: quality, format: CompressFormat.jpeg,
+          minWidth: 1280, minHeight: 1280,
+        );
+        if (compressed.length <= 500 * 1024) break;
+      }
+      if (compressed.isEmpty || compressed.length > 500 * 1024) {
+        throw StateError('الصورة كبيرة جدًا حتى بعد الضغط؛ اختر صورة أصغر.');
+      }
+      final attachmentId = _uuid.v4();
+      final path = 'message_attachments/$messageId/$attachmentId.jpg';
+      final object = FirebaseStorage.instance.ref().child(path);
+      await object.putData(compressed, SettableMetadata(contentType: 'image/jpeg'));
+      try {
+        await FirebaseFirestore.instance.collection('messages').doc(messageId)
+            .collection('attachments').doc(attachmentId).set({
+          'attachmentId': attachmentId,
+          'path': path,
+          'contentType': 'image/jpeg',
+          'sizeBytes': compressed.length,
+          'senderId': actor.id,
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+      } catch (_) {
+        // Never leave an uploaded object publicly accessible or orphaned when
+        // the authoritative attachment metadata cannot be persisted.
+        try { await object.delete(); } catch (_) {}
+        rethrow;
+      }
+    }
   }
 
   Future<String> sendExternalSms({
