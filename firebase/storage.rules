@@ -6,6 +6,36 @@ service firebase.storage {
       allow write: if request.auth != null && request.resource.size <= 2 * 1024 * 1024 && request.resource.contentType.matches('image/.*');
       allow delete: if request.auth != null && request.auth.uid == uid;
     }
+    // Image attachments for already-saved messages. Firestore lookup scopes
+    // downloads to the sender and the exact recipients (never all signed-in users).
+    function canAccessMessageAttachment(messageId) {
+      let msg = firestore.get(/databases/(default)/documents/messages/$(messageId)).data;
+      let user = firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data;
+      return user.isActive != false && (
+        msg.senderId == request.auth.uid
+        || msg.targetGroupId == '__USER__:' + request.auth.uid
+        || (user.keys().hasAny(['groupId']) && user.groupId is string
+            && user.groupId.size() > 0 && msg.targetGroupId == user.groupId)
+        || (msg.targetGroupId == '__ALL_MUNICIPALITIES__' && user.role == 'municipality_coordinator')
+        || (msg.targetGroupId == '__JSC__' && user.role == 'jsc_coordinator')
+      );
+    }
+    match /message_attachments/{messageId}/{fileName} {
+      allow read: if request.auth != null
+        && firestore.exists(/databases/(default)/documents/users/$(request.auth.uid))
+        && firestore.exists(/databases/(default)/documents/messages/$(messageId))
+        && canAccessMessageAttachment(messageId);
+      allow create: if request.auth != null
+        && fileName.matches('[a-zA-Z0-9-]+\\.jpg')
+        && firestore.exists(/databases/(default)/documents/messages/$(messageId))
+        && firestore.get(/databases/(default)/documents/messages/$(messageId)).data.senderId == request.auth.uid
+        && request.resource.size <= 500 * 1024
+        && request.resource.contentType == 'image/jpeg';
+      allow update: if false;
+      allow delete: if request.auth != null
+        && firestore.exists(/databases/(default)/documents/messages/$(messageId))
+        && firestore.get(/databases/(default)/documents/messages/$(messageId)).data.senderId == request.auth.uid;
+    }
     match /audio/{uid}/{operation}/{fileName} {
       allow read: if request.auth != null;
       allow write: if request.auth != null && request.auth.uid == uid && request.resource.size <= 5 * 1024 * 1024 && request.resource.contentType.matches('audio/.*');
