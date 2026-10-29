@@ -692,7 +692,7 @@ class _QuickActions extends StatelessWidget {
               crossAxisCount: cols,
               mainAxisSpacing: 11,
               crossAxisSpacing: 11,
-              mainAxisExtent: cols == 2 ? 163 : 154,
+              mainAxisExtent: cols == 2 ? 150 : 144,
             ),
             itemBuilder: (_, i) => actions[i],
           );
@@ -744,9 +744,10 @@ class _Quick extends StatelessWidget {
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Row(children: [
-              EcoPictorialIcon(feature: feature, icon: icon, size: 56),
+              EcoPictorialIcon(feature: feature, icon: icon, size: 50),
               const Spacer(),
               if (badge != null)
                 Container(
@@ -766,13 +767,13 @@ class _Quick extends StatelessWidget {
                   ),
                 ),
             ]),
-            const Spacer(),
+            const SizedBox(height: 8),
             AppText(title,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(
                 color: cleanOpsText,
-                fontSize: 14,
+                fontSize: 13.2,
                 fontWeight: FontWeight.w900,
               ),
             ),
@@ -782,7 +783,7 @@ class _Quick extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(
                 color: cleanOpsMuted,
-                fontSize: 10.5,
+                fontSize: 10,
                 fontWeight: FontWeight.w600,
               ),
             ),
