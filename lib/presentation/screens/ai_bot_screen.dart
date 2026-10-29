@@ -16,6 +16,7 @@ import '../../core/services/operational_insights.dart';
 import 'enterprise_operations_hub.dart';
 import '../widgets/app_design.dart';
 import '../widgets/assistant_shortcut_grid.dart';
+import '../widgets/assistant_hero_banner.dart';
 import 'messages_center.dart';
 import 'live_operations_map.dart';
 import 'operations_management.dart';
@@ -332,9 +333,15 @@ class _AIBotScreenState extends State<AIBotScreen> with TickerProviderStateMixin
                 Expanded(child: AppText('المساعد التشغيلي الذكي', style: TextStyle(color: cleanOpsText, fontSize: titleSize, fontWeight: FontWeight.w900))),
                 _LanguagePill(onTap: _toggleLanguage, isArabic: locale.isArabic),
               ]),
-              const SizedBox(height: 8),
-              const AppText('اسأل عن العمليات والبيانات المتاحة لصلاحياتك', style: TextStyle(color: cleanOpsMuted, fontSize: 12)),
-              const SizedBox(height: 10),
+              if (allowed) ...[
+                const SizedBox(height: 12),
+                const AssistantHeroBanner(),
+              ] else ...[
+                const SizedBox(height: 8),
+                const AppText('اسأل عن العمليات والبيانات المتاحة لصلاحياتك',
+                    style: TextStyle(color: cleanOpsMuted, fontSize: 12)),
+              ],
+              const SizedBox(height: 12),
               if (!allowed)
                 const _AccessNotice()
               else ...[
@@ -359,6 +366,75 @@ class _AIBotScreenState extends State<AIBotScreen> with TickerProviderStateMixin
                     ),
                   );
                 }),
+                AssistantShortcutGrid(
+                  title: 'اسأل المساعد',
+                  subtitle: 'اختصر وقتك بتحليلات فورية من بيانات التشغيل.',
+                  sectionIcon: Icons.auto_awesome_rounded,
+                  suggestions: true,
+                  actions: [
+                    AssistantShortcutAction(
+                      icon: Icons.analytics_rounded,
+                      title: 'ملخص اليوم', description: 'أبرز الأرقام التشغيلية',
+                      onTap: () { input.text = 'أعطني ملخصًا لعمليات اليوم بالأرقام الحقيقية.'; _send(); },
+                    ),
+                    AssistantShortcutAction(
+                      icon: Icons.insights_rounded,
+                      title: 'تحليل المخاطر', description: 'المخاطر والفرص التشغيلية',
+                      onTap: () { input.text = 'ما أهم مخاطر التشغيل وتأخر الترحيلات ونقص العمال؟'; _send(); },
+                    ),
+                    AssistantShortcutAction(
+                      icon: Icons.warning_amber_rounded,
+                      title: 'التنبيهات', description: 'حالات الطوارئ النشطة',
+                      onTap: () { input.text = 'ما حالات SOS والطوارئ النشطة الآن؟'; _send(); },
+                    ),
+                    AssistantShortcutAction(
+                      icon: Icons.delete_sweep_rounded,
+                      title: 'حالة المكبات', description: 'الامتلاء والحالات الحرجة',
+                      onTap: () { input.text = 'اعرض حالة المكبات ونسب الامتلاء الحالية.'; _send(); },
+                    ),
+                    AssistantShortcutAction(
+                      icon: Icons.local_shipping_rounded,
+                      title: 'حركة الترحيلات', description: 'حركة النقل والكميات',
+                      onTap: () { input.text = 'كم عدد الترحيلات المسجلة اليوم؟'; _send(); },
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                AssistantShortcutGrid(
+                  title: 'انتقال سريع',
+                  subtitle: 'افتح الشاشات التشغيلية المسموح بها مباشرة.',
+                  sectionIcon: Icons.grid_view_rounded,
+                  actions: [
+                    if (shortcuts.contains('messages'))
+                      AssistantShortcutAction(icon: Icons.forum_rounded, title: 'الرسائل', description: 'محادثات النظام', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const MessagesCenterScreen()))),
+                    if (shortcuts.contains('operations'))
+                      AssistantShortcutAction(icon: Icons.hub_rounded, title: 'مركز التشغيل', description: 'مراقبة العمليات لحظيًا', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const EnterpriseOperationsHubPage()))),
+                    if (shortcuts.contains('trips'))
+                      AssistantShortcutAction(icon: Icons.route_rounded, title: 'سجل النقلات', description: 'عرض سجل كل النقلات', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const TripsLogPage()))),
+                    if (shortcuts.contains('workers'))
+                      AssistantShortcutAction(icon: Icons.groups_rounded, title: 'المجموعات والعمال', description: 'إدارة الفرق والأفراد', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const GroupsCommandCenterPage()))),
+                    if (shortcuts.contains('alerts'))
+                      AssistantShortcutAction(icon: Icons.notification_important_rounded, title: 'مركز التنبيهات', description: 'البلاغات والتحديثات', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AlertsCenterPage()))),
+                    if (shortcuts.contains('reports'))
+                      AssistantShortcutAction(icon: Icons.description_rounded, title: 'التقارير', description: 'تقارير تشغيلية ومرئية', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ReportsCenterScreen()))),
+                    if (shortcuts.contains('dumpsites'))
+                      AssistantShortcutAction(icon: Icons.location_on_rounded, title: 'إدارة المكبات', description: 'الموقع والسعة والحالة', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const OperationsManagementScreen(initialTab: 0)))),
+                    if (shortcuts.contains('live_map'))
+                      AssistantShortcutAction(icon: Icons.map_rounded, title: 'العمليات الحية', description: 'العمليات على الخريطة', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const LiveOperationsMapScreen()))),
+                  ],
+                ),
+                if (shortcuts.contains('report_pdf')) ...[
+                  const SizedBox(height: 10),
+                  AssistantFeaturedPdfShortcut(
+                    action: AssistantShortcutAction(
+                      icon: Icons.picture_as_pdf_rounded,
+                      title: exportingPdf ? 'جاري تجهيز PDF' : 'تقرير PDF لفترة محددة',
+                      description: 'إنشاء تقرير PDF مخصص للفترة التي تختارها',
+                      onTap: _exportPeriodPdf,
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 15),
                 FutureBuilder<Map<String, dynamic>>(
                   future: context.read<OperationsAdminService>().liveOperationalSnapshot(user!),
                   builder: (context, snap) {
@@ -443,65 +519,6 @@ class _AIBotScreenState extends State<AIBotScreen> with TickerProviderStateMixin
                   ),
                 ],
                 const SizedBox(height: 10),
-                AssistantShortcutGrid(
-                  title: 'اسأل المساعد',
-                  subtitle: 'اختصر وقتك بتحليلات فورية من بيانات التشغيل.',
-                  sectionIcon: Icons.auto_awesome_rounded,
-                  suggestions: true,
-                  actions: [
-                    AssistantShortcutAction(
-                      icon: Icons.analytics_rounded,
-                      title: 'ملخص اليوم',
-                      onTap: () { input.text = 'أعطني ملخصًا لعمليات اليوم بالأرقام الحقيقية.'; _send(); },
-                    ),
-                    AssistantShortcutAction(
-                      icon: Icons.insights_rounded,
-                      title: 'تحليل المخاطر',
-                      onTap: () { input.text = 'ما أهم مخاطر التشغيل وتأخر الترحيلات ونقص العمال؟'; _send(); },
-                    ),
-                    AssistantShortcutAction(
-                      icon: Icons.warning_amber_rounded,
-                      title: 'التنبيهات',
-                      onTap: () { input.text = 'ما حالات SOS والطوارئ النشطة الآن؟'; _send(); },
-                    ),
-                    AssistantShortcutAction(
-                      icon: Icons.delete_sweep_rounded,
-                      title: 'حالة المكبات',
-                      onTap: () { input.text = 'اعرض حالة المكبات ونسب الامتلاء الحالية.'; _send(); },
-                    ),
-                    AssistantShortcutAction(
-                      icon: Icons.local_shipping_rounded,
-                      title: 'حركة الترحيلات',
-                      onTap: () { input.text = 'كم عدد الترحيلات المسجلة اليوم؟'; _send(); },
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 20),
-                AssistantShortcutGrid(
-                  title: 'انتقال سريع',
-                  subtitle: 'افتح الشاشات التشغيلية المسموح بها مباشرة.',
-                  sectionIcon: Icons.grid_view_rounded,
-                  actions: [
-                    if (shortcuts.contains('messages'))
-                      AssistantShortcutAction(icon: Icons.forum_rounded, title: 'الرسائل', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const MessagesCenterScreen()))),
-                    if (shortcuts.contains('operations'))
-                      AssistantShortcutAction(icon: Icons.hub_rounded, title: 'مركز التشغيل', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const EnterpriseOperationsHubPage()))),
-                    if (shortcuts.contains('trips'))
-                      AssistantShortcutAction(icon: Icons.route_rounded, title: 'سجل النقلات', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const TripsLogPage()))),
-                    if (shortcuts.contains('workers'))
-                      AssistantShortcutAction(icon: Icons.groups_rounded, title: 'المجموعات والعمال', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const GroupsCommandCenterPage()))),
-                    if (shortcuts.contains('alerts'))
-                      AssistantShortcutAction(icon: Icons.notification_important_rounded, title: 'مركز التنبيهات', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AlertsCenterPage()))),
-                    if (shortcuts.contains('reports'))
-                      AssistantShortcutAction(icon: Icons.description_rounded, title: 'التقارير', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ReportsCenterScreen()))),
-                    if (shortcuts.contains('report_pdf'))
-                      AssistantShortcutAction(icon: Icons.picture_as_pdf_rounded, title: exportingPdf ? 'جاري تجهيز PDF' : 'تقرير PDF لفترة محددة', onTap: _exportPeriodPdf),
-                    if (shortcuts.contains('dumpsites'))
-                      AssistantShortcutAction(icon: Icons.location_on_rounded, title: 'إدارة المكبات', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const OperationsManagementScreen(initialTab: 0)))),
-                    if (shortcuts.contains('live_map'))
-                      AssistantShortcutAction(icon: Icons.map_rounded, title: 'العمليات الحية', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const LiveOperationsMapScreen()))),
-                  ],
-                ),
               ],
               const SizedBox(height: 16),
               const AppText('Developed by @Eman Al-Qahwaji', textAlign: TextAlign.center, style: TextStyle(color: aiDark2, fontSize: 10, letterSpacing: .45, fontWeight: FontWeight.w700)),
