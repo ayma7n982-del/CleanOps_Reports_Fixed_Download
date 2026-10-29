@@ -103,13 +103,14 @@ void main() {
     expect(second, findsOneWidget);
     expect((tester.getTopLeft(first).dy - tester.getTopLeft(second).dy).abs(),
         lessThan(1));
-    // Regression: cards must not return to the 171px tall layout or leave a
-    // large vertical blank gap between the illustration and the Arabic title.
+    // Approved design: picture and caption are side by side on normal phones,
+    // never a tall card with a large vertical empty gap.
     expect(tester.getSize(first).height, lessThanOrEqualTo(145));
     final icon = find.byType(EcoPictorialIcon).first;
-    final iconBottom = tester.getBottomLeft(icon).dy;
-    final titleTop = tester.getTopLeft(find.text('مكبات النفايات')).dy;
-    expect(titleTop - iconBottom, inInclusiveRange(0, 22));
+    final iconCenter = tester.getCenter(icon);
+    final titleCenter = tester.getCenter(find.text('مكبات النفايات'));
+    expect((titleCenter.dx - iconCenter.dx).abs(), greaterThan(35));
+    expect((titleCenter.dy - iconCenter.dy).abs(), lessThan(40));
   });
 
   testWidgets('eco pictorial icon does not require a repository image asset',
