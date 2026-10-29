@@ -12,6 +12,123 @@ const aiDark = Color(0xFF073C35);
 const aiDark2 = Color(0xFF0B6657);
 const aiGlow = Color(0x3339C6A5);
 
+/// Shared Eco-Tech palette: one visual language across management, field,
+/// reporting and assistant screens. Presentation only; never changes RBAC.
+class EcoPalette {
+  static const ink = Color(0xFF173B35);
+  static const mint = Color(0xFFE7F9F1);
+  static const border = Color(0xFFD5EBE1);
+  static const aqua = Color(0xFFE5F8F8);
+
+  static Color accent(String feature) => switch (feature) {
+    'emergency' || 'notifications' => const Color(0xFFCE684F),
+    'reports' || 'excel' => const Color(0xFF348AB2),
+    'messages' => const Color(0xFF167F9B),
+    'trips' || 'streets' => const Color(0xFF138D99),
+    'workers' || 'users' || 'attendance' => const Color(0xFF169C70),
+    'dumpsite' || 'containers' => const Color(0xFF0B9C81),
+    'cycle' || 'sync' => const Color(0xFF866DB7),
+    'permissions' || 'settings' => const Color(0xFF547B92),
+    'ai' || 'dashboard' => const Color(0xFF087F6B),
+    _ => const Color(0xFF168E80),
+  };
+
+  static Color tint(String feature) => switch (feature) {
+    'emergency' || 'notifications' => const Color(0xFFFFF0ED),
+    'reports' || 'excel' => const Color(0xFFE9F5FF),
+    'messages' => const Color(0xFFE9F6FD),
+    'trips' || 'streets' => const Color(0xFFE6F8F9),
+    'workers' || 'users' || 'attendance' => const Color(0xFFEAF8EF),
+    'dumpsite' || 'containers' => const Color(0xFFE8F8F0),
+    'cycle' || 'sync' => const Color(0xFFF2EEFD),
+    'permissions' || 'settings' => const Color(0xFFEDF4F8),
+    _ => const Color(0xFFE9F8F2),
+  };
+}
+
+/// A consistent illustrated emblem; works with all existing Flutter icons.
+/// It does not load images or trigger external requests.
+class EcoPictorialIcon extends StatelessWidget {
+  final String feature;
+  final IconData icon;
+  final double size;
+  const EcoPictorialIcon({
+    super.key,
+    required this.feature,
+    required this.icon,
+    this.size = 62,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = EcoPalette.accent(feature);
+    return SizedBox(
+      width: size,
+      height: size,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          PositionedDirectional(
+            end: 0,
+            top: size * .09,
+            child: Container(
+              width: size * .82,
+              height: size * .82,
+              decoration: BoxDecoration(
+                color: accent.withOpacity(.14),
+                borderRadius: BorderRadius.circular(size * .29),
+              ),
+            ),
+          ),
+          PositionedDirectional(
+            start: size * .06,
+            top: 0,
+            child: Container(
+              width: size * .73,
+              height: size * .73,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [Color.lerp(accent, Colors.white, .29)!, accent],
+                  begin: Alignment.topRight,
+                  end: Alignment.bottomLeft,
+                ),
+                borderRadius: BorderRadius.circular(size * .24),
+                boxShadow: [
+                  BoxShadow(
+                    color: accent.withOpacity(.19),
+                    blurRadius: size * .17,
+                    offset: Offset(0, size * .07),
+                  ),
+                ],
+              ),
+              child: Icon(icon, size: size * .43, color: Colors.white),
+            ),
+          ),
+          PositionedDirectional(
+            end: 0,
+            bottom: 0,
+            child: Container(
+              width: size * .30,
+              height: size * .30,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(size * .10),
+                boxShadow: const [
+                  BoxShadow(color: Color(0x16073C35), blurRadius: 6),
+                ],
+              ),
+              child: Icon(Icons.auto_awesome_rounded,
+                  size: size * .16, color: accent),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class AiFeatureIcon extends StatelessWidget {
   final String feature;
   final double size;
