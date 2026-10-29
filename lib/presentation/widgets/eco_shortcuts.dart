@@ -32,32 +32,7 @@ class EcoShortcutCard extends StatelessWidget {
     final tint = EcoPalette.tint(feature);
     final rtl = Directionality.of(context) == TextDirection.rtl;
     final radius = BorderRadius.circular(19);
-    final headline = Text(
-      title,
-      maxLines: 2,
-      overflow: TextOverflow.ellipsis,
-      textAlign: TextAlign.start,
-      style: const TextStyle(
-        fontSize: 13.2,
-        color: cleanOpsText,
-        fontWeight: FontWeight.w900,
-        height: 1.18,
-      ),
-    );
-    final supporting = subtitle.isEmpty
-        ? const SizedBox.shrink()
-        : Text(
-            subtitle,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            textAlign: TextAlign.start,
-            style: const TextStyle(
-              fontSize: 10.4,
-              height: 1.22,
-              color: Color(0xFF52766E),
-              fontWeight: FontWeight.w600,
-            ),
-          );
+
     return Semantics(
       button: true,
       selected: selected,
@@ -79,11 +54,8 @@ class EcoShortcutCard extends StatelessWidget {
               width: selected ? 1.8 : 1,
             ),
             boxShadow: const [
-              BoxShadow(
-                color: Color(0x100F8D74),
-                blurRadius: 11,
-                offset: Offset(0, 4),
-              ),
+              BoxShadow(color: Color(0x100F8D74),
+                  blurRadius: 11, offset: Offset(0, 4)),
             ],
           ),
           child: InkWell(
@@ -91,40 +63,81 @@ class EcoShortcutCard extends StatelessWidget {
             borderRadius: radius,
             child: LayoutBuilder(
               builder: (context, constraints) {
-                final horizontal = constraints.maxWidth >= 270;
+                // Follow the approved mockup on normal phones: illustrated
+                // icon at the right, label beside it, open arrow at the left.
+                // Only tiny 320px phones fall back to stacked content.
+                final horizontal = constraints.maxWidth >= 155;
+                final compact = constraints.maxWidth < 190;
                 final art = EcoPictorialIcon(
                   feature: feature,
                   icon: icon,
-                  size: horizontal ? 48 : 48,
+                  size: horizontal ? (compact ? 45 : 54) : 47,
                 );
-                final action = Icon(
-                  selected
-                      ? Icons.check_circle_rounded
-                      : rtl
-                          ? Icons.arrow_back_rounded
-                          : Icons.arrow_forward_rounded,
-                  size: 17,
-                  color: color.withOpacity(.86),
+                final indicator = Container(
+                  width: 25,
+                  height: 25,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(.90),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    selected
+                        ? Icons.check_rounded
+                        : rtl
+                            ? Icons.chevron_left_rounded
+                            : Icons.chevron_right_rounded,
+                    color: color,
+                    size: 18,
+                  ),
                 );
                 final label = Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    headline,
-                    if (subtitle.isNotEmpty) const SizedBox(height: 3),
-                    supporting,
+                    Text(
+                      title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.start,
+                      style: TextStyle(
+                        fontSize: compact ? 12 : 13.2,
+                        color: cleanOpsText,
+                        fontWeight: FontWeight.w900,
+                        height: 1.19,
+                      ),
+                    ),
+                    if (subtitle.isNotEmpty) ...[
+                      const SizedBox(height: 3),
+                      Text(
+                        subtitle,
+                        maxLines: horizontal ? 2 : 1,
+                        overflow: TextOverflow.ellipsis,
+                        textAlign: TextAlign.start,
+                        style: TextStyle(
+                          fontSize: compact ? 9.2 : 10.4,
+                          height: 1.22,
+                          color: const Color(0xFF52766E),
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
                   ],
                 );
+
                 return Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 9),
+                  padding: EdgeInsets.symmetric(
+                    horizontal: compact ? 7 : 10,
+                    vertical: 9,
+                  ),
                   child: horizontal
                       ? Row(
                           children: [
                             art,
-                            const SizedBox(width: 11),
+                            SizedBox(width: compact ? 6 : 10),
                             Expanded(child: label),
                             const SizedBox(width: 3),
-                            action,
+                            indicator,
                           ],
                         )
                       : Column(
@@ -134,12 +147,10 @@ class EcoShortcutCard extends StatelessWidget {
                               children: [
                                 art,
                                 const Spacer(),
-                                action,
+                                indicator,
                               ],
                             ),
                             const SizedBox(height: 7),
-                            // Icon and heading belong to the SAME content
-                            // group; no Spacer / MainAxisAlignment.spaceBetween.
                             Flexible(child: label),
                           ],
                         ),
