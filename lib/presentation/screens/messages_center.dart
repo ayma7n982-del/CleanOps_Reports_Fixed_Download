@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'dart:ui' as ui;
+import 'dart:typed_data';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:image_picker/image_picker.dart';
 import '../../core/constants/app_constants.dart';
 import '../../core/localization.dart';
 import '../../core/models/core_models.dart';
@@ -222,6 +225,39 @@ class _MessagesCenterScreenState extends State<MessagesCenterScreen> {
                           ]);
                         },
                       ),
+                    if (Firebase.apps.isNotEmpty && message.deliveryStatus == 'sent')
+                      StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                        stream: FirebaseFirestore.instance.collection('messages')
+                            .doc(message.messageId).collection('attachments').snapshots(),
+                        builder: (context, snapshot) {
+                          if (snapshot.hasError) {
+                            return const AppText('المرفقات غير متاحة حتى نشر قواعد التخزين.',
+                              style: TextStyle(color: cleanOpsMuted, fontSize: 12));
+                          }
+                          if (!snapshot.hasData) return const SizedBox.shrink();
+                          return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                            if (snapshot.data!.docs.isNotEmpty)
+                              const AppText('صور الرسالة', style: TextStyle(fontWeight: FontWeight.w800)),
+                            for (final file in snapshot.data!.docs)
+                              ListTile(
+                                dense: true,
+                                leading: const Icon(Icons.image_outlined, color: aiCyan),
+                                title: const AppText('عرض الصورة المرفقة'),
+                                subtitle: AppText('${file.data()['sizeBytes'] ?? 0} بايت'),
+                                onTap: () => _showAttachmentImage(
+                                  sheetContext, '${file.data()['path'] ?? ''}'),
+                              ),
+                          ]);
+                        },
+                      ),
+                    if (isMine && message.deliveryStatus == 'sent') ...[
+                      const SizedBox(height: 10),
+                      OutlinedButton.icon(
+                        icon: const Icon(Icons.add_photo_alternate_outlined),
+                        label: const AppText('إرفاق صور (حتى 5 صور، 500 كيلوبايت لكل صورة)'),
+                        onPressed: () => _pickMessageImages(message, messaging),
+                      ),
+                    ],
                     if (!isMine) ...[
                       const SizedBox(height: 12),
                       FilledButton.icon(
@@ -470,6 +506,52 @@ class _MessagesCenterScreenState extends State<MessagesCenterScreen> {
           ),
         );
       }),
+    );
+  }
+
+  Future<void> _pickMessageImages(MessageItem message, MessagingService messaging) async {
+    try {
+      final picked = await ImagePicker().pickMultiImage(imageQuality: 90, maxWidth: 1920);
+      if (picked.isEmpty) return;
+      if (picked.length > 5) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: AppText('يمكن إرفاق خمس صور في كل عملية.')));
+        return;
+      }
+      final bytes = <Uint8List>[];
+      for (final photo in picked) {
+        bytes.add(await photo.readAsBytes());
+      }
+      await messaging.addMessageImages(message.messageId, bytes);
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: AppText('تم حفظ الصور المرفقة على Firebase.')));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: AppText('تعذر رفع الصور: $e')));
+    }
+  }
+
+  void _showAttachmentImage(BuildContext parent, String path) {
+    if (path.isEmpty) return;
+    showDialog<void>(
+      context: parent,
+      builder: (dialogContext) => AlertDialog(
+        title: const AppText('الصورة المرفقة'),
+        content: FutureBuilder<Uint8List?>(
+          future: FirebaseStorage.instance.ref().child(path).getData(500 * 1024),
+          builder: (context, snapshot) {
+            if (snapshot.hasError) {
+              return const AppText('تعذر عرض الصورة أو لا توجد صلاحية.');
+            }
+            if (!snapshot.hasData) return const CircularProgressIndicator();
+            return Image.memory(snapshot.data!, fit: BoxFit.contain);
+          },
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext),
+            child: const AppText('إغلاق')),
+        ],
+      ),
     );
   }
 
