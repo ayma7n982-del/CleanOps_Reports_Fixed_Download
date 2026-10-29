@@ -19,6 +19,8 @@ class MessageItem {
   final bool isRead;
   final String senderName;
   final String senderRole;
+  /// Local send state: pending, sent (server-acknowledged), or failed.
+  final String deliveryStatus;
 
   const MessageItem({
     required this.messageId,
@@ -31,6 +33,7 @@ class MessageItem {
     this.targetGroupId,
     this.senderName = '',
     this.senderRole = '',
+    this.deliveryStatus = 'sent',
   });
 
   bool isForUser(String uid, String? groupId) =>
@@ -49,6 +52,7 @@ class MessageItem {
         'isRead': isRead,
         'senderName': senderName,
         'senderRole': senderRole,
+        'deliveryStatus': deliveryStatus,
       };
 
   factory MessageItem.fromLocal(Map<String, dynamic> json) => MessageItem(
@@ -62,6 +66,7 @@ class MessageItem {
         isRead: json['isRead'] == true,
         senderName: '${json['senderName'] ?? ''}',
         senderRole: '${json['senderRole'] ?? ''}',
+        deliveryStatus: '${json['deliveryStatus'] ?? 'sent'}',
       );
 
   factory MessageItem.fromFirestore(DocumentSnapshot<Map<String, dynamic>> doc) {
@@ -79,6 +84,7 @@ class MessageItem {
       isRead: data['isRead'] == true,
       senderName: '${data['senderName'] ?? ''}',
       senderRole: '${data['senderRole'] ?? ''}',
+      deliveryStatus: doc.metadata.hasPendingWrites ? 'pending' : 'sent',
     );
   }
 }
@@ -89,6 +95,7 @@ class MessagingService extends ChangeNotifier {
   final ConfigService config;
   final Uuid _uuid = const Uuid();
   final List<StreamSubscription<QuerySnapshot<Map<String, dynamic>>>> _subscriptions = [];
+  final Set<String> _inFlightWrites = <String>{};
   StreamSubscription<List<ConnectivityResult>>? _connectivitySub;
   AppUser? _user;
   String? _uid;
@@ -118,6 +125,7 @@ class MessagingService extends ChangeNotifier {
     notifyListeners();
     if (user == null || !config.onlineMessagingEnabled || Firebase.apps.isEmpty) return;
     await _subscribe();
+    unawaited(retryPendingWrites());
   }
 
   Future<void> _subscribe() async {
@@ -142,10 +150,11 @@ class MessagingService extends ChangeNotifier {
         for (final doc in snapshot.docs) {
           _mergeMessage(MessageItem.fromFirestore(doc));
         }
-        _saveCache();
+        unawaited(_saveCache());
       }, onError: (Object error, StackTrace stack) {
         lastError = error.toString();
         debugPrint('Messaging stream error: $error');
+        notifyListeners();
       }));
     }
   }
@@ -172,6 +181,7 @@ class MessagingService extends ChangeNotifier {
         isRead: local.isRead || message.isRead,
         senderName: message.senderName,
         senderRole: message.senderRole,
+        deliveryStatus: message.deliveryStatus,
       );
     } else {
       messages.add(message);
@@ -197,6 +207,7 @@ class MessagingService extends ChangeNotifier {
       isRead: true,
       senderName: m.senderName,
       senderRole: m.senderRole,
+      deliveryStatus: m.deliveryStatus,
     ) : m).toList();
   }
 
@@ -316,6 +327,7 @@ class MessagingService extends ChangeNotifier {
       isRead: true,
       senderName: user.name,
       senderRole: user.role,
+      deliveryStatus: 'pending',
     );
     _mergeMessage(message);
     if (config.localMessagingEnabled && config.saveSentMessagesLocally) await _saveCache();
@@ -323,46 +335,93 @@ class MessagingService extends ChangeNotifier {
     notifyListeners();
 
     if (!config.onlineMessagingEnabled || Firebase.apps.isEmpty) {
-      throw StateError('Firebase غير متاح. تم حفظ الرسالة محليًا وستتم المحاولة عند الاتصال.');
+      lastError = 'الاتصال بالخادم غير جاهز. الرسالة معلّقة محليًا، وليست مُرسلة.';
+      notifyListeners();
+      return;
     }
+    // Do not await a Firestore write here: offline .set() can wait until
+    // reconnection. The UI returns immediately with an explicit PENDING state.
+    unawaited(_writeMessage(message));
+  }
+
+  void _setDeliveryState(String messageId, String userId, String status) {
+    if (_uid != userId) return; // A different user may have signed in.
+    final index = messages.indexWhere((m) => m.messageId == messageId);
+    if (index < 0) return;
+    final m = messages[index];
+    messages[index] = MessageItem(
+      messageId: m.messageId,
+      senderId: m.senderId,
+      content: m.content,
+      timestamp: m.timestamp,
+      type: m.type,
+      isRead: m.isRead,
+      targetUserId: m.targetUserId,
+      targetGroupId: m.targetGroupId,
+      senderName: m.senderName,
+      senderRole: m.senderRole,
+      deliveryStatus: status,
+    );
+    unawaited(_saveCache());
+    notifyListeners();
+  }
+
+  Future<void> _writeMessage(MessageItem message) async {
+    if (!_inFlightWrites.add(message.messageId)) return;
     try {
-      final firestoreTarget = targetUserId != null ? '__USER__:$targetUserId' : targetGroupId;
-      await FirebaseFirestore.instance.collection('messages').doc(id).set({
-        'messageId': id,
-        'senderId': user.id,
-        'targetGroupId': firestoreTarget,
-        'content': body,
+      final target = message.targetUserId != null
+          ? '__USER__:${message.targetUserId}' : message.targetGroupId;
+      await FirebaseFirestore.instance.collection('messages')
+          .doc(message.messageId).set({
+        'messageId': message.messageId,
+        'senderId': message.senderId,
+        'targetGroupId': target,
+        'content': message.content,
         'timestamp': Timestamp.fromDate(message.timestamp),
-        'type': type,
+        'type': message.type,
         'isRead': false,
-      }, SetOptions(merge: false));
-    } on FirebaseException catch (e) {
-      lastError = e.toString();
-      notifyListeners();
-      // Permission failures and invalid payloads are permanent, not offline
-      // retries. Never report them as successful delivery.
-      if (e.code == 'permission-denied' ||
-          e.code == 'unauthenticated' ||
-          e.code == 'invalid-argument' ||
-          e.code == 'failed-precondition') {
-        debugPrint('Message rejected by Firebase: $e');
-        // Rejected sends must not remain in the local conversation as sent.
-        messages.removeWhere((entry) => entry.messageId == id);
-        await _saveCache();
+      });
+      _setDeliveryState(message.messageId, message.senderId, 'sent');
+      if (_uid == message.senderId) {
+        lastError = null;
         notifyListeners();
-        rethrow;
       }
-      // Keep the optimistic local copy for transient connectivity failures.
-      debugPrint('Message pending Firestore retry: $e');
+    } on FirebaseException catch (e) {
+      final permanent = const {
+        'permission-denied', 'unauthenticated', 'invalid-argument',
+        'failed-precondition',
+      }.contains(e.code);
+      _setDeliveryState(
+        message.messageId, message.senderId, permanent ? 'failed' : 'pending');
+      if (_uid == message.senderId) {
+        lastError = permanent
+            ? 'رفض Firebase الرسالة: ${e.message ?? e.code}'
+            : 'تعذر الاتصال حاليًا؛ الرسالة بانتظار المزامنة.';
+        notifyListeners();
+      }
+      debugPrint('Messaging write ${permanent ? "rejected" : "pending"}: $e');
     } catch (e) {
-      lastError = e.toString();
-      notifyListeners();
-      // Unexpected failures must not leave a fake sent message.
-      messages.removeWhere((entry) => entry.messageId == id);
-      await _saveCache();
-      notifyListeners();
-      rethrow;
+      _setDeliveryState(message.messageId, message.senderId, 'failed');
+      if (_uid == message.senderId) {
+        lastError = 'فشل إرسال الرسالة: $e';
+        notifyListeners();
+      }
+      debugPrint('Messaging write failed: $e');
+    } finally {
+      _inFlightWrites.remove(message.messageId);
     }
+  }
+
+  Future<void> retryFailedMessage(String messageId) async {
+    final message = messages.where((m) =>
+        m.messageId == messageId && m.senderId == _uid &&
+        m.deliveryStatus == 'failed').firstOrNull;
+    if (message == null) return;
+    if (!config.onlineMessagingEnabled || Firebase.apps.isEmpty) {
+      throw StateError('Firebase غير متاح حاليًا.');
+    }
+    _setDeliveryState(message.messageId, message.senderId, 'pending');
+    unawaited(_writeMessage(message));
   }
 
   Future<void> markRead(String messageId) async {
@@ -384,6 +443,7 @@ class MessagingService extends ChangeNotifier {
         isRead: true,
         senderName: m.senderName,
         senderRole: m.senderRole,
+        deliveryStatus: m.deliveryStatus,
       );
       await _saveCache();
       notifyListeners();
@@ -403,8 +463,13 @@ class MessagingService extends ChangeNotifier {
     syncing = true;
     notifyListeners();
     try {
-      // Firestore's native offline persistence is the primary queue. The local cache
-      // is intentionally kept so the center remains usable even before Firestore reconnects.
+      // Replay locally queued writes with the original IDs (idempotent).
+      // Firestore also replays its own persisted offline queue.
+      for (final message in List<MessageItem>.of(messages)) {
+        if (message.senderId == _uid && message.deliveryStatus == 'pending') {
+          unawaited(_writeMessage(message));
+        }
+      }
       await _subscribeRefresh();
     } finally {
       syncing = false;
