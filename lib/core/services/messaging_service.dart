@@ -17,6 +17,7 @@ class MessageItem {
   final String senderId;
   final String? targetUserId;
   final String? targetGroupId;
+  final String? replyToMessageId;
   final String content;
   final DateTime timestamp;
   final String type;
@@ -35,6 +36,7 @@ class MessageItem {
     required this.isRead,
     this.targetUserId,
     this.targetGroupId,
+    this.replyToMessageId,
     this.senderName = '',
     this.senderRole = '',
     this.deliveryStatus = 'sent',
@@ -50,6 +52,7 @@ class MessageItem {
         'senderId': senderId,
         'targetUserId': targetUserId,
         'targetGroupId': targetGroupId,
+        'replyToMessageId': replyToMessageId,
         'content': content,
         'timestamp': timestamp.toIso8601String(),
         'type': type,
@@ -64,6 +67,7 @@ class MessageItem {
         senderId: '${json['senderId'] ?? ''}',
         targetUserId: json['targetUserId']?.toString(),
         targetGroupId: json['targetGroupId']?.toString(),
+        replyToMessageId: json['replyToMessageId']?.toString(),
         content: '${json['content'] ?? ''}',
         timestamp: DateTime.tryParse('${json['timestamp'] ?? ''}') ?? DateTime.now(),
         type: '${json['type'] ?? 'info'}',
@@ -82,6 +86,7 @@ class MessageItem {
       senderId: '${data['senderId'] ?? ''}',
       targetUserId: data['targetUserId']?.toString(),
       targetGroupId: data['targetGroupId']?.toString(),
+      replyToMessageId: data['replyToMessageId']?.toString(),
       content: '${data['content'] ?? ''}',
       timestamp: timestamp,
       type: '${data['type'] ?? 'info'}',
@@ -179,6 +184,7 @@ class MessagingService extends ChangeNotifier {
         senderId: message.senderId,
         targetUserId: message.targetUserId,
         targetGroupId: message.targetGroupId,
+        replyToMessageId: message.replyToMessageId,
         content: message.content,
         timestamp: message.timestamp,
         type: message.type,
@@ -205,6 +211,7 @@ class MessagingService extends ChangeNotifier {
       senderId: m.senderId,
       targetUserId: m.targetUserId,
       targetGroupId: m.targetGroupId,
+      replyToMessageId: m.replyToMessageId,
       content: m.content,
       timestamp: m.timestamp,
       type: m.type,
@@ -304,14 +311,14 @@ class MessagingService extends ChangeNotifier {
     }
   }
 
-  Future<void> sendToUser({required String targetUserId, required String content, required String type}) async {
+  Future<void> sendToUser({required String targetUserId, required String content, required String type, String? replyToMessageId}) async {
     final user = _user;
     if (user == null || !canSend(type)) throw StateError('ليس لديك صلاحية إرسال الرسائل.');
     if (targetUserId.trim().isEmpty) throw ArgumentError('المرسل إليه غير محدد.');
     if (user.role == 'group_supervisor' && targetUserId.trim() != user.municipalityCoordinatorId) {
       throw StateError('رئيس المجموعة يستطيع إرسال رسالة مباشرة إلى منسق بلديته فقط.');
     }
-    await _send(content: content, type: type, targetUserId: targetUserId.trim());
+    await _send(content: content, type: type, targetUserId: targetUserId.trim(), replyToMessageId: replyToMessageId);
   }
 
   /// Add up to five compressed photos only after the parent message reaches
@@ -446,7 +453,7 @@ class MessagingService extends ChangeNotifier {
     }
   }
 
-  Future<void> _send({required String content, required String type, String? targetUserId, String? targetGroupId}) async {
+  Future<void> _send({required String content, required String type, String? targetUserId, String? targetGroupId, String? replyToMessageId}) async {
     final user = _user;
     if (user == null) throw StateError('لا توجد جلسة مستخدم.');
     final body = content.trim();
@@ -458,6 +465,7 @@ class MessagingService extends ChangeNotifier {
       senderId: user.id,
       targetUserId: targetUserId,
       targetGroupId: targetGroupId,
+      replyToMessageId: replyToMessageId,
       content: body,
       timestamp: DateTime.now(),
       type: type,
@@ -514,6 +522,7 @@ class MessagingService extends ChangeNotifier {
         'senderId': message.senderId,
         'targetGroupId': target,
         if (message.targetUserId != null) 'targetUserId': message.targetUserId,
+        if (message.replyToMessageId != null) 'replyToMessageId': message.replyToMessageId,
         'content': message.content,
         'timestamp': Timestamp.fromDate(message.timestamp),
         'type': message.type,
@@ -575,6 +584,7 @@ class MessagingService extends ChangeNotifier {
         senderId: m.senderId,
         targetUserId: m.targetUserId,
         targetGroupId: m.targetGroupId,
+        replyToMessageId: m.replyToMessageId,
         content: m.content,
         timestamp: m.timestamp,
         type: m.type,
