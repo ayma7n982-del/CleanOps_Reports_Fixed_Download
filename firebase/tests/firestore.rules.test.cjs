@@ -2,7 +2,7 @@ const {before, after, beforeEach, test} = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const {initializeTestEnvironment, assertSucceeds, assertFails} = require('@firebase/rules-unit-testing');
-const {doc, setDoc, getDoc, updateDoc, deleteDoc, writeBatch, Timestamp} = require('firebase/firestore');
+const {doc, setDoc, getDoc, updateDoc, deleteDoc, writeBatch, Timestamp, serverTimestamp, collection, query, where, getDocs, collectionGroup} = require('firebase/firestore');
 
 let env;
 const projectId = 'cleanops-messaging-rules-test';
@@ -593,4 +593,142 @@ test('supervisor creates own-group geolocated SOS; foreign group and missing GPS
   await assertFails(setDoc(doc(db('worker-a'),'operations','worker-fake-sos'),{
     ...sos,id:'worker-fake-sos',reportedBy:'worker-a',userId:'worker-a',
   }));
+});
+
+const seedDecisionGroup = async () => env.withSecurityRulesDisabled(async ctx => {
+  const store = ctx.firestore();
+  await setDoc(doc(store,'operations','group-a'), {_entity:'group',municipalityCoordinatorId:'coordinator',
+    isActive:true,adjacentGroupIds:['group-b']});
+  await setDoc(doc(store,'operations','group-b'), {_entity:'group',municipalityCoordinatorId:'other'});
+  for (const [id,name] of [['coordinator','Municipality'],['jsc','Council'],['manager','Manager']]) {
+    await updateDoc(doc(store,'users',id), {name});
+  }
+});
+const decision = (actor='coordinator', groupId='group-a', kind='ppe') => ({
+  id:'decision-1',kind,title:'Urgent directive',body:'Provide safety equipment to the group',
+  groupId,municipalityCoordinatorId:'coordinator',targetId:'',
+  scopeKey:'municipality:coordinator',status:'issued',priority:'urgent',
+  shiftDate:'2026-10-29',expiresAt:Timestamp.fromMillis(Date.now()+3600000),
+  details:{},createdBy:actor,coordinatorName:actor==='coordinator'?'Municipality':
+    actor==='jsc'?'Council':'Manager',createdAt:serverTimestamp(),schemaVersion:1,
+});
+test('decision hub: all L2-L4 roles issue real scoped directives', async () => {
+  await seedDecisionGroup();
+  for (const actor of ['coordinator','jsc','manager']) {
+    await assertSucceeds(setDoc(doc(db(actor),'strategic_decisions', 'decision-1'), decision(actor)));
+    await env.withSecurityRulesDisabled(async ctx =>
+      deleteDoc(doc(ctx.firestore(),'strategic_decisions','decision-1')));
+  }
+});
+test('decision hub: foreign municipality, inactive accounts and forged actor denied', async () => {
+  await seedDecisionGroup();
+  await assertFails(setDoc(doc(db('coordinator'),'strategic_decisions','decision-1'),
+    {...decision(),groupId:'group-b',municipalityCoordinatorId:'other'}));
+  await assertFails(setDoc(doc(db('head-a'),'strategic_decisions','decision-1'),decision('head-a')));
+  await assertFails(setDoc(doc(db('coordinator'),'strategic_decisions','decision-1'),
+    {...decision(),createdBy:'manager'}));
+  await env.withSecurityRulesDisabled(async ctx =>
+    updateDoc(doc(ctx.firestore(),'users','coordinator'),{isActive:false}));
+  await assertFails(setDoc(doc(db('coordinator'),'strategic_decisions','decision-1'),decision()));
+});
+test('decision hub: supervisor reads own directive and follows acknowledgement then completion', async () => {
+  await seedDecisionGroup();
+  await assertSucceeds(setDoc(doc(db('coordinator'),'strategic_decisions','decision-1'),decision()));
+  const ref=doc(db('head-a'),'strategic_decisions','decision-1');
+  await assertSucceeds(getDoc(ref));
+  await assertSucceeds(getDocs(query(collection(db('head-a'),'strategic_decisions'),
+    where('groupId','==','group-a'))));
+  await assertFails(getDoc(doc(db('head-b'),'strategic_decisions','decision-1')));
+  await assertFails(updateDoc(ref,{status:'completed',completedBy:'head-a',
+    completedAt:serverTimestamp(),completionNote:'Completed without acknowledgement'}));
+  await assertSucceeds(updateDoc(ref,{status:'acknowledged',
+    acknowledgedBy:'head-a',acknowledgedAt:serverTimestamp()}));
+  await assertFails(updateDoc(ref,{status:'completed',completedBy:'head-a',
+    completedAt:serverTimestamp(),completionNote:'short'}));
+  await assertSucceeds(updateDoc(ref,{status:'completed',completedBy:'head-a',
+    completedAt:serverTimestamp(),completionNote:'Safety equipment received and recorded.'}));
+  await assertFails(updateDoc(ref,{body:'forged'}));
+  await assertFails(deleteDoc(ref));
+});
+test('decision hub: global broadcasts restricted to L3/L4 and visible on supervisor dashboards', async () => {
+  await seedDecisionGroup();
+  const broadcast={...decision('jsc','','broadcast'),municipalityCoordinatorId:'',
+    scopeKey:'global'};
+  await assertFails(setDoc(doc(db('coordinator'),'strategic_decisions','decision-1'),
+    {...broadcast,createdBy:'coordinator',coordinatorName:'Municipality'}));
+  await assertSucceeds(setDoc(doc(db('jsc'),'strategic_decisions','decision-1'),broadcast));
+  await assertSucceeds(getDocs(query(collection(db('head-b'),'strategic_decisions'),
+    where('scopeKey','==','global'))));
+  await assertFails(getDoc(doc(env.unauthenticatedContext().firestore(),
+    'strategic_decisions','decision-1')));
+});
+test('decision hub: container dispatch must reference a truly full own-group container', async () => {
+  await seedDecisionGroup();
+  await env.withSecurityRulesDisabled(async ctx => setDoc(doc(ctx.firestore(),'containers','c1'),
+    {groupId:'group-a',municipalityId:'coordinator',status:'empty'}));
+  const action={...decision('coordinator','group-a','collection'),details:{containerId:'c1'}};
+  await assertFails(setDoc(doc(db('coordinator'),'strategic_decisions','decision-1'),action));
+  await env.withSecurityRulesDisabled(async ctx => updateDoc(doc(ctx.firestore(),'containers','c1'),
+    {status:'full'}));
+  await assertSucceeds(setDoc(doc(db('coordinator'),'strategic_decisions','decision-1'),action));
+});
+test('decision hub: health hazard requires a real fullSince older than 12 hours', async () => {
+  await seedDecisionGroup();
+  await env.withSecurityRulesDisabled(async ctx => setDoc(doc(ctx.firestore(),'containers','c1'),
+    {groupId:'group-a',municipalityId:'coordinator',status:'full',updatedAt:Timestamp.fromMillis(0)}));
+  const action={...decision('coordinator','group-a','health'),details:{containerId:'c1'}};
+  await assertFails(setDoc(doc(db('coordinator'),'strategic_decisions','decision-1'),action));
+  await env.withSecurityRulesDisabled(async ctx => updateDoc(doc(ctx.firestore(),'containers','c1'),
+    {fullSince:Timestamp.fromMillis(Date.now()-13*3600000)}));
+  await assertSucceeds(setDoc(doc(db('coordinator'),'strategic_decisions','decision-1'),action));
+});
+test('decision hub: redirects reject a full alternative and accept a safe active alternative', async () => {
+  await seedDecisionGroup();
+  await env.withSecurityRulesDisabled(async ctx => {
+    await setDoc(doc(ctx.firestore(),'dumpsites','source'),{nameAr:'Source',isActive:true,fillPercentage:90,capacity:100});
+    await setDoc(doc(ctx.firestore(),'dumpsites','alternate'),{nameAr:'Alternate',isActive:true,fillPercentage:90,capacity:100});
+  });
+  const action={...decision('coordinator','group-a','dumpsite_redirect'),
+    details:{sourceId:'source',sourceName:'Source',alternativeId:'alternate',
+      alternativeName:'Alternate',requestLeveling:true}};
+  await assertFails(setDoc(doc(db('coordinator'),'strategic_decisions','decision-1'),action));
+  await env.withSecurityRulesDisabled(async ctx =>
+    updateDoc(doc(ctx.firestore(),'dumpsites','alternate'),{fillPercentage:20}));
+  await assertSucceeds(setDoc(doc(db('coordinator'),'strategic_decisions','decision-1'),action));
+});
+test('decision hub: complete status transition and immutable history commit atomically', async () => {
+  await seedDecisionGroup();
+  await env.withSecurityRulesDisabled(async ctx =>
+    setDoc(doc(ctx.firestore(),'containers','c1'),{id:'c1',status:'empty',
+      issueStatus:'none',groupId:'group-a',municipalityId:'coordinator',updatedBy:'head-a'}));
+  const store=db('head-a'), batch=writeBatch(store);
+  batch.update(doc(store,'containers','c1'), {status:'full',fullSince:serverTimestamp(),
+    lastStatusEventId:'e1',updatedBy:'head-a',updatedAt:serverTimestamp()});
+  batch.set(doc(store,'containers','c1','status_events','e1'),{
+    containerId:'c1',status:'full',previousStatus:'empty',groupId:'group-a',
+    municipalityId:'coordinator',createdBy:'head-a',at:serverTimestamp(),
+  });
+  await assertSucceeds(batch.commit());
+  await assertSucceeds(getDocs(query(collectionGroup(db('coordinator'),'status_events'),
+    where('municipalityId','==','coordinator'))));
+  await assertFails(updateDoc(doc(store,'containers','c1','status_events','e1'),{status:'empty'}));
+});
+test('decision hub: a bare forged fullSince write is denied', async () => {
+  await seedDecisionGroup();
+  await env.withSecurityRulesDisabled(async ctx =>
+    setDoc(doc(ctx.firestore(),'containers','c1'),{id:'c1',status:'empty',
+      issueStatus:'none',groupId:'group-a',municipalityId:'coordinator',updatedBy:'head-a'}));
+  await assertFails(updateDoc(doc(db('head-a'),'containers','c1'),{
+    status:'full',fullSince:Timestamp.fromMillis(0),updatedBy:'head-a',lastStatusEventId:'fake'}));
+});
+test('decision hub: plans are manager-only immutable and municipality-scoped', async () => {
+  await seedDecisionGroup();
+  const plan={id:'plan',targetCycleId:'12',status:'approved',
+    municipalityCoordinatorId:'coordinator',decisionIds:['decision-1'],
+    recommendations:[{decisionId:'decision-1'}],sourceCycleId:'11',
+    createdBy:'coordinator',coordinatorName:'Municipality',createdAt:serverTimestamp(),
+    schemaVersion:1};
+  await assertFails(setDoc(doc(db('head-a'),'strategic_plans','plan'),plan));
+  await assertSucceeds(setDoc(doc(db('coordinator'),'strategic_plans','plan'),plan));
+  await assertFails(updateDoc(doc(db('coordinator'),'strategic_plans','plan'),{status:'changed'}));
 });

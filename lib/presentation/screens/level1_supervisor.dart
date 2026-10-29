@@ -1,3 +1,5 @@
+import '../widgets/decision_directive_banner.dart';
+import '../../core/services/decision_route_policy.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../core/localization.dart';
 import 'dart:async';
@@ -273,6 +275,7 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
     final id = startedAt.microsecondsSinceEpoch.toString();
     setState(() => savingTrip = true);
     try {
+      final route = await resolveDecisionRoute(u, landfill);
       await d.enqueue('trip', 'create', {
         'id': id,
         'groupId': u.groupId,
@@ -285,7 +288,8 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
         ...lifecycle,
         'cartType': alternative ? 'alternative' : 'primary',
         'alternative': alternative,
-        'landfill': landfill,
+        'landfill': route['landfill'],
+        if (route['routeDecisionId'] != null) 'routeDecisionId': route['routeDecisionId'],
         'estimatedQuantity': quantity.text.trim(),
         'quantityUnit': 'ton',
         'issue': issue.text.trim(),
@@ -576,6 +580,7 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
                 subtitle: 'أربع مهام فقط. اختر الإجراء المطلوب مباشرة دون قوائم مزدحمة.',
               ),
               const SizedBox(height: 12),
+              const DecisionDirectiveBanner(),
               const OperationsOverviewStrip(),
               const SizedBox(height: 12),
               WorkspaceOverview(onEmergencyTap: user.can('emergency','create')

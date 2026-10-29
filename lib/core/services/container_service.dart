@@ -204,7 +204,7 @@ class ContainerService extends ChangeNotifier {
     final previous = item.status;
     final next = item.copyWith(status: status, updatedAt: DateTime.now().toIso8601String(), updatedBy: u.id);
     await _saveLocal(next);
-    await data.enqueue('container', 'update', next.toMap());
+    await data.enqueue('container', 'update', {...next.toMap(), '_trackStatus': true});
     if (status == 'full') {
       try { await messaging.sendContainerAlert(next, 'full'); } catch (e) { debugPrint('Container full alert deferred: $e'); }
     } else if (status == 'empty' && previous == 'full') {
