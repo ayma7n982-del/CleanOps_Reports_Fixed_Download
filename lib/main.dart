@@ -510,28 +510,28 @@ class _CleanOpsNavigationDock extends StatelessWidget {
       child: SafeArea(
         top: false,
         child: Padding(
-          padding: const EdgeInsetsDirectional.fromSTEB(7, 9, 7, 5),
+          padding: const EdgeInsetsDirectional.fromSTEB(8, 5, 8, 4),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               if (canQuickAction)
                 Padding(
-                  padding: const EdgeInsetsDirectional.only(end: 5, bottom: 5),
+                  padding: const EdgeInsetsDirectional.only(start: 4, bottom: 3),
                   child: Align(
-                    alignment: AlignmentDirectional.centerEnd,
+                    alignment: AlignmentDirectional.centerStart,
                     child: SizedBox(
-                      height: 38,
+                      height: 34,
                       child: FilledButton.icon(
                         onPressed: onQuickAction,
                         style: FilledButton.styleFrom(
                           backgroundColor: aiBlue,
                           foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(horizontal: 14),
-                          minimumSize: const Size(0, 38),
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          minimumSize: const Size(0, 34),
                           tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(19)),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                         ),
-                        icon: const Icon(Icons.add_rounded, size: 20),
+                        icon: const Icon(Icons.add_rounded, size: 18),
                         label: const AppText('إجراء سريع', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w800)),
                       ),
                     ),
@@ -553,15 +553,15 @@ class _CleanOpsNavigationDock extends StatelessWidget {
                             onTap: () => onDestinationSelected(i),
                             borderRadius: BorderRadius.circular(18),
                             child: SizedBox(
-                              height: 66,
+                              height: 60,
                               child: Column(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
                                   AnimatedContainer(
                                     duration: const Duration(milliseconds: 180),
                                     curve: Curves.easeOut,
-                                    width: 52,
-                                    height: 36,
+                                    width: 48,
+                                    height: 33,
                                     decoration: BoxDecoration(
                                       borderRadius: BorderRadius.circular(17),
                                       gradient: selected
@@ -579,7 +579,7 @@ class _CleanOpsNavigationDock extends StatelessWidget {
                                       color: selected ? aiBlue : cleanOpsMuted,
                                     ),
                                   ),
-                                  const SizedBox(height: 4),
+                                  const SizedBox(height: 3),
                                   Padding(
                                     padding: const EdgeInsets.symmetric(horizontal: 1),
                                     child: SizedBox(
@@ -594,7 +594,7 @@ class _CleanOpsNavigationDock extends StatelessWidget {
                                           softWrap: false,
                                           style: TextStyle(
                                             color: selected ? aiBlue : cleanOpsMuted,
-                                            fontSize: 11.5,
+                                            fontSize: 11.3,
                                             fontWeight: selected ? FontWeight.w900 : FontWeight.w700,
                                           ),
                                         ),
