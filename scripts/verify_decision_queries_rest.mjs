@@ -34,7 +34,7 @@ async function request(path, method = 'GET', body) {
   return raw ? JSON.parse(raw) : {};
 }
 
-const probe = '__cleanops_query_verification_no_write__';
+const probe = 'cleanops-query-verification-no-write';
 const cases = [
   ['scoped-operations', root, 'operations', [['_entity', 'trip'], ['municipalityCoordinatorId', probe]]],
   ['own-group-directives', root, 'strategic_decisions', [['groupId', probe]]],
