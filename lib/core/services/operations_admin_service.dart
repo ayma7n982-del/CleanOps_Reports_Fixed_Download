@@ -521,21 +521,33 @@ class OperationsAdminService {
   }
 
   Future<void> freezeCycleUsers(String cycleId, {required String actorId}) async {
-    final cycle = await _cycles.doc(cycleId).get();
+    if (FirebaseAuth.instance.currentUser?.uid != actorId) {
+      throw StateError('انتهت الجلسة أو لا تملك صلاحية التجميد.');
+    }
+    final cycle = await _cycles.doc(cycleId)
+        .get(const GetOptions(source: Source.server));
     final endValue = cycle.data()?['endDate'];
-    final endDate = endValue is Timestamp ? endValue.toDate() : DateTime.tryParse('${endValue ?? ''}');
-    if (endDate == null || DateTime.now().isBefore(endDate)) {
+    final endDate = endValue is Timestamp ? endValue.toDate()
+        : DateTime.tryParse('${endValue ?? ''}');
+    if (!cycle.exists || endDate == null ||
+        DateTime.now().isBefore(endDate)) {
       throw StateError('لا يمكن تجميد الدورة قبل انتهاء تاريخها المحدد.');
     }
-    final snap = await _users
+    final query = _users
         .where('municipalityCoordinatorId', isEqualTo: actorId)
         .where('cycleId', isEqualTo: cycleId)
-        .where('isActive', isEqualTo: true)
-        .get();
+        .where('isActive', isEqualTo: true);
+    final snap = await query.get(const GetOptions(source: Source.server));
+    final targets = snap.docs.where((doc) => const ['worker', 'group_supervisor']
+        .contains(doc.data()['role'])).toList();
+    if (targets.isEmpty) {
+      throw StateError('لا توجد حسابات نشطة لتجميدها في هذه الدورة.');
+    }
+    if (targets.length > 500) {
+      throw StateError('عدد الحسابات يتجاوز حد العملية الواحدة؛ يلزم تنفيذ التجميد على دفعات.');
+    }
     final batch = firestore.batch();
-    for (final doc in snap.docs) {
-      final role = '${doc.data()['role'] ?? ''}';
-      if (role != 'group_supervisor' && role != 'worker') continue;
+    for (final doc in targets) {
       batch.update(doc.reference, {
         'isActive': false,
         'status': 'frozen',
@@ -545,6 +557,11 @@ class OperationsAdminService {
       });
     }
     await batch.commit();
+    final remaining = await query.get(const GetOptions(source: Source.server));
+    if (remaining.docs.any((doc) => const ['worker', 'group_supervisor']
+        .contains(doc.data()['role']))) {
+      throw StateError('لم يؤكد الخادم تجميد جميع حسابات الدورة. راجع القائمة قبل إعادة المحاولة.');
+    }
   }
 
   Future<void> _requireManagedGroup(String groupId, String actorId) async {

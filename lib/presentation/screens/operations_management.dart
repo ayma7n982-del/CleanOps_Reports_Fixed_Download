@@ -733,14 +733,38 @@ class _WorkforceTabState extends State<_WorkforceTab> {
                       final endValue = selected?.data()['endDate'];
                       final endDate = endValue is Timestamp ? endValue.toDate() : DateTime.tryParse('${endValue ?? ''}');
                       final ended = endDate != null && !DateTime.now().isBefore(endDate);
-                      return SizedBox(width: 170, child: AiActionTile(title: 'تجميد الكل', feature: 'permissions', onTap: ended ? () async {
-                        try {
-                          await svc.freezeCycleUsers(cycleId, actorId: u.id);
-                          if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: AppText('تم تجميد عمال ومشرفي الدورة المنتهية.')));
-                        } catch (e) {
-                          if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
-                        }
-                      } : null));
+                      return SizedBox(width: 170, child: AiActionTile(
+                        title: 'تجميد الكل', feature: 'permissions',
+                        onTap: ended ? () async {
+                          final approved = await showDialog<bool>(
+                            context: context,
+                            builder: (dialogContext) => AlertDialog(
+                              title: const AppText('تأكيد تجميد الدورة'),
+                              content: const AppText(
+                                'سيُوقف هذا الإجراء حسابات العمال والمشرفين النشطين '
+                                'في هذه الدورة وضمن بلديتك فقط. هل تريد المتابعة؟'),
+                              actions: [
+                                TextButton(
+                                  onPressed: () => Navigator.pop(dialogContext, false),
+                                  child: const AppText('إلغاء')),
+                                FilledButton(
+                                  onPressed: () => Navigator.pop(dialogContext, true),
+                                  child: const AppText('تأكيد التجميد')),
+                              ],
+                            ),
+                          );
+                          if (approved != true || !mounted) return;
+                          try {
+                            await svc.freezeCycleUsers(cycleId, actorId: u.id);
+                            if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: AppText(
+                                'تم تأكيد تجميد حسابات الدورة على Firebase.')));
+                          } catch (e) {
+                            if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('تعذر تأكيد التجميد: $e')));
+                          }
+                        } : null,
+                      ));
                     }),
                     SizedBox(width: 170, child: AiActionTile(title: 'نقل عامل', feature: 'trips', onTap: () => _transferDialog(context, svc, u.id, cycleId))),
                     SizedBox(width: 170, child: AiActionTile(title: 'تبديل عاملين', feature: 'workers', onTap: () => _swapDialog(context, svc, u.id, cycleId))),
