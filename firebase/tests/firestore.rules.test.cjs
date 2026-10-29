@@ -75,6 +75,13 @@ test('supervisor warning broadcast is rejected', async () => {
 test('worker cannot send messages to council', async () => {
   await assertFails(setDoc(doc(db('worker-a'),'messages','msg-1'), message('worker-a','__JSC__','info')));
 });
+test('worker emergency council escalation permitted but routine worker broadcast denied', async () => {
+  await assertSucceeds(setDoc(doc(db('worker-a'),'messages','msg-1'),
+    message('worker-a','__JSC__','emergency')));
+  await assertFails(setDoc(doc(db('worker-a'),'messages','worker-info'), {
+    ...message('worker-a','__JSC__','info'), messageId:'worker-info',
+  }));
+});
 test('supervisor may escalate a message to council', async () => {
   await assertSucceeds(setDoc(doc(db('head-a'),'messages','msg-1'), message('head-a','__JSC__','warning')));
 });
