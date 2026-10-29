@@ -56,8 +56,8 @@ const config = JSON.parse(fs.readFileSync('firebase/firestore.indexes.json', 'ut
 const requested = config.indexes.filter(i => i.collectionGroup === 'strategic_decisions');
 let existing = [], pageToken;
 do {
-  const result = await request(root + 'strategic_decisions/indexes?pageSize=100' +
-    (pageToken ? '&pageToken=' + encodeURIComponent(pageToken) : ''));
+  const result = await request(root + 'strategic_decisions/indexes' +
+    (pageToken ? '?pageToken=' + encodeURIComponent(pageToken) : ''));
   existing.push(...(result.indexes || []));
   pageToken = result.nextPageToken;
 } while (pageToken);
@@ -90,7 +90,7 @@ if (wanted.some(i => !inherited.some(old => signature(old) === signature(i)))) {
 // "creation requested" as proof that the queries are usable.
 for (const operation of operations) await complete(operation);
 for (let attempt = 0; attempt < 120; attempt++) {
-  const list = await request(root + 'strategic_decisions/indexes?pageSize=100');
+  const list = await request(root + 'strategic_decisions/indexes');
   const currentField = await request(fieldName);
   const ready = requested.every(i => (list.indexes || []).some(x =>
     signature(x) === signature(i) && x.state === 'READY'));
