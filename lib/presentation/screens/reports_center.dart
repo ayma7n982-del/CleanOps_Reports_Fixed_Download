@@ -231,7 +231,7 @@ class _ReportsCenterState extends State<ReportsCenterScreen> {
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
       itemCount: types.length,
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: constraints.maxWidth < 300 ? 1 : 2,
         crossAxisSpacing: 10,
         mainAxisSpacing: 10,
