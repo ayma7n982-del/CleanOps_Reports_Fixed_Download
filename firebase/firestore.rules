@@ -95,7 +95,11 @@ service cloud.firestore {
 
 
     // ---------------- Internal messaging ----------------
-    function activeMessenger() { return signedIn() && userDoc().isActive != false; }
+    function activeMessenger() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && userDoc().isActive != false;
+    }
     function supervisorOwnGroupTarget() {
       return role() == 'group_supervisor'
         && userDoc().groupId is string
@@ -147,6 +151,27 @@ service cloud.firestore {
         || (isL2() && request.resource.data.targetGroupId == '__JSC__' && request.resource.data.type in ['info','warning','emergency'])
       );
     }
+    // Read/ack receipts live under messages/{messageId}/receipts/{userId}.
+    // The parent message is immutable, so group recipients never toggle a
+    // shared isRead flag; only their personal receipt is updated.
+    function receiptParentExists(messageId) {
+      return exists(/databases/$(database)/documents/messages/$(messageId));
+    }
+    function receiptSender(messageId) {
+      return get(/databases/$(database)/documents/messages/$(messageId)).data.senderId == request.auth.uid;
+    }
+    function receiptRecipient(messageId) {
+      let msg = get(/databases/$(database)/documents/messages/$(messageId)).data;
+      return msg.senderId != request.auth.uid
+        && (
+          msg.targetGroupId == '__USER__:' + request.auth.uid
+          || (userDoc().groupId is string
+              && userDoc().groupId.size() > 0
+              && msg.targetGroupId == userDoc().groupId)
+          || (msg.targetGroupId == '__ALL_MUNICIPALITIES__' && isL2())
+          || (msg.targetGroupId == '__JSC__' && isL3())
+        );
+    }
     function messageReadUpdateAllowed() {
       return activeMessenger() && resource.data.keys().hasAny(['targetGroupId'])
         && resource.data.targetGroupId == '__USER__:' + request.auth.uid
@@ -158,6 +183,29 @@ service cloud.firestore {
       allow create: if messageCreateAllowed() && request.resource.data.messageId == messageId;
       allow update: if messageReadUpdateAllowed();
       allow delete: if false;
+
+      match /receipts/{receiptUid} {
+        // A sender may view all acknowledgements for their message; each
+        // recipient may view only their own receipt.
+        allow get, list: if activeMessenger() && receiptParentExists(messageId)
+          && (receiptSender(messageId) ||
+              (receiptUid == request.auth.uid && receiptRecipient(messageId)));
+        allow create: if activeMessenger() && receiptParentExists(messageId)
+          && receiptUid == request.auth.uid && receiptRecipient(messageId)
+          && request.resource.data.keys().hasOnly(['userId','status','updatedAt'])
+          && request.resource.data.keys().hasAll(['userId','status','updatedAt'])
+          && request.resource.data.userId == request.auth.uid
+          && request.resource.data.status in ['read', 'acknowledged']
+          && request.resource.data.updatedAt == request.time;
+        allow update: if activeMessenger() && receiptParentExists(messageId)
+          && receiptUid == request.auth.uid && receiptRecipient(messageId)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status','updatedAt'])
+          && resource.data.userId == request.auth.uid
+          && resource.data.status == 'read'
+          && request.resource.data.status == 'acknowledged'
+          && request.resource.data.updatedAt == request.time;
+        allow delete: if false;
+      }
     }
 
     // ---------------- User profiles / GPS ----------------
