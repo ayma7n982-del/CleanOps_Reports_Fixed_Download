@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:printing/printing.dart';
 import '../widgets/app_design.dart';
+import '../widgets/eco_shortcuts.dart';
 import '../../core/constants/app_constants.dart';
 import '../../core/models/core_models.dart';
 import '../../core/services/auth_service.dart';
@@ -220,99 +221,41 @@ class _ReportsCenterState extends State<ReportsCenterScreen> {
   Widget _drop<T>(String label, T? value, Map<T?,String> items, ValueChanged<T?> onChanged) => SizedBox(width: 190, child: DropdownButtonFormField<T>(value: value, isExpanded: true, decoration: InputDecoration(labelText: label, isDense: true, contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12)), items: items.entries.map((e)=>DropdownMenuItem<T>(value:e.key, child: Text(e.value, maxLines: 1, overflow: TextOverflow.ellipsis))).toList(), onChanged: onChanged));
 
   Widget _typeCards() {
-    final types = <(String, String, IconData)>[
-      ('all', 'كل التقارير', Icons.dashboard_customize_rounded),
-      ('absence', 'الحضور والغياب', Icons.fact_check_rounded),
-      ('containers', 'تقارير الحاويات', Icons.delete_sweep_rounded),
-      ('work', 'تقارير العمل', Icons.local_shipping_rounded),
-      ('cycles', 'دورات العمل', Icons.event_repeat_rounded),
-      ('municipalities', 'تقارير البلديات', Icons.location_city_rounded),
-      ('groups', 'تقارير المجموعات', Icons.groups_rounded),
+    final types = <(String, String, String, String, IconData)>[
+      ('all', 'كل التقارير', 'ملخص المؤشرات والبيانات', 'reports', Icons.dashboard_customize_rounded),
+      ('absence', 'الحضور والغياب', 'السجلات ونسب الالتزام', 'attendance', Icons.fact_check_rounded),
+      ('containers', 'تقارير الحاويات', 'الحالة والامتلاء', 'containers', Icons.delete_sweep_rounded),
+      ('work', 'تقارير العمل', 'توثيق الأنشطة اليومية', 'trips', Icons.local_shipping_rounded),
+      ('cycles', 'دورات العمل', 'المتابعة حسب الدورة', 'cycle', Icons.event_repeat_rounded),
+      ('municipalities', 'تقارير البلديات', 'حسب البلدية', 'dumpsite', Icons.location_city_rounded),
+      ('groups', 'تقارير المجموعات', 'حسب المجموعة', 'workers', Icons.groups_rounded),
     ];
-    return LayoutBuilder(builder: (context, constraints) => GridView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      itemCount: types.length,
-      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: constraints.maxWidth < 300 ? 1 : 2,
-        crossAxisSpacing: 10,
-        mainAxisSpacing: 10,
-        mainAxisExtent: constraints.maxWidth < 300 ? 116 : 145,
-      ),
-      itemBuilder: (context, index) {
-        final item = types[index];
-        final selected = reportType == item.$1;
-        final feature = switch (item.$1) {
-          'absence' => 'attendance',
-          'containers' => 'containers',
-          'work' => 'trips',
-          'cycles' => 'cycle',
-          'municipalities' => 'dumpsite',
-          'groups' => 'workers',
-          _ => 'reports',
-        };
-        final accent = EcoPalette.accent(feature);
-        final tint = EcoPalette.tint(feature);
-        return Semantics(
-          button: true,
-          selected: selected,
-          label: item.$2,
-          child: Material(
-            color: Colors.transparent,
-            child: Ink(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(19),
-                gradient: LinearGradient(
-                  colors: [tint, Color.lerp(tint, Colors.white, .53)!],
-                  begin: Alignment.topRight,
-                  end: Alignment.bottomLeft,
-                ),
-                border: Border.all(
-                  color: selected ? accent : accent.withOpacity(.17),
-                  width: selected ? 2 : 1,
-                ),
-                boxShadow: const [
-                  BoxShadow(
-                    color: Color(0x0C0B765F),
-                    blurRadius: 12,
-                    offset: Offset(0, 5),
-                  ),
-                ],
-              ),
-              child: InkWell(
-                borderRadius: BorderRadius.circular(19),
-                onTap: () {
-                  if (item.$1 == 'absence') { Navigator.push(context, MaterialPageRoute(builder: (_) => const AttendanceReportsHomeScreen())); return; }
-                  if (item.$1 == 'work') { Navigator.push(context, MaterialPageRoute(builder: (_) => const WorkReportsDashboard())); return; }
-                  setState(() => reportType = item.$1);
-                  _refresh();
-                },
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 10),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      EcoPictorialIcon(feature: feature, icon: item.$3, size: 56),
-                      const SizedBox(height: 7),
-                      AppText(item.$2,
-                        textAlign: TextAlign.center,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: cleanOpsText,
-                          fontWeight: FontWeight.w900,
-                          fontSize: 12.5,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
+    return EcoShortcutGrid(
+      cards: [
+        for (final item in types)
+          EcoShortcutCard(
+            title: item.$2,
+            subtitle: item.$3,
+            feature: item.$4,
+            icon: item.$5,
+            selected: reportType == item.$1,
+            onTap: () {
+              if (item.$1 == 'absence') {
+                Navigator.push(context, MaterialPageRoute(
+                  builder: (_) => const AttendanceReportsHomeScreen()));
+                return;
+              }
+              if (item.$1 == 'work') {
+                Navigator.push(context, MaterialPageRoute(
+                  builder: (_) => const WorkReportsDashboard()));
+                return;
+              }
+              setState(() => reportType = item.$1);
+              _refresh();
+            },
           ),
-        );
-      },
-    ));
+      ],
+    );
   }
 
   Widget _kpis(ReportSnapshot s) => Wrap(spacing:8, runSpacing:8, children: [
