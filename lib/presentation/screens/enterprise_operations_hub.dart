@@ -1,6 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
+import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
+import '../../core/services/fast_smart_search.dart';
+import '../../core/services/container_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -357,6 +361,7 @@ class SyncCenterPage extends StatelessWidget {
 class SystemHealthPage extends StatefulWidget { const SystemHealthPage({super.key}); @override State<SystemHealthPage> createState()=>_SystemHealthPageState(); }
 class _SystemHealthPageState extends State<SystemHealthPage>{Map<String,String> state={};bool busy=false;Future<void> check()async{setState(()=>busy=true);final next=<String,String>{};next['Firebase']=Firebase.apps.isNotEmpty?'جاهز':'غير مهيأ';next['Authentication']=FirebaseAuth.instance.currentUser != null?'جلسة نشطة':'لا توجد جلسة';try{await FirebaseFirestore.instance.collection('config').doc('global').get(const GetOptions(source:Source.server)).timeout(const Duration(seconds:5));next['Firestore']='متصل';}catch(e){next['Firestore']='غير متاح';}final c=context.read<ConfigService>();next['API']=c.apiEnabled?(c.apiBaseUrl.isEmpty?'مفعّل بلا عنوان':'مفعّل'):'غير مفعّل';next['Local Store']='جاهز';setState(()=>state=next..['Checked At']=DateTime.now().toIso8601String());setState(()=>busy=false);} @override void initState(){super.initState();unawaited(check());} @override Widget build(BuildContext context)=>Scaffold(appBar:AppBar(title:const AppText('صحة النظام')),body:ListView(padding:const EdgeInsets.fromLTRB(16,16,16,120),children:[AiSectionCard(title:'System Health',subtitle:'فحص فعلي للخدمات المتاحة',feature:'operations',trailing:IconButton(onPressed:busy?null:check,icon:const Icon(Icons.refresh_rounded)),child:Column(children:state.entries.map((e)=>ListTile(dense:true,leading:Icon(e.key=='Checked At'?Icons.schedule_rounded:Icons.circle,color:e.key=='Checked At'?cleanOpsMuted:(e.value.contains('غير')||e.value.contains('لا ')?Colors.orange:aiGreen),size:15),title:AppText(e.key,style:const TextStyle(fontSize:11)),trailing:AppText(e.value,style:const TextStyle(fontSize:10,color:cleanOpsText)))).toList()))]));}
 
+
 class GlobalSearchPage extends StatefulWidget {
   final String initialQuery;
   final bool openExactResult;
@@ -365,322 +370,545 @@ class GlobalSearchPage extends StatefulWidget {
     this.initialQuery = '',
     this.openExactResult = false,
   });
-  @override State<GlobalSearchPage> createState() => _GlobalSearchPageState();
+
+  @override
+  State<GlobalSearchPage> createState() => _GlobalSearchPageState();
 }
 
 class _GlobalSearchPageState extends State<GlobalSearchPage> {
   final controller = TextEditingController();
-  bool busy = false;
-  Timer? _searchDebounce;
-  int _searchRequest = 0;
+  final FastSmartSearch _index = FastSmartSearch();
+  late DataService _dataService;
+  late ContainerService _containerService;
+  late AppUser _actor;
+  List<FastSearchRecord> results = const [];
+  bool remoteLoading = false;
+  bool _loadedOnce = false;
   bool _autoOpened = false;
-  List<_SearchResult> results = [];
-  final Map<String, List<Map<String, dynamic>>> _searchCache = {};
-  final Map<String, DateTime> _searchCacheAt = {};
+  String? remoteWarning;
+  String categoryFilter = 'الكل';
 
   @override
   void initState() {
     super.initState();
-    final initial = widget.initialQuery.trim();
-    if (initial.isNotEmpty) {
-      controller.text = initial;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _onQueryChanged(initial);
-      });
-    }
+    controller.text = widget.initialQuery;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _actor = context.read<AuthService>().currentUser!;
+      _dataService = context.read<DataService>();
+      _containerService = context.read<ContainerService>();
+      _dataService.addListener(_refreshLocalSources);
+      _containerService.addListener(_refreshLocalSources);
+      _refreshLocalSources();
+      _loadRemoteSources();
+    });
   }
 
-  @override void dispose() { _searchDebounce?.cancel(); controller.dispose(); super.dispose(); }
-
-  void _onQueryChanged(String value) {
-    _searchDebounce?.cancel();
-    final request = ++_searchRequest;
-    if (value.trim().isEmpty) { setState(() { results = []; busy = false; }); return; }
-    setState(() => busy = true);
-    _searchDebounce = Timer(const Duration(milliseconds: 180), () { if (mounted && request == _searchRequest) search(); });
+  @override
+  void dispose() {
+    if (_loadedOnce) {
+      _dataService.removeListener(_refreshLocalSources);
+      _containerService.removeListener(_refreshLocalSources);
+    }
+    controller.dispose();
+    super.dispose();
   }
 
-  Future<void> search() async {
-    final q = _normalize(controller.text);
-    final request = _searchRequest;
-    if (q.isEmpty) { if (mounted) setState(() { results = []; busy = false; }); return; }
-    if (mounted) setState(() => busy = true);
-    final db = FirebaseFirestore.instance;
-    final actor = context.read<AuthService>().currentUser!;
-    final out = <_SearchResult>[];
+  static String _operationCategory(Map<String, dynamic> data) {
+    return switch ('${data['_entity'] ?? ''}') {
+      'group' => 'مجموعة',
+      'trip' => 'نقلة',
+      'cycle' => 'دورة',
+      'municipality' => 'بلدية',
+      'emergency' || 'sos' => 'طوارئ',
+      'container' => 'حاوية',
+      'dumpsite' => 'مكب',
+      'heavy_machinery' || 'equipment' => 'معدة',
+      'attendance' => 'حضور',
+      'work_report' || 'report' => 'تقرير',
+      'worker' => 'عامل',
+      _ => 'عملية',
+    };
+  }
 
-    Future<void> scan(String collection, String label) async {
-      try {
-        Query<Map<String, dynamic>> query = db.collection(collection).limit(500);
-        if ((actor.role == 'group_supervisor' || actor.role == 'worker') &&
-            (collection == 'operations' || collection == 'containers')) {
-          if ((actor.groupId ?? '').isEmpty) return;
-          query = db.collection(collection)
-              .where('groupId', isEqualTo: actor.groupId).limit(500);
-        }
-        if ((actor.role == 'group_supervisor' || actor.role == 'worker') &&
-            const ['equipment','dumpsites','municipalities'].contains(collection)) {
-          return;
-        }
-        if (collection == 'users') {
-          if (actor.role == 'municipality_coordinator') {
-            query = db.collection(collection).where('municipalityCoordinatorId', isEqualTo: actor.id).limit(500);
-          } else if (actor.role != 'donor_manager' && actor.role != 'jsc_coordinator') {
-            return;
-          }
-        }
-        final cacheKey = '$collection|${actor.role}|${actor.id}';
-        final cachedAt = _searchCacheAt[cacheKey];
-        List<Map<String, dynamic>> docs;
-        if (cachedAt != null && DateTime.now().difference(cachedAt) < const Duration(seconds: 45) && _searchCache.containsKey(cacheKey)) {
-          docs = _searchCache[cacheKey]!;
-        } else {
-          final snap = await query.get();
-          docs = [for (final d in snap.docs) {'id': d.id, ...d.data()}];
-          _searchCache[cacheKey] = docs;
-          _searchCacheAt[cacheKey] = DateTime.now();
-        }
-        for (final d in docs) {
-          final raw = _normalize(d.values.map((v) => '$v').join(' '));
-          if (_partialMatch('$label ${d['_entity'] ?? ''} $raw', q)) {
-            var resultLabel = label;
-            if (collection == 'operations') {
-              resultLabel = switch ('${d['_entity'] ?? ''}') {
-                'group' => 'مجموعة',
-                'trip' => 'نقلة',
-                'cycle' => 'دورة',
-                'municipality' => 'بلدية',
-                'emergency' => 'طوارئ',
-                _ => 'عملية',
-              };
-            }
-            out.add(_SearchResult(resultLabel, '${d['id'] ?? ''}', d));
-          }
-        }
-      } catch (_) {}
+  static String _userCategory(Map<String, dynamic> data) {
+    final role = '${data['role'] ?? ''}';
+    if (role == 'worker' || role == 'worker_with_cart') return 'عامل';
+    if (role == 'group_supervisor') return 'مشرف';
+    return 'مستخدم';
+  }
+
+  // Local operational records are filtered by the current role before indexing.
+  // In particular, no cached data from another municipal/group scope is surfaced.
+  bool _canSeeOperation(Map<String, dynamic> row) {
+    if (row['isDeleted'] == true) return false;
+    if (_actor.role == 'group_supervisor' || _actor.role == 'worker') {
+      final groupId = (_actor.groupId ?? '').trim();
+      return groupId.isNotEmpty && '${row['groupId'] ?? ''}' == groupId;
     }
+    if (_actor.role == 'municipality_coordinator') {
+      if ('${row['municipalityCoordinatorId'] ?? ''}' == _actor.id ||
+          '${row['coordinatorId'] ?? ''}' == _actor.id) {
+        return true;
+      }
+      final scope = _actor.scope.trim();
+      if (scope.isEmpty || scope == 'assigned_only') return false;
+      if (scope == 'all') return true;
+      return FastSmartSearch.normalize('${row['municipalityName'] ?? row['municipality'] ?? row['municipalityId'] ?? ''}') ==
+          FastSmartSearch.normalize(scope);
+    }
+    if (_actor.role == 'jsc_coordinator') {
+      final scope = _actor.scope.trim();
+      if (scope.isEmpty || scope == 'all' || scope == 'assigned_only') return true;
+      return FastSmartSearch.normalize('${row['councilName'] ?? row['councilId'] ?? row['municipalityName'] ?? ''}') ==
+          FastSmartSearch.normalize(scope);
+    }
+    return true;
+  }
 
-    await Future.wait([
-      scan('users', 'مستخدم'),
-      scan('operations', 'عملية'),
-      scan('containers', 'حاوية'),
-      scan('equipment', 'معدة'),
-      scan('dumpsites', 'مكب'),
-      scan('work_cycles', 'دورة'),
-      scan('municipalities', 'بلدية'),
-    ]);
-    if (!mounted || request != _searchRequest) return;
-    final nextResults = out.take(80).toList();
-    setState(() { results = nextResults; busy = false; });
+  void _refreshLocalSources() {
+    if (!mounted) return;
+    _loadedOnce = true;
+    _index.replaceSource(
+      'operations', 'عملية',
+      _dataService.operations.where(_canSeeOperation),
+      categoryFor: _operationCategory,
+    );
+    if (_actor.can('containers', 'view')) {
+      _index.replaceSource(
+        'containers', 'حاوية',
+        _containerService.containers.map((item) => item.toMap()),
+      );
+    }
+    _applyQuery();
+  }
+
+  void _applyQuery() {
+    if (!mounted) return;
+    final found = _index.find(controller.text, limit: 100);
+    setState(() => results = found);
     if (widget.openExactResult && !_autoOpened) {
       final expected = widget.initialQuery.trim();
-      final exact = nextResults.where((result) => result.id == expected).toList();
+      final exact = found.where((record) => record.id == expected).toList();
       if (exact.length == 1) {
         _autoOpened = true;
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) _showResultDetails(exact.single);
+          if (mounted) _openRecord(exact.single);
         });
       }
     }
   }
 
-  String _normalize(String value) => value
-      .toLowerCase()
-      .replaceAll(RegExp(r'[ًٌٍَُِّْـ]'), '')
-      .replaceAll(RegExp('[أإآ]'), 'ا')
-      .replaceAll('ة', 'ه')
-      .replaceAll('ى', 'ي')
-      .replaceAll('ؤ', 'و')
-      .replaceAll('ئ', 'ي')
-      .replaceAll(RegExp(r'[^a-z0-9\u0600-\u06FF\s]'), ' ')
-      .replaceAll(RegExp(r'\s+'), ' ')
-      .trim();
-
-  int _distance(String a, String b) {
-    if (a == b) return 0;
-    if (a.isEmpty) return b.length;
-    if (b.isEmpty) return a.length;
-    var prev = List<int>.generate(b.length + 1, (i) => i);
-    for (var i = 0; i < a.length; i++) {
-      final cur = List<int>.filled(b.length + 1, 0);
-      cur[0] = i + 1;
-      for (var j = 0; j < b.length; j++) {
-        final cost = a.codeUnitAt(i) == b.codeUnitAt(j) ? 0 : 1;
-        cur[j + 1] = [cur[j] + 1, prev[j + 1] + 1, prev[j] + cost].reduce((x, y) => x < y ? x : y);
-      }
-      prev = cur;
+  Future<void> _loadRemoteSources() async {
+    if (remoteLoading || !mounted) return;
+    if (Firebase.apps.isEmpty || (context.read<AuthService>().offlineSession && !_dataService.online)) {
+      setState(() => remoteWarning = 'وضع عدم الاتصال: البحث يعمل على البيانات المحلية المحفوظة.');
+      return;
     }
-    return prev.last;
+    setState(() { remoteLoading = true; remoteWarning = null; });
+    final db = FirebaseFirestore.instance;
+    final pending = <Future<void>>[];
+    var failures = 0;
+
+    void add(String collection, String label, Query<Map<String, dynamic>> query,
+        {String Function(Map<String, dynamic>)? categoryFor}) {
+      pending.add(() async {
+        try {
+          final snapshot = await query.limit(800).get().timeout(const Duration(seconds: 9));
+          if (!mounted || context.read<AuthService>().currentUser?.id != _actor.id) return;
+          _index.replaceSource(
+            collection, label,
+            snapshot.docs.map((doc) => {...doc.data(), 'id': doc.id}),
+            categoryFor: categoryFor,
+          );
+          _applyQuery();
+        } catch (_) {
+          failures++;
+        }
+      }());
+    }
+
+    // The container service already maintains an authorized live/offline feed.
+    // Unlike the previous implementation, no Firestore request happens on each keystroke.
+    if (_dataService.operations.isEmpty) {
+      Query<Map<String, dynamic>> operations = db.collection('operations');
+      if (_actor.role == 'group_supervisor' || _actor.role == 'worker') {
+        final groupId = (_actor.groupId ?? '').trim();
+        if (groupId.isNotEmpty) {
+          operations = operations.where('groupId', isEqualTo: groupId);
+          add('remote_operations', 'عملية', operations,
+              categoryFor: _operationCategory);
+        }
+      } else {
+        add('remote_operations', 'عملية', operations,
+            categoryFor: _operationCategory);
+      }
+    }
+    if (_actor.can('workers', 'view') &&
+        const ['donor_manager', 'jsc_coordinator', 'municipality_coordinator'].contains(_actor.role)) {
+      Query<Map<String, dynamic>> users = db.collection('users');
+      if (_actor.role == 'municipality_coordinator') {
+        users = users.where('municipalityCoordinatorId', isEqualTo: _actor.id);
+      }
+      add('users', 'مستخدم', users, categoryFor: _userCategory);
+    }
+    if (_actor.can('operations', 'view') &&
+        const ['donor_manager', 'jsc_coordinator', 'municipality_coordinator'].contains(_actor.role)) {
+      add('equipment', 'معدة', db.collection('equipment'));
+      add('work_cycles', 'دورة', db.collection('work_cycles'));
+    }
+    if (_actor.can('dumpsite', 'view') &&
+        const ['donor_manager', 'jsc_coordinator', 'municipality_coordinator'].contains(_actor.role)) {
+      add('dumpsites', 'مكب', db.collection('dumpsites'));
+    }
+    if (_actor.role == 'donor_manager' || _actor.role == 'jsc_coordinator') {
+      add('municipalities', 'بلدية', db.collection('municipalities'));
+    }
+
+    await Future.wait(pending);
+    if (!mounted) return;
+    setState(() {
+      remoteLoading = false;
+      remoteWarning = failures > 0
+          ? 'تعذر تحديث بعض الأقسام من الشبكة؛ النتائج المحلية ما زالت متاحة.'
+          : null;
+    });
   }
 
-  bool _partialMatch(String haystack, String query) {
-    final text = _normalize(haystack);
-    final original = _normalize(query).split(RegExp(r'\s+')).where((x) => x.isNotEmpty).toList();
-    if (original.isEmpty) return false;
-    final compactText = text.replaceAll(' ', '');
-    final compactQuery = original.join();
-    if (compactText.contains(compactQuery)) return true;
-    final words = text.split(RegExp(r'\s+')).where((x) => x.isNotEmpty).toList();
-    const aliases = <String, List<String>>{
-      'مكب': ['مكب', 'مطمر', 'مطامر', 'مكبات', 'نفايات', 'مردم'],
-      'مطمر': ['مطمر', 'مكب', 'مكبات'],
-      'حاويه': ['حاويه', 'حاويات', 'سله', 'سلال', 'كونتينر', 'كونتينرات'],
-      'حاويات': ['حاويات', 'حاويه', 'سلال', 'كونتينر', 'كونتينرات'],
-      'نقله': ['نقله', 'نقل', 'ترحيل', 'ترحيلات', 'رحله', 'رحلات', 'شحن'],
-      'ترحيل': ['ترحيل', 'ترحيلات', 'نقله', 'نقل', 'رحلات'],
-      'غياب': ['غياب', 'غيابات', 'عدم', 'حضور'],
-      'عمال': ['عمال', 'عاملين', 'موظفين', 'قوى', 'موارد', 'افراد', 'طاقم'],
-      'مجموعه': ['مجموعه', 'مجموعات', 'فريق', 'فرق', 'طواقم'],
-      'تقرير': ['تقرير', 'تقارير', 'تحليل', 'احصائيات', 'كشف', 'ملخص', 'سجل', 'بيان'],
-      'معده': ['معده', 'معدات', 'آليه', 'آليات', 'سياره', 'مركبه'],
-      'امن': ['امن', 'سلامه', 'وقايه', 'ppe'],
-      'بحث': ['بحث', 'استعلام', 'تفتيش', 'عثور'],
-      'اداره': ['اداره', 'إدارة', 'مركز', 'تحكم', 'تشغيل', 'اداره', 'مدير', 'اداري'],
-      'اشراف': ['اشراف', 'مشرف', 'مشرفين', 'مراقب', 'مراقبين'],
-      'بلديه': ['بلديه', 'بلديات', 'بلدية', 'مجلس', 'محلي', 'مدينة'],
-      'دوره': ['دوره', 'دورات', 'دورة', 'مرحله', 'مراحل', 'تشغيل'],
-      'ممتلئه': ['ممتلئه', 'ممتلي', 'ممتلئ', 'full', 'filled'],
-      'فارغه': ['فارغه', 'فارغ', 'empty', 'vacant'],
-      'حضور': ['حضور', 'دوام', 'بصمه', 'مداومه'],
-    };
-    bool matchesTerm(String term) {
-      final options = <String>{term, ...aliases.entries.where((entry) => entry.key.startsWith(term) || entry.value.any((alias) => _normalize(alias).startsWith(term))).expand((entry) => [entry.key, ...entry.value]), ...(aliases[term] ?? const [])};
-      for (final candidate in options) {
-        final normalized = _normalize(candidate);
-        if (normalized.isEmpty || text.contains(normalized)) return true;
-         if (term.length <= 2 && words.any((word) => word.startsWith(term))) return true;
-        for (final word in words) {
-          if (word.length < 3 || normalized.length < 3) continue;
-          final limit = normalized.length >= 7 ? 2 : 1;
-          if (_distance(word, normalized) <= limit) return true;
-        }
-      }
-      return false;
-    }
-    return original.every(matchesTerm);
+  void _openRecord(FastSearchRecord result) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => _SearchRecordPage(record: result),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
+    final hasQuery = controller.text.trim().isNotEmpty;
+    final categories = <String>['الكل', ...results.map((r) => r.category).toSet()];
+    final displayed = categoryFilter == 'الكل'
+        ? results
+        : results.where((r) => r.category == categoryFilter).toList();
     return Scaffold(
-      appBar: AppBar(title: const AppText('البحث الشامل')),
+      appBar: AppBar(
+        title: const AppText('البحث الشامل'),
+        actions: [
+          IconButton(
+            tooltip: 'تحديث نتائج البحث',
+            onPressed: remoteLoading ? null : _loadRemoteSources,
+            icon: const Icon(Icons.refresh_rounded),
+          ),
+        ],
+      ),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+        padding: const EdgeInsets.fromLTRB(14, 14, 14, 110),
         children: [
           TextField(
             controller: controller,
+            autofocus: widget.initialQuery.isEmpty,
             textInputAction: TextInputAction.search,
-            onChanged: _onQueryChanged,
-          onSubmitted: (_) { _searchDebounce?.cancel(); search(); },
+            onChanged: (_) {
+              categoryFilter = 'الكل';
+              _applyQuery();
+            },
+            onSubmitted: (_) => _applyQuery(),
             decoration: InputDecoration(
-              hintText: tr('ابحث في المستخدمين والعمليات والمكبات والدورات'),
+              hintText: 'ابدأ بحرف واحد: اسم، عامل، مكب، حاوية...',
               prefixIcon: const Icon(Icons.search_rounded),
-              suffixIcon: IconButton(onPressed: busy ? null : search, icon: const Icon(Icons.arrow_forward_rounded)),
+              suffixIcon: controller.text.isEmpty
+                  ? null
+                  : IconButton(
+                      tooltip: 'مسح البحث',
+                      onPressed: () {
+                        controller.clear();
+                        categoryFilter = 'الكل';
+                        _applyQuery();
+                      },
+                      icon: const Icon(Icons.close_rounded),
+                    ),
             ),
           ),
-          const SizedBox(height: 12),
-          if (busy) const LinearProgressIndicator(),
-          if (!busy && results.isEmpty) Padding(padding: const EdgeInsets.all(24), child: Column(children: [const AppText('لا توجد نتائج مطابقة ضمن نطاق صلاحياتك.'), const SizedBox(height: 10), OutlinedButton.icon(onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AIBotScreen())), icon: const Icon(Icons.auto_awesome), label: const AppText('اسأل المساعد الذكي'))])),
-          for (final r in results)
+          const SizedBox(height: 10),
+          if (remoteLoading)
+            const LinearProgressIndicator(minHeight: 2),
+          if (remoteLoading)
+            const Padding(
+              padding: EdgeInsets.only(top: 6),
+              child: AppText('نتائج البيانات المحلية فورية • يجري إضافة بيانات الشبكة', style: TextStyle(color: cleanOpsMuted, fontSize: 11)),
+            ),
+          if (remoteWarning != null)
             Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: AiGlassCard(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                child: ListTile(
-                  onTap: () => _showResultDetails(r),
-                  leading: AiFeatureIcon(r.label == 'مستخدم' ? 'users' : r.label == 'حاوية' ? 'containers' : r.label == 'معدة' ? 'operations' : r.label == 'مكب' || r.label == 'بلدية' ? 'dumpsite' : r.label == 'دورة' ? 'cycle' : 'operations', size: 20),
-                  title: AppText(r.title, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800)),
-                  subtitle: AppText('${r.label} • ${r.id}', style: const TextStyle(fontSize: 11, color: cleanOpsMuted)),
-                  trailing: const Icon(Icons.open_in_new_rounded, color: aiCyan),
-                ),
+              padding: const EdgeInsets.symmetric(vertical: 9),
+              child: AppText(remoteWarning!, style: const TextStyle(color: cleanOpsMuted, fontSize: 12)),
+            ),
+          if (!hasQuery)
+            const Padding(
+              padding: EdgeInsets.all(30),
+              child: Column(children: [
+                Icon(Icons.manage_search_rounded, size: 58, color: aiBlue),
+                SizedBox(height: 12),
+                AppText('اكتب حرفًا واحدًا على الأقل لعرض النتائج فورًا.'),
+                SizedBox(height: 8),
+                AppText('يدعم الأخطاء الإملائية والمرادفات؛ اضغط النتيجة لفتح سجلها.', style: TextStyle(color: cleanOpsMuted, fontSize: 12), textAlign: TextAlign.center),
+              ]),
+            )
+          else ...[
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 7),
+              child: AppText(
+                '${results.length} نتيجة مطابقة' + (results.length == 100 ? ' (أول 100 نتيجة)' : ''),
+                style: const TextStyle(color: aiBlue, fontWeight: FontWeight.w800),
               ),
             ),
+            if (categories.length > 2)
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    for (final category in categories)
+                      Padding(
+                        padding: const EdgeInsetsDirectional.only(end: 6),
+                        child: ChoiceChip(
+                          label: AppText(category),
+                          selected: categoryFilter == category,
+                          onSelected: (_) => setState(() => categoryFilter = category),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            if (displayed.isEmpty && !remoteLoading)
+              const Padding(
+                padding: EdgeInsets.all(25),
+                child: Center(child: AppText('لم نجد نتيجة مطابقة ضمن صلاحياتك. جرّب مرادفًا أو جزءًا من الاسم.')),
+              ),
+            for (final result in displayed)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: AiGlassCard(
+                  padding: EdgeInsets.zero,
+                  onTap: () => _openRecord(result),
+                  child: ListTile(
+                    onTap: () => _openRecord(result),
+                    leading: AiFeatureIcon(
+                      result.category == 'عامل' || result.category == 'مجموعة' || result.category == 'مستخدم'
+                          ? 'workers'
+                          : result.category == 'مكب' ? 'dumpsite'
+                          : result.category == 'حاوية' ? 'containers'
+                          : result.category == 'دورة' ? 'cycle'
+                          : result.category == 'نقلة' ? 'trips'
+                          : result.category == 'طوارئ' ? 'emergency'
+                          : 'operations',
+                      size: 19,
+                    ),
+                    title: AppText(result.title, maxLines: 2, overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontWeight: FontWeight.w800)),
+                    subtitle: AppText(
+                      result.category + ' • ' + result.id,
+                      maxLines: 1, overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(color: cleanOpsMuted, fontSize: 11),
+                    ),
+                    trailing: const Icon(Icons.arrow_circle_left_outlined, color: aiBlue),
+                  ),
+                ),
+              ),
+          ],
         ],
       ),
     );
-  }
-
-  void _showResultDetails(_SearchResult result) {
-    final fields = result.data.entries
-        .where((entry) => !entry.key.startsWith('_') && entry.value != null)
-        .map((entry) => '${entry.key}: ${entry.value}')
-        .join('\\n');
-    showDialog<void>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: AppText(result.title),
-        content: SizedBox(
-          width: double.maxFinite,
-          child: SingleChildScrollView(
-            child: SelectableText(fields.isEmpty ? result.id : fields),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const AppText('إغلاق'),
-          ),
-          FilledButton(
-            onPressed: () {
-              Navigator.pop(dialogContext);
-              _openResult(result);
-            },
-            child: const AppText('فتح القسم'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _openResult(_SearchResult r) {
-    final actor = context.read<AuthService>().currentUser!;
-    Widget? page;
-    switch (r.label) {
-      case 'مستخدم':
-        if (actor.role == 'donor_manager') {
-          page = const UserManagementSettingsPage();
-        } else if (actor.role == 'municipality_coordinator') {
-          page = const OperationsManagementScreen(initialTab: 0);
-        }
-        break;
-      case 'مكب':
-        page = actor.role == 'donor_manager' ? const DumpsitesOverviewScreen() : OperationsManagementScreen(initialTab: actor.role == 'municipality_coordinator' ? 1 : 0);
-        break;
-      case 'بلدية':
-        page = const EnterpriseOperationsHubPage();
-        break;
-      case 'حاوية':
-        page = const ContainerManagementScreen();
-        break;
-      case 'معدة':
-        page = const EquipmentSearchScreen();
-        break;
-      case 'دورة':
-        page = actor.role == 'donor_manager' ? const OperationsManagementScreen(initialTab: 0) : const ReportsCenterScreen();
-        break;
-      case 'مجموعة':
-        page = const GroupsCommandCenterPage();
-        break;
-      case 'نقلة':
-        page = const TripsLogPage();
-        break;
-      case 'طوارئ':
-        page = const AlertsCenterPage();
-        break;
-      case 'عملية':
-        final entity = '${r.data['_entity'] ?? ''}';
-        page = entity == 'trip' ? const TripsLogPage() : const EnterpriseOperationsHubPage();
-        break;
-    }
-    if (page != null) Navigator.push(context, MaterialPageRoute(builder: (_) => page!));
   }
 }
 
-class _SearchResult {
-  final String label, id;
-  final Map<String, dynamic> data;
-  _SearchResult(this.label, this.id, this.data);
-  String get title => '${data['name'] ?? data['nameAr'] ?? data['locationName'] ?? data['containerName'] ?? data['equipmentName'] ?? data['title'] ?? data['username'] ?? data['displayName'] ?? data['fullName'] ?? id}';
+/// Opens the *selected record* (not a generic textual search hit). When online,
+/// its real document remains connected to Firestore; offline, the indexed copy
+/// is shown. Actions connect it to the appropriate management page and map.
+class _SearchRecordPage extends StatelessWidget {
+  final FastSearchRecord record;
+  const _SearchRecordPage({required this.record});
+
+  static const _fields = <String, String>{
+    'name': 'الاسم', 'nameAr': 'الاسم', 'fullName': 'الاسم',
+    'username': 'اسم المستخدم', 'role': 'الصلاحية',
+    'status': 'الحالة', 'machineStatus': 'حالة المعدة',
+    'locationName': 'الموقع', 'location': 'الموقع', 'street': 'الشارع',
+    'municipalityName': 'البلدية', 'municipality': 'البلدية',
+    'groupName': 'المجموعة', 'groupId': 'رقم المجموعة',
+    'groupNumber': 'رقم المجموعة', 'cycleName': 'الدورة',
+    'landfill': 'المكب', 'dumpsiteName': 'المكب',
+    'equipmentName': 'المعدة', 'plateNumber': 'رقم اللوحة',
+    'model': 'الموديل', 'type': 'النوع', 'issueStatus': 'حالة المشكلة',
+    'description': 'الوصف', 'notes': 'ملاحظات',
+    'createdAt': 'تاريخ الإنشاء', 'updatedAt': 'آخر تحديث',
+  };
+
+  Widget? _destination(AppUser actor) {
+    switch (record.category) {
+      case 'عامل':
+      case 'مستخدم':
+      case 'مشرف':
+        if (actor.role == 'donor_manager') return const UserManagementSettingsPage();
+        if (actor.role == 'municipality_coordinator') return const OperationsManagementScreen(initialTab: 0);
+        return null;
+      case 'مجموعة':
+        return const GroupsCommandCenterPage();
+      case 'مكب':
+        if (!actor.can('dumpsite', 'view')) return null;
+        return actor.role == 'donor_manager'
+            ? const DumpsitesOverviewScreen()
+            : OperationsManagementScreen(initialTab: actor.role == 'municipality_coordinator' ? 1 : 0);
+      case 'حاوية':
+        return actor.can('containers', 'view') ? const ContainerManagementScreen() : null;
+      case 'معدة':
+        return actor.can('operations', 'view') ? const EquipmentSearchScreen() : null;
+      case 'دورة':
+        return actor.role == 'donor_manager'
+            ? const OperationsManagementScreen(initialTab: 0)
+            : const ReportsCenterScreen();
+      case 'نقلة':
+        return actor.can('trips', 'view') ? const TripsLogPage() : null;
+      case 'طوارئ':
+        return actor.can('emergency', 'view') ? const AlertsCenterPage() : null;
+      case 'تقرير':
+        return actor.can('reports', 'view') ? const ReportsCenterScreen() : null;
+      case 'بلدية':
+      case 'عملية':
+      case 'حضور':
+        return actor.can('operations', 'view') ? const EnterpriseOperationsHubPage() : null;
+    }
+    return null;
+  }
+
+  static double? _number(dynamic value) =>
+      value is num ? value.toDouble() : double.tryParse('${value ?? ''}');
+
+  static (double, double)? _coordinates(Map<String, dynamic> row) {
+    final gps = row['gpsCoordinates'];
+    final point = gps is Map ? gps : null;
+    final lat = _number(point?['lat'] ?? point?['latitude'] ?? row['latitude'] ?? row['lat']);
+    final lng = _number(point?['lng'] ?? point?['longitude'] ?? row['longitude'] ?? row['lng']);
+    if (lat == null || lng == null || lat.abs() > 90 || lng.abs() > 180 ||
+        (lat == 0 && lng == 0)) return null;
+    return (lat, lng);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final actor = context.watch<AuthService>().currentUser;
+    if (actor == null) {
+      return const Scaffold(body: Center(child: AppText('يرجى تسجيل الدخول مجددًا.')));
+    }
+    final online = context.watch<DataService>().online && Firebase.apps.isNotEmpty;
+    final source = record.collection == 'remote_operations' ? 'operations' : record.collection;
+    final stream = online
+        ? FirebaseFirestore.instance.collection(source).doc(record.id).snapshots()
+        : null;
+    return Scaffold(
+      appBar: AppBar(title: AppText(record.title, maxLines: 1, overflow: TextOverflow.ellipsis)),
+      body: stream == null
+          ? _recordBody(context, record.data, fromCache: true)
+          : StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+              stream: stream,
+              builder: (context, snapshot) {
+                if (snapshot.hasData && snapshot.data!.exists && snapshot.data!.data() != null) {
+                  return _recordBody(context, {...record.data, ...snapshot.data!.data()!},
+                      fromCache: snapshot.data!.metadata.isFromCache);
+                }
+                return _recordBody(context, record.data, fromCache: true);
+              },
+            ),
+    );
+  }
+
+  Widget _recordBody(BuildContext context, Map<String, dynamic> data, {required bool fromCache}) {
+    final actor = context.read<AuthService>().currentUser!;
+    final destination = _destination(actor);
+    final coordinates = _coordinates(data);
+    final entries = _fields.entries
+        .where((field) => data[field.key] != null &&
+            '${data[field.key]}'.trim().isNotEmpty &&
+            '${data[field.key]}' != 'null')
+        .toList();
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 115),
+      children: [
+        AiSectionCard(
+          title: record.title,
+          subtitle: record.category + ' • سجل ' + record.id,
+          feature: 'operations',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (fromCache)
+                const Padding(
+                  padding: EdgeInsets.only(bottom: 9),
+                  child: AppText('نسخة محفوظة محليًا • قد تتأخر عن آخر تعديل',
+                      style: TextStyle(color: cleanOpsMuted, fontSize: 11)),
+                ),
+              if (entries.isEmpty)
+                const AppText('لا توجد تفاصيل إضافية لهذا السجل.')
+              else
+                for (final field in entries)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 5),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        SizedBox(width: 105, child: AppText(field.value,
+                            style: const TextStyle(color: cleanOpsMuted, fontSize: 12))),
+                        const SizedBox(width: 8),
+                        Expanded(child: AppText('${data[field.key]}',
+                            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12))),
+                      ],
+                    ),
+                  ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        if (destination != null)
+          FilledButton.icon(
+            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => destination)),
+            icon: const Icon(Icons.open_in_new_rounded),
+            label: const AppText('فتح قسم إدارة السجل'),
+          ),
+        if (coordinates != null) ...[
+          const SizedBox(height: 9),
+          OutlinedButton.icon(
+            onPressed: () async {
+              final uri = Uri.https('www.google.com', '/maps/search/', {
+                'api': '1',
+                'query': '${coordinates.$1},${coordinates.$2}',
+              });
+              final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
+              if (!ok && context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: AppText('تعذر فتح تطبيق الخرائط.')),
+                );
+              }
+            },
+            icon: const Icon(Icons.map_rounded),
+            label: const AppText('فتح موقع السجل على الخريطة'),
+          ),
+        ],
+        const SizedBox(height: 9),
+        OutlinedButton.icon(
+          onPressed: () async {
+            await Clipboard.setData(ClipboardData(text: record.id));
+            if (context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: AppText('تم نسخ معرّف السجل.')),
+              );
+            }
+          },
+          icon: const Icon(Icons.copy_rounded),
+          label: const AppText('نسخ معرّف السجل'),
+        ),
+      ],
+    );
+  }
 }
 
 class GroupsCommandCenterPage extends StatelessWidget {
