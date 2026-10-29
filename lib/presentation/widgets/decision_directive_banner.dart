@@ -58,7 +58,8 @@ class _DecisionDirectiveBannerState extends State<DecisionDirectiveBanner> {
           .where('kind', isEqualTo: 'broadcast'),
     };
     for (final q in queries.entries) {
-      _subscriptions.add(q.value.limit(200).snapshots(includeMetadataChanges: true)
+      _subscriptions.add(q.value.where('expiresAt',
+        isGreaterThan: Timestamp.fromDate(DateTime.now())).limit(200).snapshots(includeMetadataChanges: true)
         .listen((snapshot) {
           if (!mounted || _binding != binding) return;
           setState(() {

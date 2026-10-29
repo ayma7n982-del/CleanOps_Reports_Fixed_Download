@@ -879,6 +879,7 @@ service cloud.firestore {
             && !(get(path).data.get('status', '') in ['frozen','deleted','inactive'])
             && d.details.workerName == get(path).data.get('name', '')
             && d.details.workerJob == get(path).data.get('job', '')
+            && d.get('additionalGroupId', '') == ''
             && d.details.assignmentLockId == id
             && getAfter(/databases/$(database)/documents/temporary_assignments/$(id)).data.decisionId == d.id
             && getAfter(/databases/$(database)/documents/temporary_assignments/$(id)).data.groupId == d.groupId

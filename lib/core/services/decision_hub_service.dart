@@ -26,7 +26,7 @@ class DecisionHubService extends ChangeNotifier {
   Timer? _clock;
   bool _disposed = false;
   DecisionHubService({required this.user, required this.shiftText,
-      FirebaseFirestore? firestore, this.pageLimit = 2000})
+      FirebaseFirestore? firestore, this.pageLimit = 20000})
       : db = firestore ?? FirebaseFirestore.instance;
   static bool allowed(AppUser? u) => u != null && u.isActive && u.can('operations', 'view') &&
       const ['municipality_coordinator', 'jsc_coordinator', 'donor_manager'].contains(u.role);
