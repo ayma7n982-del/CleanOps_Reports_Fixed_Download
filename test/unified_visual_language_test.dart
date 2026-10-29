@@ -120,6 +120,35 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('one-column fallback does not clip on 240px displays',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(240, 600));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: SingleChildScrollView(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: EcoShortcutGrid(
+              cards: [
+                EcoShortcutCard(
+                  title: 'حالة الحاويات والمكبات',
+                  subtitle: 'الامتلاء والبلاغات',
+                  feature: 'containers',
+                  icon: Icons.delete_sweep_rounded,
+                  onTap: () {},
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    expect(find.byType(EcoShortcutCard), findsOneWidget);
+  });
+
   testWidgets('a selected report card remains tappable and visibly selected',
       (tester) async {
     var selected = false;
