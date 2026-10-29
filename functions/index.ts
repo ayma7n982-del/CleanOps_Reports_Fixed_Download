@@ -1,4 +1,5 @@
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
+import { defineSecret } from 'firebase-functions/params';
 import { onDocumentWritten } from 'firebase-functions/v2/firestore';
 import { initializeApp } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
@@ -938,4 +939,119 @@ export const redirectCartAssignment = onCall({ region: 'us-central1' }, async (r
     });
     return { success: true, alreadyApplied: false };
   });
+});
+
+
+// External messaging is entirely server-side. Never expose the provider token
+// or accept a free-form phone number from a Flutter client.
+const twilioAccountSid = defineSecret('CLEANOPS_TWILIO_ACCOUNT_SID');
+const twilioAuthToken = defineSecret('CLEANOPS_TWILIO_AUTH_TOKEN');
+const twilioSender = defineSecret('CLEANOPS_TWILIO_FROM');
+
+export const sendExternalSms = onCall({
+  region: 'us-central1',
+  secrets: [twilioAccountSid, twilioAuthToken, twilioSender],
+}, async (request) => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in first.');
+  const senderId = request.auth.uid;
+  const actor = await requireActor(senderId);
+  if (!isManagementRole(String(actor.role ?? ''))) {
+    throw new HttpsError('permission-denied', 'Management role required for external messaging.');
+  }
+
+  const input = (request.data ?? {}) as Record<string, unknown>;
+  const targetUserId = String(input.targetUserId ?? '').trim();
+  const content = String(input.content ?? '').trim();
+  const requestId = String(input.requestId ?? '').trim();
+  if (!/^[A-Za-z0-9_-]{8,64}$/.test(requestId) ||
+      !/^[A-Za-z0-9_-]{2,128}$/.test(targetUserId) ||
+      content.length < 1 || content.length > 500) {
+    throw new HttpsError('invalid-argument', 'Invalid recipient, request identifier or message length.');
+  }
+
+  const recipientSnap = await db.collection('users').doc(targetUserId).get();
+  if (!recipientSnap.exists) throw new HttpsError('not-found', 'Recipient not found.');
+  const recipient = recipientSnap.data() ?? {};
+  if (recipient.isActive === false) {
+    throw new HttpsError('failed-precondition', 'Recipient is inactive.');
+  }
+  if (actor.role === 'municipality_coordinator') {
+    if (!isWorkforceRole(String(recipient.role ?? '')) ||
+        recipient.municipalityCoordinatorId !== senderId) {
+      throw new HttpsError('permission-denied', 'Recipient is outside your municipality workforce.');
+    }
+  } else if (!isManagementRole(String(recipient.role ?? ''))) {
+    throw new HttpsError('permission-denied', 'Council and donor messaging targets active management accounts only.');
+  }
+
+  const to = String(recipient.phone ?? '').trim();
+  if (!/^\+[1-9][0-9]{7,14}$/.test(to)) {
+    throw new HttpsError('failed-precondition', 'Recipient needs a verified international-format phone number.');
+  }
+  const sid = twilioAccountSid.value();
+  const token = twilioAuthToken.value();
+  const from = twilioSender.value();
+  if (!sid || !token || !/^\+[1-9][0-9]{7,14}$/.test(from)) {
+    throw new HttpsError('failed-precondition', 'SMS provider has not been configured securely.');
+  }
+
+  // A sender-unique requestId plus an hourly rate limit protects against
+  // accidental duplicate sends and runaway costs.
+  const logRef = db.collection('external_messages').doc(`${senderId}_${requestId}`);
+  const hourKey = new Date().toISOString().slice(0, 13).replace(/[-T:]/g, '');
+  const rateRef = db.collection('external_message_limits').doc(`${senderId}_${hourKey}`);
+  const created = await db.runTransaction(async (tx) => {
+    const [existing, rate] = await Promise.all([tx.get(logRef), tx.get(rateRef)]);
+    if (existing.exists) return false;
+    const count = Number(rate.data()?.count ?? 0);
+    if (count >= 20) throw new HttpsError('resource-exhausted', 'Hourly SMS limit reached.');
+    tx.create(logRef, {
+      senderId, targetUserId, requestId, content, channel: 'sms',
+      status: 'sending', createdAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+    tx.set(rateRef, { count: count + 1, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+    return true;
+  });
+  if (!created) {
+    const existing = await logRef.get();
+    return { requestId, status: String(existing.data()?.status ?? 'sending'),
+      duplicate: true };
+  }
+
+  try {
+    const endpoint = `https://api.twilio.com/2010-04-01/Accounts/${encodeURIComponent(sid)}/Messages.json`;
+    const credentials = Buffer.from(`${sid}:${token}`).toString('base64');
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Basic ${credentials}`,
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams({ To: to, From: from, Body: content }),
+    });
+    if (!response.ok) {
+      await logRef.update({
+        status: 'failed', providerHttpStatus: response.status,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+      throw new HttpsError('unavailable', 'The SMS provider rejected this request.');
+    }
+    const receipt = (await response.json()) as Record<string, unknown>;
+    const providerSid = String(receipt.sid ?? '');
+    if (!providerSid) throw new HttpsError('internal', 'Provider did not return a request identifier.');
+    await logRef.update({
+      status: 'submitted', providerMessageSid: providerSid,
+      providerStatus: String(receipt.status ?? 'queued'),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+    // "submitted" means provider acceptance, NOT handset delivery.
+    return { requestId, status: 'submitted', duplicate: false };
+  } catch (e) {
+    await logRef.update({
+      status: 'failed', updatedAt: FieldValue.serverTimestamp(),
+    }).catch(() => undefined);
+    if (e instanceof HttpsError) throw e;
+    throw new HttpsError('unavailable', 'External SMS was not confirmed by the provider.');
+  }
 });
