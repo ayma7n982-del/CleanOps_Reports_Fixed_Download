@@ -497,14 +497,20 @@ class _CleanOpsNavigationDock extends StatelessWidget {
       (Icons.insights_rounded, tr('التقارير')),
       (Icons.tune_rounded, tr('الإعدادات')),
     ];
+    final isArabic = context.watch<LocaleController>().isArabic;
+    final compactLabels = isArabic
+        ? const ['القيادة', 'العمليات', 'المساعد', 'التقارير', 'الإعدادات']
+        : destinations.map((item) => item.$2).toList();
     return Material(
-      color: cleanOpsSurface,
+      color: Colors.white,
       elevation: 10,
       shadowColor: const Color(0x22073C35),
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(26)),
+      clipBehavior: Clip.antiAlias,
       child: SafeArea(
         top: false,
         child: Padding(
-          padding: const EdgeInsetsDirectional.fromSTEB(8, 6, 8, 5),
+          padding: const EdgeInsetsDirectional.fromSTEB(7, 9, 7, 5),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -523,7 +529,7 @@ class _CleanOpsNavigationDock extends StatelessWidget {
                           padding: const EdgeInsets.symmetric(horizontal: 14),
                           minimumSize: const Size(0, 38),
                           tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(19)),
                         ),
                         icon: const Icon(Icons.add_rounded, size: 20),
                         label: const AppText('إجراء سريع', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w800)),
@@ -545,22 +551,22 @@ class _CleanOpsNavigationDock extends StatelessWidget {
                           color: Colors.transparent,
                           child: InkWell(
                             onTap: () => onDestinationSelected(i),
-                            borderRadius: BorderRadius.circular(16),
+                            borderRadius: BorderRadius.circular(18),
                             child: SizedBox(
-                              height: 64,
+                              height: 66,
                               child: Column(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
                                   AnimatedContainer(
                                     duration: const Duration(milliseconds: 180),
                                     curve: Curves.easeOut,
-                                    width: 43,
-                                    height: 34,
+                                    width: 52,
+                                    height: 36,
                                     decoration: BoxDecoration(
-                                      borderRadius: BorderRadius.circular(12),
+                                      borderRadius: BorderRadius.circular(17),
                                       gradient: selected
                                           ? const LinearGradient(
-                                              colors: [Color(0xFF087F6B), Color(0xFF35B9A2)],
+                                              colors: [Color(0xFFD8F7EF), Color(0xFFECFAF5)],
                                               begin: Alignment.topRight,
                                               end: Alignment.bottomLeft,
                                             )
@@ -569,8 +575,8 @@ class _CleanOpsNavigationDock extends StatelessWidget {
                                     ),
                                     child: Icon(
                                       destinations[i].$1,
-                                      size: 22,
-                                      color: selected ? Colors.white : cleanOpsMuted,
+                                      size: selected ? 25 : 23,
+                                      color: selected ? aiBlue : cleanOpsMuted,
                                     ),
                                   ),
                                   const SizedBox(height: 4),
@@ -583,12 +589,12 @@ class _CleanOpsNavigationDock extends StatelessWidget {
                                         fit: BoxFit.scaleDown,
                                         alignment: Alignment.center,
                                         child: Text(
-                                          destinations[i].$2,
+                                          compactLabels[i],
                                           maxLines: 1,
                                           softWrap: false,
                                           style: TextStyle(
                                             color: selected ? aiBlue : cleanOpsMuted,
-                                            fontSize: 11,
+                                            fontSize: 11.5,
                                             fontWeight: selected ? FontWeight.w900 : FontWeight.w700,
                                           ),
                                         ),
