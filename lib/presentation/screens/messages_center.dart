@@ -63,17 +63,28 @@ class _MessagesCenterScreenState extends State<MessagesCenterScreen> {
         appBar: AppBar(
           title: const AppText('مركز الرسائل'),
           actions: [
-            if (messaging.canSend('info')) IconButton(
-              tooltip: 'الرسائل المجدولة',
-              icon: const Icon(Icons.event_note_outlined),
-              onPressed: () => _showScheduledMessages(user, messaging),
+            if (messaging.canSend('info')) PopupMenuButton<String>(
+              tooltip: 'خيارات المراسلة',
+              icon: const Icon(Icons.more_vert_rounded),
+              onSelected: (selected) {
+                if (selected == 'scheduled') {
+                  _showScheduledMessages(user, messaging);
+                } else if (selected == 'sms') {
+                  _openExternalSms(user, messaging);
+                }
+              },
+              itemBuilder: (context) => [
+                const PopupMenuItem<String>(
+                  value: 'scheduled',
+                  child: AppText('الرسائل المجدولة'),
+                ),
+                if (const ['municipality_coordinator','jsc_coordinator','donor_manager'].contains(user.role))
+                  const PopupMenuItem<String>(
+                    value: 'sms',
+                    child: AppText('الرسائل الخارجية SMS'),
+                  ),
+              ],
             ),
-            if (const ['municipality_coordinator','jsc_coordinator','donor_manager'].contains(user.role))
-              IconButton(
-                tooltip: 'الرسائل الخارجية SMS',
-                icon: const Icon(Icons.sms_outlined),
-                onPressed: () => _openExternalSms(user, messaging),
-              ),
             if (messaging.syncing) const Padding(padding: EdgeInsets.all(14), child: SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))),
             Badge(
               isLabelVisible: messaging.unreadCount > 0,
