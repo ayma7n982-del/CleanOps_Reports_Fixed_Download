@@ -186,6 +186,9 @@ service cloud.firestore {
             && get(/databases/$(database)/documents/operations/$(request.resource.data.targetGroupId)).data.municipalityCoordinatorId == request.auth.uid)
         || (role() == 'group_supervisor' && directTargetIsValid() && request.resource.data.type in ['info', 'emergency'])
         || (role() == 'group_supervisor' && request.resource.data.targetGroupId == '__JSC__' && request.resource.data.type in ['info','warning','emergency'] && userDoc().groupId is string)
+        || (role() == 'worker' && request.resource.data.targetGroupId == '__JSC__'
+            && request.resource.data.type == 'emergency'
+            && userDoc().groupId is string && userDoc().groupId.size() > 0)
         || (isL2() && request.resource.data.targetGroupId == '__JSC__' && request.resource.data.type in ['info','warning','emergency'])
       );
     }
