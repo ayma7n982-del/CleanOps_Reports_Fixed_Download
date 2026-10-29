@@ -709,6 +709,16 @@ service cloud.firestore {
         // unrelated SOS/equipment branches first exceeds the rules 1000-
         // expression limit on real trips and incorrectly denies supervisors.
         (role() == 'group_supervisor' && validSupervisorTripUpdate())
+        // Route valid JSC status transitions to their exact validator first.
+        // Otherwise unrelated complex rules exhaust the 1000-expression limit.
+        || (isL3() && resource.data._entity == 'emergency'
+          && request.resource.data.status == 'secured' && validJscSosSecure())
+        || (isL3() && resource.data._entity == 'emergency'
+          && request.resource.data.status == 'reopened' && validJscSosReopen())
+        || (isL3() && resource.data._entity == 'emergency'
+          && resource.data.status == 'reopened'
+          && request.resource.data.status == 'closed'
+          && validJscSosCloseAfterReopen())
         || validSosAcknowledgment()
         || validJscSosReferral()
         || validJscSosReopen()
