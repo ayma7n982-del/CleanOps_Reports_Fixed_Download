@@ -79,7 +79,7 @@ class _UserManagementSettingsPageState extends State<UserManagementSettingsPage>
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const AppText('تأكيد حذف المستخدم'),
-        content: AppText('هل تريد طلب حذف المستخدم "$name" نهائيًا؟ سيتم إيقاف وصوله فورًا، ثم يحذف GitHub حساب Firebase Authentication وملفه تلقائيًا دون Cloud Functions. لا يمكن التراجع بعد تنفيذ الحذف.'),
+        content: AppText('هل تريد حذف المستخدم "$name" نهائيًا الآن من Firebase Authentication وFirestore؟ لا يمكن التراجع عن العملية.'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const AppText('إلغاء')),
           TextButton(onPressed: () => Navigator.pop(dialogContext, true), child: const AppText('حذف', style: TextStyle(color: Colors.red))),
@@ -90,7 +90,7 @@ class _UserManagementSettingsPageState extends State<UserManagementSettingsPage>
     setState(() => deletingUser = true);
     try {
       await context.read<OperationsAdminService>().deleteManagedUser(id, actorId: actor.id);
-      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: AppText('تم إيقاف الحساب وإرسال طلب الحذف الدائم. سيعالجه GitHub تلقائيًا.')));
+      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: AppText('تم حذف المستخدم نهائيًا من Firebase بعد تأكيد الخادم.')));
     } catch (e) {
       if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: AppText('لم يكتمل حذف المستخدم: $e')));
     } finally {
