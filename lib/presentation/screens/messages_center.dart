@@ -30,6 +30,7 @@ class _MessagesCenterScreenState extends State<MessagesCenterScreen> {
   bool supervisorBroadcast = false;
   String recipientMode = 'broadcast';
   String? selectedRecipient;
+  DateTime? scheduledAt;
   String messageFilter = 'all';
   String searchText = '';
   final searchController = TextEditingController();
@@ -62,6 +63,11 @@ class _MessagesCenterScreenState extends State<MessagesCenterScreen> {
         appBar: AppBar(
           title: const AppText('مركز الرسائل'),
           actions: [
+            if (messaging.canSend('info')) IconButton(
+              tooltip: 'الرسائل المجدولة',
+              icon: const Icon(Icons.event_note_outlined),
+              onPressed: () => _showScheduledMessages(user, messaging),
+            ),
             if (const ['municipality_coordinator','jsc_coordinator','donor_manager'].contains(user.role))
               IconButton(
                 tooltip: 'الرسائل الخارجية SMS',
@@ -351,6 +357,7 @@ class _MessagesCenterScreenState extends State<MessagesCenterScreen> {
     supervisorBroadcast = false;
     recipientMode = 'broadcast';
     selectedRecipient = null;
+    scheduledAt = null;
     final data = context.read<DataService>();
     try { await data.refreshOperations(); } catch (_) {}
     if (!mounted) return;
@@ -468,6 +475,30 @@ class _MessagesCenterScreenState extends State<MessagesCenterScreen> {
                   ),
               ]),
               const SizedBox(height: 10),
+              OutlinedButton.icon(
+                icon: const Icon(Icons.schedule_rounded),
+                label: AppText(scheduledAt == null
+                    ? 'جدولة الإرسال في وقت لاحق'
+                    : 'الإرسال المجدول: ${DateFormat('yyyy/MM/dd • HH:mm').format(scheduledAt!)}'),
+                onPressed: () async {
+                  final today = DateTime.now();
+                  final date = await showDatePicker(
+                    context: context, initialDate: today.add(const Duration(days: 1)),
+                    firstDate: today, lastDate: today.add(const Duration(days: 30)));
+                  if (date == null || !context.mounted) return;
+                  final clock = await showTimePicker(
+                    context: context, initialTime: TimeOfDay.now());
+                  if (clock == null || !context.mounted) return;
+                  setSheetState(() => scheduledAt = DateTime(
+                    date.year, date.month, date.day, clock.hour, clock.minute));
+                },
+              ),
+              if (scheduledAt != null) TextButton.icon(
+                onPressed: () => setSheetState(() => scheduledAt = null),
+                icon: const Icon(Icons.close_rounded, size: 16),
+                label: const AppText('إلغاء الجدولة والإرسال الآن'),
+              ),
+              const SizedBox(height: 10),
               TextField(controller: composer, minLines: 4, maxLines: 8, textInputAction: TextInputAction.newline, decoration: InputDecoration(labelText: tr('محتوى الرسالة'), hintText: tr('اكتب الرسالة هنا...'))),
               const SizedBox(height: 14),
               FilledButton.icon(
@@ -477,7 +508,28 @@ class _MessagesCenterScreenState extends State<MessagesCenterScreen> {
                     ? null : () async {
                   setSheetState(() => sending = true);
                   try {
-                    if (isL1 && supervisorBroadcast) {
+                    if (scheduledAt != null) {
+                      String? targetUserId;
+                      String? targetGroupId;
+                      if (isL1 && !supervisorBroadcast) {
+                        targetUserId = await _resolveCoordinator(user, data);
+                        if (targetUserId == null || targetUserId.isEmpty) {
+                          throw StateError('منسق البلدية غير محدد.');
+                        }
+                      } else if (isL1 && supervisorBroadcast) {
+                        targetGroupId = user.groupId;
+                      } else if (recipientMode == 'direct') {
+                        targetUserId = selectedRecipient;
+                      } else if (user.role == 'municipality_coordinator') {
+                        targetGroupId = selectedGroup;
+                      } else {
+                        targetGroupId = MessagingService.allMunicipalitiesGroup;
+                      }
+                      final result = await messaging.scheduleInternalMessage(
+                        content: composer.text, type: type, sendAt: scheduledAt!,
+                        targetUserId: targetUserId, targetGroupId: targetGroupId);
+                      if (result != 'scheduled') throw StateError('حالة الجدولة: $result');
+                    } else if (isL1 && supervisorBroadcast) {
                       await messaging.sendBroadcast(content: composer.text, type: type, groupId: user.groupId);
                     } else if (isL1) {
                       final target = await _resolveCoordinator(user, data);
@@ -492,7 +544,7 @@ class _MessagesCenterScreenState extends State<MessagesCenterScreen> {
                     }
                     if (context.mounted) Navigator.pop(context);
                     if (mounted) ScaffoldMessenger.of(this.context).showSnackBar(const SnackBar(
-                      content: AppText('أُضيفت الرسالة لقائمة الانتظار. يتغير مؤشرها عند تأكيد الخادم.')));
+                      content: AppText(scheduledAt == null ? 'أُضيفت الرسالة لقائمة الانتظار، وتنتظر تأكيد الخادم.' : 'تم تسجيل موعد الإرسال لدى خادم Firebase.')));
                   } catch (e) {
                     if (mounted) ScaffoldMessenger.of(this.context).showSnackBar(SnackBar(content: AppText('تعذر إرسال الرسالة: $e')));
                   } finally {
@@ -506,6 +558,65 @@ class _MessagesCenterScreenState extends State<MessagesCenterScreen> {
           ),
         );
       }),
+    );
+  }
+
+  Future<void> _showScheduledMessages(AppUser user, MessagingService messaging) async {
+    if (Firebase.apps.isEmpty) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: cleanOpsSurface,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(26))),
+      builder: (sheetContext) => SafeArea(
+        child: SizedBox(
+          height: MediaQuery.sizeOf(sheetContext).height * .65,
+          child: Column(children: [
+            const Padding(
+              padding: EdgeInsets.all(18),
+              child: AppText('سجل الرسائل المجدولة',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
+            ),
+            Expanded(
+              child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                stream: FirebaseFirestore.instance.collection('scheduled_messages')
+                    .where('senderId', isEqualTo: user.id).limit(50).snapshots(),
+                builder: (context, snapshot) {
+                  if (snapshot.hasError) return const Center(
+                    child: AppText('سجل الجدولة غير متاح حتى نشر قواعد Firebase.'));
+                  if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+                  if (snapshot.data!.docs.isEmpty) return const Center(
+                    child: AppText('لا توجد رسائل مجدولة.'));
+                  return ListView(
+                    children: [
+                      for (final item in snapshot.data!.docs)
+                        ListTile(
+                          title: AppText('${item.data()['content'] ?? ''}', maxLines: 2),
+                          subtitle: AppText('الحالة: ${item.data()['status'] ?? ''}'),
+                          trailing: item.data()['status'] == 'scheduled'
+                              ? IconButton(
+                                  tooltip: 'إلغاء الجدولة',
+                                  icon: const Icon(Icons.cancel_outlined),
+                                  onPressed: () async {
+                                    try {
+                                      await messaging.cancelScheduledMessage(item.id);
+                                    } catch (e) {
+                                      if (sheetContext.mounted) ScaffoldMessenger.of(sheetContext)
+                                          .showSnackBar(SnackBar(content: AppText('$e')));
+                                    }
+                                  },
+                                )
+                              : const Icon(Icons.history_rounded),
+                        ),
+                    ],
+                  );
+                },
+              ),
+            ),
+          ]),
+        ),
+      ),
     );
   }
 
