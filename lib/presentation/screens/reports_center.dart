@@ -215,7 +215,7 @@ class _ReportsCenterState extends State<ReportsCenterScreen> {
     icon: const Icon(Icons.calendar_month), label: Text('$label: ${value.year}-${value.month.toString().padLeft(2,'0')}-${value.day.toString().padLeft(2,'0')}', overflow: TextOverflow.ellipsis),
   ));
 
-  Widget _drop<T>(String label, T? value, Map<T?,String> items, ValueChanged<T?> onChanged) => SizedBox(width: 190, child: DropdownButtonFormField<T>(value: value, decoration: InputDecoration(labelText: label, isDense: true), items: items.entries.map((e)=>DropdownMenuItem<T>(value:e.key, child: Text(e.value, overflow: TextOverflow.ellipsis))).toList(), onChanged: onChanged));
+  Widget _drop<T>(String label, T? value, Map<T?,String> items, ValueChanged<T?> onChanged) => SizedBox(width: 190, child: DropdownButtonFormField<T>(value: value, isExpanded: true, decoration: InputDecoration(labelText: label, isDense: true, contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12)), items: items.entries.map((e)=>DropdownMenuItem<T>(value:e.key, child: Text(e.value, maxLines: 1, overflow: TextOverflow.ellipsis))).toList(), onChanged: onChanged));
 
   Widget _typeCards() {
     final types = <(String, String, IconData)>[
@@ -227,15 +227,15 @@ class _ReportsCenterState extends State<ReportsCenterScreen> {
       ('municipalities', 'تقارير البلديات', Icons.location_city_rounded),
       ('groups', 'تقارير المجموعات', Icons.groups_rounded),
     ];
-    return GridView.builder(
+    return LayoutBuilder(builder: (context, constraints) => GridView.builder(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
       itemCount: types.length,
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
+        crossAxisCount: constraints.maxWidth < 300 ? 1 : 2,
         crossAxisSpacing: 10,
         mainAxisSpacing: 10,
-        childAspectRatio: 1.65,
+        childAspectRatio: constraints.maxWidth < 300 ? 2.8 : 1.65,
       ),
       itemBuilder: (context, index) {
         final item = types[index];
@@ -252,8 +252,8 @@ class _ReportsCenterState extends State<ReportsCenterScreen> {
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
             ),
-            border: Border.all(color: selected ? red.withOpacity(.75) : Colors.white10, width: selected ? 1.6 : 1),
-            boxShadow: selected ? [BoxShadow(color: red.withOpacity(.16), blurRadius: 18, spreadRadius: 1)] : null,
+            border: Border.all(color: selected ? const Color(0xFF36C9AF) : Colors.white24, width: selected ? 2 : 1),
+            boxShadow: selected ? [BoxShadow(color: const Color(0xFF36C9AF).withOpacity(.18), blurRadius: 14)] : null,
           ),
           child: Material(
             color: Colors.transparent,
@@ -267,17 +267,17 @@ class _ReportsCenterState extends State<ReportsCenterScreen> {
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
                 child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                  Icon(item.$3, size: 26, color: selected ? red : cleanOpsMuted),
+                  Icon(item.$3, size: 28, color: selected ? const Color(0xFF58E3CA) : Colors.white),
                   const SizedBox(height: 7),
                   AppText(item.$2, textAlign: TextAlign.center, maxLines: 2, overflow: TextOverflow.ellipsis,
-                    style: TextStyle(color: selected ? red : cleanOpsText, fontWeight: FontWeight.w900, fontSize: 13)),
+                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 14)),
                 ]),
               ),
             ),
           ),
         );
       },
-    );
+    ));
   }
 
   Widget _kpis(ReportSnapshot s) => Wrap(spacing:8, runSpacing:8, children: [
