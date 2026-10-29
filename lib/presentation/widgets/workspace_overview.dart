@@ -178,7 +178,7 @@ class _WorkspaceOverviewState extends State<WorkspaceOverview> {
           ExpansionTile(title:const Text('تعديل ترتيب الاختصارات'),children:[
             for(final action in orderedActions) ListTile(
               title:Text(action.title),
-              trailing:Wrap(mainAxisSize:MainAxisSize.min,children:[
+              trailing:Wrap(children:[
                 IconButton(icon:const Icon(Icons.arrow_upward),
                   tooltip:'للأعلى',onPressed:()=>move(action.id,-1)),
                 IconButton(icon:const Icon(Icons.arrow_downward),
