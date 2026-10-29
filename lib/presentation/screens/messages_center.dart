@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'dart:ui' as ui;
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_core/firebase_core.dart';
 import '../../core/constants/app_constants.dart';
 import '../../core/localization.dart';
 import '../../core/models/core_models.dart';
@@ -176,24 +178,63 @@ class _MessagesCenterScreenState extends State<MessagesCenterScreen> {
             backgroundColor: cleanOpsSurface,
             shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
             builder: (sheetContext) => SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.all(20),
-                child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  const AppText('تفاصيل الرسالة', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
-                  const SizedBox(height: 12),
-                  AppText(message.content, style: const TextStyle(fontSize: 16, height: 1.5)),
-                  const SizedBox(height: 16),
-                  AppText('المرسل: ${message.senderName.isEmpty ? message.senderId : message.senderName}'),
-                  AppText('الوجهة: ${message.targetGroupId ?? message.targetUserId ?? "غير محددة"}'),
-                  AppText('الوقت: ${DateFormat('yyyy/MM/dd • HH:mm').format(message.timestamp)}'),
-                  const SizedBox(height: 12),
-                  const AppText('حالة قراءة المجموعة غير متاحة لكل مستلم بعد.', style: TextStyle(color: cleanOpsMuted, fontSize: 12)),
-                  const SizedBox(height: 12),
-                  Align(alignment: AlignmentDirectional.centerEnd, child: TextButton(
-                    onPressed: () => Navigator.pop(sheetContext),
-                    child: const AppText('إغلاق'),
-                  )),
-                ]),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(sheetContext).height * .8),
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    const AppText('تفاصيل الرسالة', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
+                    const SizedBox(height: 12),
+                    AppText(message.content, style: const TextStyle(fontSize: 16, height: 1.5)),
+                    const SizedBox(height: 16),
+                    AppText('المرسل: ${message.senderName.isEmpty ? message.senderId : message.senderName}'),
+                    AppText('الوجهة: ${message.targetGroupId ?? message.targetUserId ?? "غير محددة"}'),
+                    AppText('الوقت: ${DateFormat('yyyy/MM/dd • HH:mm').format(message.timestamp)}'),
+                    const SizedBox(height: 12),
+                    if (isMine && message.deliveryStatus == 'sent' && Firebase.apps.isNotEmpty)
+                      StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                        stream: FirebaseFirestore.instance.collection('messages')
+                            .doc(message.messageId).collection('receipts').snapshots(),
+                        builder: (context, snapshot) {
+                          if (snapshot.hasError) {
+                            return const AppText('إيصالات الاستلام غير متاحة؛ تحقق من نشر قواعد Firebase.',
+                                style: TextStyle(color: cleanOpsMuted, fontSize: 12));
+                          }
+                          if (!snapshot.hasData) {
+                            return const LinearProgressIndicator();
+                          }
+                          final receipts = snapshot.data!.docs;
+                          final acknowledged = receipts.where((d) => d.data()['status'] == 'acknowledged').length;
+                          return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                            AppText('إيصالات القراءة: ${receipts.length} • تأكيدات الاستلام: $acknowledged',
+                                style: const TextStyle(fontWeight: FontWeight.w800)),
+                            for (final receipt in receipts)
+                              AppText('${receipt.id}: ${receipt.data()['status'] == 'acknowledged' ? 'تم التأكيد' : 'تمت القراءة'}${receipt.metadata.hasPendingWrites ? ' • قيد المزامنة' : ''}',
+                                  style: const TextStyle(fontSize: 12, color: cleanOpsMuted)),
+                          ]);
+                        },
+                      ),
+                    if (!isMine) ...[
+                      const SizedBox(height: 12),
+                      FilledButton.icon(
+                        onPressed: () async {
+                          await messaging.acknowledgeMessage(message.messageId);
+                          if (sheetContext.mounted) {
+                            ScaffoldMessenger.of(sheetContext).showSnackBar(
+                              const SnackBar(content: AppText('تم تسجيل طلب تأكيد الاستلام للمزامنة.')));
+                          }
+                        },
+                        icon: const Icon(Icons.task_alt_rounded),
+                        label: const AppText('تأكيد استلام الرسالة'),
+                      ),
+                    ],
+                    const SizedBox(height: 12),
+                    Align(alignment: AlignmentDirectional.centerEnd, child: TextButton(
+                      onPressed: () => Navigator.pop(sheetContext),
+                      child: const AppText('إغلاق'),
+                    )),
+                  ]),
+                ),
               ),
             ),
           );
@@ -220,6 +261,31 @@ class _MessagesCenterScreenState extends State<MessagesCenterScreen> {
                   AppText(message.content, style: const TextStyle(fontSize: 15, height: 1.45)),
                   const SizedBox(height: 8),
                   Wrap(spacing: 8, runSpacing: 5, children: [
+                    if (isMine) Chip(
+                      visualDensity: VisualDensity.compact,
+                      avatar: Icon(
+                        message.deliveryStatus == 'sent' ? Icons.cloud_done_rounded
+                            : message.deliveryStatus == 'failed' ? Icons.error_outline_rounded
+                            : Icons.cloud_upload_outlined,
+                        size: 17,
+                        color: message.deliveryStatus == 'failed' ? red : aiCyan,
+                      ),
+                      label: AppText(message.deliveryStatus == 'sent' ? 'وصل للخادم'
+                          : message.deliveryStatus == 'failed' ? 'فشل الإرسال' : 'بانتظار المزامنة',
+                          style: const TextStyle(fontSize: 11)),
+                    ),
+                    if (isMine && message.deliveryStatus == 'failed') TextButton.icon(
+                      icon: const Icon(Icons.refresh_rounded, size: 17),
+                      label: const AppText('إعادة المحاولة'),
+                      onPressed: () async {
+                        try {
+                          await messaging.retryFailedMessage(message.messageId);
+                        } catch (e) {
+                          if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: AppText('$e')));
+                        }
+                      },
+                    ),
                     AppText(isMine ? 'أنت' : (message.senderName.isEmpty ? message.senderId : message.senderName), style: const TextStyle(color: cleanOpsMuted, fontSize: 11, fontWeight: FontWeight.w700)),
                     AppText(DateFormat('yyyy/MM/dd • HH:mm').format(message.timestamp), style: const TextStyle(color: cleanOpsMuted, fontSize: 10)),
                     if (message.targetGroupId != null && message.targetGroupId!.startsWith('__USER__:')) const AppText('رسالة مباشرة', style: TextStyle(color: aiCyan, fontSize: 10)),
@@ -331,7 +397,7 @@ class _MessagesCenterScreenState extends State<MessagesCenterScreen> {
                     }
                     if (context.mounted) Navigator.pop(context);
                     if (mounted) ScaffoldMessenger.of(this.context).showSnackBar(const SnackBar(
-                      content: AppText('تم تسجيل الرسالة. تحقق من حالة الاتصال للتأكد من التسليم.')));
+                      content: AppText('أُضيفت الرسالة لقائمة الانتظار. يتغير مؤشرها عند تأكيد الخادم.')));
                   } catch (e) {
                     if (mounted) ScaffoldMessenger.of(this.context).showSnackBar(SnackBar(content: AppText('تعذر إرسال الرسالة: $e')));
                   } finally {
