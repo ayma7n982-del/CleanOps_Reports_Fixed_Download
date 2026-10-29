@@ -3,6 +3,7 @@ import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import '../models/core_models.dart';
 import 'operational_insights.dart';
 
@@ -392,40 +393,26 @@ class OperationsAdminService {
     });
   }
 
-  /// Free serverless-admin alternative:
-  /// immediately blocks the managed account in Firestore and queues a deletion
-  /// request. A GitHub Actions worker using the existing service account later
-  /// removes the Firebase Authentication account and profile permanently.
+  /// Delete directly on Firebase using a privileged callable function.
+  /// GitHub is only used to publish code; it is not part of the runtime path.
+  /// Never report success until the server confirms both account removals.
   Future<void> deleteManagedUser(String userId, {required String actorId}) async {
     final uid = userId.trim();
     final actor = actorId.trim();
     if (uid.isEmpty || actor.isEmpty || uid == actor) {
       throw StateError('لا يمكن حذف الحساب الحالي.');
     }
-
-    final requestId =
-        'delete_${actor}_${uid}_${DateTime.now().microsecondsSinceEpoch}';
-    final userRef = _users.doc(uid);
-    final requestRef = firestore.collection('admin_requests').doc(requestId);
-    final batch = firestore.batch();
-    batch.update(userRef, {
-      'isActive': false,
-      'status': 'pending_deletion',
-      'deletionRequestedBy': actor,
-      'deletionRequestedAt': FieldValue.serverTimestamp(),
-      'deletionRequestId': requestId,
-      'updatedBy': actor,
-      'updatedAt': FieldValue.serverTimestamp(),
-    });
-    batch.set(requestRef, {
-      'id': requestId,
-      'type': 'delete_user',
-      'targetUserId': uid,
-      'requestedBy': actor,
-      'status': 'pending',
-      'createdAt': FieldValue.serverTimestamp(),
-    });
-    await batch.commit();
+    try {
+      final response = await FirebaseFunctions.instanceFor(region: 'us-central1')
+          .httpsCallable('deleteManagedUser')
+          .call(<String, dynamic>{'userId': uid});
+      final data = response.data;
+      if (data is! Map || data['ok'] != true || data['userId'] != uid) {
+        throw StateError('لم يؤكد Firebase حذف الحساب نهائيًا.');
+      }
+    } on FirebaseFunctionsException catch (error) {
+      throw StateError(error.message ?? 'تعذر حذف الحساب مباشرة من Firebase. تحقق من نشر وظيفة deleteManagedUser وصلاحيات الحساب.');
+    }
   }
 
   /// Level 4 only: activate / deactivate any account (blocks its next login).
