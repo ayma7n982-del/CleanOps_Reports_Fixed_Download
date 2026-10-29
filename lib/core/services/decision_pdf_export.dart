@@ -141,6 +141,9 @@ Future<Uint8List> buildDecisionPdf({required DecisionAnalytics data,
           'الوردية: ${data.shift.label}', color: PdfColors.white),
       ])),
     pw.SizedBox(height: 10), note('جودة البيانات: $quality'),
+    if (section == 'supply') note('الملخص التنفيذي أدناه يشمل نطاق لوحة القرار بالكامل. '
+      'تحليل سلسلة الإمداد في الصفحات التالية يستخدم الفلاتر المختارة: '
+      '${(supply ?? SupplyChainAnalytics.from(data)).scope}.'),
     heading('الملخص التنفيذي • النسب والمؤشرات'),
     pw.Row(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
       for (final item in [
@@ -290,6 +293,7 @@ Future<Uint8List> buildDecisionPdf({required DecisionAnalytics data,
       '${const {'empty':'فارغة - أخضر','full':'ممتلئة - أحمر','partial':'جزئية - برتقالي','unknown':'غير معروفة - رمادي'}[e.key]}: ${e.value} '
       '(${decisionPercent(total == 0 ? null : e.value / total)})'].join('\n')));
   }
+  if (section != 'supply') {
   content.add(pw.NewPage(freeSpace: 140));
   content.add(heading('سجل القرارات والاعتمادات'));
   final filtered = decisions.where((d) => section == 'all' ||
@@ -305,6 +309,7 @@ Future<Uint8List> buildDecisionPdf({required DecisionAnalytics data,
       'إثبات التنفيذ: ${d['completionNote'] ?? 'لم يُوثّق'}'));
   }
   if (filtered.isEmpty) content.add(note('لا توجد قرارات محفوظة لهذا القسم.'));
+  }
   doc.addPage(pw.MultiPage(pageFormat: PdfPageFormat.a4, maxPages: 500,
     margin: const pw.EdgeInsets.all(28), textDirection: pw.TextDirection.rtl,
     theme: pw.ThemeData.withFont(base: regular, bold: bold),
