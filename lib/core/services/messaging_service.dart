@@ -288,7 +288,8 @@ class MessagingService extends ChangeNotifier {
         text = 'تحديث حالة الحاوية: $location • $status • $issue';
     }
     // Container alerts are delivered to the municipality coordinator and JSC.
-    final municipalityTarget = municipalityId.isNotEmpty ? municipalityId : (user.municipalityCoordinatorId ?? '');
+    final municipalityTarget = (user.municipalityCoordinatorId ?? '').isNotEmpty
+        ? user.municipalityCoordinatorId! : municipalityId;
     if (municipalityTarget.isNotEmpty && (user.role == 'group_supervisor' || user.role == 'worker')) {
       await _send(content: text, type: type, targetUserId: municipalityTarget);
       await _send(content: text, type: type, targetGroupId: '__JSC__');
@@ -376,6 +377,7 @@ class MessagingService extends ChangeNotifier {
         'messageId': message.messageId,
         'senderId': message.senderId,
         'targetGroupId': target,
+        if (message.targetUserId != null) 'targetUserId': message.targetUserId,
         'content': message.content,
         'timestamp': Timestamp.fromDate(message.timestamp),
         'type': message.type,
