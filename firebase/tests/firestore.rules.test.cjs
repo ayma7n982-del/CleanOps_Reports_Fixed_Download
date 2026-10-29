@@ -574,3 +574,23 @@ test('L2 cannot freeze a worker before cycle end or bypass changed-field limits'
   }));
 });
 
+
+
+test('supervisor creates own-group geolocated SOS; foreign group and missing GPS denied', async () => {
+  const sos = {
+    id:'new-sos',_entity:'emergency',groupId:'group-a',
+    reportedBy:'head-a',userId:'head-a',status:'urgent',
+    acknowledged:false,latitude:31.9,longitude:35.2,street:'Test site',
+    createdAt:new Date().toISOString(),isDeleted:false,
+  };
+  await assertSucceeds(setDoc(doc(db('head-a'),'operations','new-sos'),sos));
+  await assertFails(setDoc(doc(db('head-a'),'operations','foreign-sos-create'),{
+    ...sos,id:'foreign-sos-create',groupId:'group-b',
+  }));
+  await assertFails(setDoc(doc(db('head-a'),'operations','sos-without-gps'),{
+    ...sos,id:'sos-without-gps',latitude:null,
+  }));
+  await assertFails(setDoc(doc(db('worker-a'),'operations','worker-fake-sos'),{
+    ...sos,id:'worker-fake-sos',reportedBy:'worker-a',userId:'worker-a',
+  }));
+});

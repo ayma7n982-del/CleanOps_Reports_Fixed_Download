@@ -697,7 +697,12 @@ service cloud.firestore {
     match /operations/{id} {
       allow read: if operationReadAllowed();
       allow create: if signedIn() && (
-        (isL4() && (request.resource.data._entity == 'report' || request.resource.data._entity == 'user'))
+        // Fast-path urgent own-group SOS; other role checks are lengthy and
+        // must not exhaust Firestore's evaluation budget before this branch.
+        (role() == 'group_supervisor' &&
+          request.resource.data._entity == 'emergency' &&
+          validSupervisorSosCreate())
+        || (isL4() && (request.resource.data._entity == 'report' || request.resource.data._entity == 'user'))
         || (isL2() && (request.resource.data._entity == 'group' || request.resource.data._entity == 'worker' || validCartRedirect()))
         || validJscEquipmentDispatchCreate(id)
         || validJscEquipmentReturnCreate(id)
