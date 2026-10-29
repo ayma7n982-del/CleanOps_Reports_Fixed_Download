@@ -125,10 +125,18 @@ class FastSmartSearch {
 
   static List<String> _variants(String term) {
     if (term.length < 2) return [term];
-    final results = <String>{term};
+    // Arabic definite article must not hide a valid prefix (العمال / عمال).
+    final core = term.startsWith('ال') && term.length >= 5
+        ? term.substring(2) : term;
+    final results = <String>{term, core};
     for (final group in _synonyms) {
       final normalized = group.map(normalize).toList();
-      if (normalized.any((word) => word == term || word.startsWith(term))) {
+      if (normalized.any((word) =>
+          word == core ||
+          word.startsWith(core) ||
+          (core.length >= 4 &&
+           (word.length - core.length).abs() <= 1 &&
+           _editDistance(word, core, 1) <= 1))) {
         results.addAll(normalized);
       }
     }
