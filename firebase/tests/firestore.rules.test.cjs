@@ -756,19 +756,20 @@ test('decision hub: reserve assignment is atomic, named and cannot be double boo
   const assign=(id,groupId)=>({...decision('coordinator',groupId,'temporary_coverage'),id,
     details:{assignmentType:'worker',assignmentId:'reserve',assignmentLockId:'reserve',
       workerName:'Reserve Worker',workerJob:'collector'}});
+  const store=db('coordinator');
   const a=assign('reserve-decision','group-a');
-  await assertFails(setDoc(doc(db('coordinator'),'strategic_decisions',a.id),a));
-  const batch=writeBatch(db('coordinator'));
-  batch.set(doc(db('coordinator'),'strategic_decisions',a.id),a);
-  batch.set(doc(db('coordinator'),'temporary_assignments','reserve'),{
+  await assertFails(setDoc(doc(store,'strategic_decisions',a.id),a));
+  const batch=writeBatch(store);
+  batch.set(doc(store,'strategic_decisions',a.id),a);
+  batch.set(doc(store,'temporary_assignments','reserve'),{
     decisionId:a.id,workerId:'reserve',groupId:'group-a',
     municipalityCoordinatorId:'coordinator',validUntil:a.expiresAt,
     createdBy:'coordinator',createdAt:serverTimestamp(),
   });
   await assertSucceeds(batch.commit());
-  const b=assign('second-assignment','group-c'), duplicate=writeBatch(db('coordinator'));
-  duplicate.set(doc(db('coordinator'),'strategic_decisions',b.id),b);
-  duplicate.set(doc(db('coordinator'),'temporary_assignments','reserve'),{
+  const b=assign('second-assignment','group-c'), duplicate=writeBatch(store);
+  duplicate.set(doc(store,'strategic_decisions',b.id),b);
+  duplicate.set(doc(store,'temporary_assignments','reserve'),{
     decisionId:b.id,workerId:'reserve',groupId:'group-c',
     municipalityCoordinatorId:'coordinator',validUntil:b.expiresAt,
     createdBy:'coordinator',createdAt:serverTimestamp(),
