@@ -38,7 +38,7 @@ class _ContainersCard extends StatelessWidget {
     final critical = service.containers.where((c) => c.status == 'full' || c.issueStatus == 'reported' || c.issueStatus == 'resolving').length;
     return AiGlassCard(
       onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ContainerManagementScreen())),
-      padding: const EdgeInsets.fromLTRB(14, 14, 14, 120),
+      padding: const EdgeInsets.all(13),
       child: Row(children: [
         const AiFeatureIcon('containers', size: 20),
         const SizedBox(width: 10),
