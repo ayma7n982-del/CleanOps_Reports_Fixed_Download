@@ -23,10 +23,14 @@ class _MessagesCenterScreenState extends State<MessagesCenterScreen> {
   String? selectedGroup;
   bool sending = false;
   bool supervisorBroadcast = false;
+  String messageFilter = 'all';
+  String searchText = '';
+  final searchController = TextEditingController();
 
   @override
   void dispose() {
     composer.dispose();
+    searchController.dispose();
     super.dispose();
   }
 
@@ -35,6 +39,16 @@ class _MessagesCenterScreenState extends State<MessagesCenterScreen> {
     final messaging = context.watch<MessagingService>();
     final user = context.watch<AuthService>().currentUser;
     if (user == null) return const SizedBox.shrink();
+    final visibleMessages = messaging.messages.where((message) {
+      if (messageFilter == 'inbox' && message.senderId == user.id) return false;
+      if (messageFilter == 'sent' && message.senderId != user.id) return false;
+      if (messageFilter == 'unread' && (message.isRead || message.senderId == user.id)) return false;
+      final term = searchText.trim().toLowerCase();
+      return term.isEmpty || message.content.toLowerCase().contains(term) ||
+          message.senderName.toLowerCase().contains(term) ||
+          message.senderId.toLowerCase().contains(term) ||
+          (message.targetGroupId ?? '').toLowerCase().contains(term);
+    }).toList();
     return Directionality(
       textDirection: context.watch<LocaleController>().isArabic ? ui.TextDirection.rtl : ui.TextDirection.ltr,
       child: Scaffold(
@@ -49,9 +63,7 @@ class _MessagesCenterScreenState extends State<MessagesCenterScreen> {
             ),
           ],
         ),
-        body: messaging.messages.isEmpty
-            ? _emptyState(user, messaging)
-            : RefreshIndicator(
+        body: RefreshIndicator(
                 onRefresh: messaging.retryPendingWrites,
                 child: ListView(
                   padding: const EdgeInsets.fromLTRB(14, 14, 14, 100),
@@ -66,7 +78,42 @@ class _MessagesCenterScreenState extends State<MessagesCenterScreen> {
                       trailing: IconButton(onPressed: messaging.retryPendingWrites, icon: const Icon(Icons.sync_rounded, color: Colors.white)),
                     ),
                     const SizedBox(height: 14),
-                    ...messaging.messages.map((message) => _messageCard(message, user.id, messaging)),
+                    TextField(
+                      controller: searchController,
+                      onChanged: (value) => setState(() => searchText = value),
+                      decoration: InputDecoration(
+                        prefixIcon: const Icon(Icons.search_rounded),
+                        hintText: 'ابحث في الرسائل أو المرسل أو المجموعة',
+                        suffixIcon: searchText.isEmpty ? null : IconButton(
+                          icon: const Icon(Icons.close_rounded),
+                          onPressed: () { searchController.clear(); setState(() => searchText = ''); },
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(children: [
+                        for (final filter in const [
+                          ('all', 'الكل'), ('inbox', 'الوارد'),
+                          ('sent', 'المرسل'), ('unread', 'غير المقروء'),
+                        ]) Padding(
+                          padding: const EdgeInsetsDirectional.only(end: 8),
+                          child: ChoiceChip(
+                            label: Text(filter.$2),
+                            selected: messageFilter == filter.$1,
+                            onSelected: (_) => setState(() => messageFilter = filter.$1),
+                          ),
+                        ),
+                      ]),
+                    ),
+                    const SizedBox(height: 14),
+                    if (visibleMessages.isEmpty)
+                      const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 32),
+                        child: Center(child: AppText('لا توجد رسائل مطابقة للعرض الحالي.')),
+                      ),
+                    ...visibleMessages.map((message) => _messageCard(message, user.id, messaging)),
                   ],
                 ),
               ),
@@ -103,7 +150,7 @@ class _MessagesCenterScreenState extends State<MessagesCenterScreen> {
       child: ListTile(
         dense: true,
         leading: Icon(error == null ? Icons.cloud_done_rounded : Icons.cloud_off_rounded, color: error == null ? aiGreen : red),
-        title: AppText(error == null ? 'الرسائل تعمل عبر Firestore Offline-First' : 'الرسالة محفوظة محليًا وسيعاد إرسالها عند عودة الاتصال.'),
+        title: AppText(error == null ? 'المراسلة الداخلية • مزامنة Firestore' : 'تعذر إكمال عملية مراسلة. راجع التفاصيل أدناه.'),
         subtitle: error == null ? const AppText('لا توجد خدمة FCM مطلوبة للتراسل الداخلي.') : AppText(error),
       ),
     );
