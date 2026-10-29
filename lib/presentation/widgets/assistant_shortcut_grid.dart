@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/constants/app_constants.dart';
 import 'app_design.dart';
+import 'eco_shortcuts.dart';
 
 /// All permissions and navigation callbacks are supplied by the existing
 /// screen. These widgets are presentation-only and never query the backend.
@@ -87,29 +88,17 @@ class AssistantShortcutGrid extends StatelessWidget {
               ],
             ),
           ),
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final columns = constraints.maxWidth < 284 ? 1 : 2;
-              final effectiveSize = MediaQuery.textScalerOf(context).scale(14);
-              final extra = (effectiveSize - 14).clamp(0.0, 28.0) * 2.2;
-              return GridView.builder(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                itemCount: actions.length,
-                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: columns,
-                  crossAxisSpacing: 10,
-                  mainAxisSpacing: 10,
-                  mainAxisExtent: (columns == 1 ? 137.0 : 153.0) + extra,
+          EcoShortcutGrid(
+            cards: [
+              for (final action in actions)
+                EcoShortcutCard(
+                  title: action.title,
+                  subtitle: action.description,
+                  feature: _featureFor(action.icon),
+                  icon: action.icon,
+                  onTap: action.onTap,
                 ),
-                itemBuilder: (context, index) {
-                  return _AssistantShortcutCard(
-                    action: actions[index],
-                    palette: _ShortcutPalette.forIndex(index, suggestions: suggestions),
-                  );
-                },
-              );
-            },
+            ],
           ),
         ],
       ),
@@ -117,215 +106,23 @@ class AssistantShortcutGrid extends StatelessWidget {
   }
 }
 
-class _ShortcutPalette {
-  final Color tint;
-  final Color accent;
-  final Color halo;
-  const _ShortcutPalette(this.tint, this.accent, this.halo);
-
-  static _ShortcutPalette forIndex(int i, {bool suggestions = false}) {
-    const options = <_ShortcutPalette>[
-      _ShortcutPalette(Color(0xFFE9F9F1), Color(0xFF0C956E), Color(0xFFBAF1D5)),
-      _ShortcutPalette(Color(0xFFFFF0ED), Color(0xFFE06959), Color(0xFFFFCECA)),
-      _ShortcutPalette(Color(0xFFE7F7EF), Color(0xFF159B79), Color(0xFFB3EACF)),
-      _ShortcutPalette(Color(0xFFE5F8F8), Color(0xFF0A9DA6), Color(0xFFB9F0ED)),
-      _ShortcutPalette(Color(0xFFEAF5FF), Color(0xFF2985B9), Color(0xFFCEE9FD)),
-      _ShortcutPalette(Color(0xFFEDF6F8), Color(0xFF267B87), Color(0xFFC2E7EC)),
-      _ShortcutPalette(Color(0xFFFFF6E9), Color(0xFFC28A2A), Color(0xFFFFE3AB)),
-      _ShortcutPalette(Color(0xFFF1EFFF), Color(0xFF7B60BD), Color(0xFFD8CDFF)),
-    ];
-    return options[(suggestions ? i : i + 3) % options.length];
+/// Map the existing icons to the same feature colors as other app screens.
+String _featureFor(IconData icon) {
+  if (icon == Icons.analytics_rounded || icon == Icons.insights_rounded ||
+      icon == Icons.description_rounded) return 'reports';
+  if (icon == Icons.warning_amber_rounded ||
+      icon == Icons.notification_important_rounded) return 'emergency';
+  if (icon == Icons.delete_sweep_rounded || icon == Icons.location_on_rounded) {
+    return 'dumpsite';
   }
-}
-
-class _AssistantShortcutCard extends StatelessWidget {
-  final AssistantShortcutAction action;
-  final _ShortcutPalette palette;
-
-  const _AssistantShortcutCard({required this.action, required this.palette});
-
-  @override
-  Widget build(BuildContext context) {
-    final radius = BorderRadius.circular(20);
-    return Semantics(
-      button: true,
-      label: action.title,
-      child: Material(
-        color: Colors.transparent,
-        child: Ink(
-          decoration: BoxDecoration(
-            borderRadius: radius,
-            gradient: LinearGradient(
-              colors: [palette.tint, Color.lerp(palette.tint, Colors.white, .48)!],
-              begin: Alignment.topRight,
-              end: Alignment.bottomLeft,
-            ),
-            border: Border.all(color: palette.accent.withOpacity(.10)),
-          ),
-          child: InkWell(
-            onTap: action.onTap,
-            borderRadius: radius,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(10, 8, 10, 11),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  SizedBox(
-                    height: 69,
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        _AssistantPictorialIcon(icon: action.icon, palette: palette),
-                        Container(
-                          width: 29,
-                          height: 29,
-                          decoration: const BoxDecoration(
-                            color: Color(0xEFFFFFFF),
-                            shape: BoxShape.circle,
-                          ),
-                          alignment: Alignment.center,
-                          child: Icon(
-                            Icons.arrow_back_ios_new_rounded,
-                            size: 14, color: palette.accent,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    action.title,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: cleanOpsText,
-                      fontSize: 13.2,
-                      height: 1.25,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                  if (action.description.isNotEmpty) ...[
-                    const SizedBox(height: 3),
-                    Flexible(
-                      child: Text(
-                        action.description,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: Color(0xFF587670),
-                          fontSize: 9.5,
-                          height: 1.25,
-                        ),
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
+  if (icon == Icons.local_shipping_rounded || icon == Icons.route_rounded) {
+    return 'trips';
   }
-}
-
-/// Layered gradient art uses standard Material icons, not remote pictures,
-/// image files, or extra runtime dependencies.
-class _AssistantPictorialIcon extends StatelessWidget {
-  final IconData icon;
-  final _ShortcutPalette palette;
-  const _AssistantPictorialIcon({required this.icon, required this.palette});
-
-  IconData get smallSymbol {
-    if (icon == Icons.warning_amber_rounded ||
-        icon == Icons.notification_important_rounded) {
-      return Icons.priority_high_rounded;
-    }
-    if (icon == Icons.delete_sweep_rounded ||
-        icon == Icons.location_on_rounded) {
-      return Icons.recycling_rounded;
-    }
-    if (icon == Icons.local_shipping_rounded ||
-        icon == Icons.route_rounded) {
-      return Icons.location_on_rounded;
-    }
-    if (icon == Icons.groups_rounded) return Icons.check_circle_rounded;
-    if (icon == Icons.description_rounded ||
-        icon == Icons.picture_as_pdf_rounded) {
-      return Icons.pie_chart_rounded;
-    }
-    return Icons.auto_awesome_rounded;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      height: 66,
-      width: 76,
-      child: Stack(
-        clipBehavior: Clip.none,
-        children: [
-          Positioned(
-            top: 5,
-            right: 5,
-            child: Container(
-              width: 58,
-              height: 58,
-              decoration: BoxDecoration(
-                color: palette.halo.withOpacity(.70),
-                borderRadius: BorderRadius.circular(21),
-              ),
-            ),
-          ),
-          Positioned(
-            top: 1,
-            right: 10,
-            child: Transform.rotate(
-              angle: -.08,
-              child: Container(
-                width: 53,
-                height: 55,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [Color.lerp(palette.accent, Colors.white, .34)!, palette.accent],
-                    begin: Alignment.topRight,
-                    end: Alignment.bottomLeft,
-                  ),
-                  borderRadius: BorderRadius.circular(18),
-                  boxShadow: [
-                    BoxShadow(
-                      color: palette.accent.withOpacity(.23),
-                      blurRadius: 11,
-                      offset: const Offset(0, 5),
-                    ),
-                  ],
-                ),
-                child: Icon(icon, size: 31, color: Colors.white),
-              ),
-            ),
-          ),
-          Positioned(
-            bottom: 0,
-            left: 2,
-            child: Container(
-              width: 28,
-              height: 28,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(11),
-                boxShadow: const [
-                  BoxShadow(color: Color(0x16073C35), blurRadius: 5),
-                ],
-              ),
-              child: Icon(smallSymbol, color: palette.accent, size: 17),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+  if (icon == Icons.groups_rounded) return 'workers';
+  if (icon == Icons.forum_rounded) return 'messages';
+  if (icon == Icons.picture_as_pdf_rounded) return 'reports';
+  if (icon == Icons.map_rounded) return 'map';
+  return 'ai';
 }
 
 class AssistantFeaturedPdfShortcut extends StatelessWidget {
