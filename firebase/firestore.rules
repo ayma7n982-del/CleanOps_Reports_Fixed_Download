@@ -216,6 +216,25 @@ service cloud.firestore {
       allow update: if messageReadUpdateAllowed();
       allow delete: if false;
 
+      match /attachments/{attachmentId} {
+        allow get, list: if activeMessenger() && receiptParentExists(messageId)
+          && (receiptSender(messageId) || receiptRecipient(messageId));
+        allow create: if activeMessenger() && receiptParentExists(messageId)
+          && receiptSender(messageId)
+          && request.resource.data.keys().hasOnly([
+            'attachmentId','path','contentType','sizeBytes','senderId','createdAt'])
+          && request.resource.data.keys().hasAll([
+            'attachmentId','path','contentType','sizeBytes','senderId','createdAt'])
+          && request.resource.data.attachmentId == attachmentId
+          && request.resource.data.senderId == request.auth.uid
+          && request.resource.data.path == 'message_attachments/' + messageId + '/' + attachmentId + '.jpg'
+          && request.resource.data.contentType == 'image/jpeg'
+          && request.resource.data.sizeBytes is int
+          && request.resource.data.sizeBytes > 0
+          && request.resource.data.sizeBytes <= 500 * 1024
+          && request.resource.data.createdAt == request.time;
+        allow update, delete: if false;
+      }
       match /receipts/{receiptUid} {
         // A sender may view all acknowledgements for their message; each
         // recipient may view only their own receipt.
