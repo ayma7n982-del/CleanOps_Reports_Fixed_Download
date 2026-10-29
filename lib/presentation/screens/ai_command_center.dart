@@ -75,7 +75,7 @@ class _AICommandCenterState extends State<AICommandCenter> {
                       final critical = ((x['emergencies'] as num?)?.toDouble() ?? 0.0);
                       return GridView.count(
                         shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
-                        crossAxisCount: horizontal ? 4 : 2, mainAxisSpacing: 10, crossAxisSpacing: 10, childAspectRatio: horizontal ? 1.25 : 1.15,
+                        crossAxisCount: horizontal ? 4 : 2, mainAxisSpacing: 10, crossAxisSpacing: 10, childAspectRatio: horizontal ? 1.25 : 0.95,
                         children: [
                           _MetricCard(icon: Icons.groups_rounded, title: 'العاملون النشطون', value: '${x['activeUsers']}', subtitle: 'من بيانات المستخدمين', progress: ((x['activeUsers'] as num?)?.toDouble() ?? 0) / maxUsers, color: const Color(0xFF00B87A)),
                           _MetricCard(icon: Icons.local_shipping_rounded, title: 'الترحيلات', value: '${x['trips']}', subtitle: 'سجلات تشغيلية', progress: (trips / (trips + 10.0)).clamp(0.0, 1.0).toDouble(), color: const Color(0xFF00B4DB)),
@@ -445,9 +445,9 @@ class _MetricCard extends StatelessWidget {
           child: Icon(icon, color: color, size: 20),
         ),
         const Spacer(),
-        Text(value, style: TextStyle(color: cleanOpsText, fontSize: 25, fontWeight: FontWeight.w900)),
-        AppText(title, style: const TextStyle(color: cleanOpsMuted, fontSize: 10, fontWeight: FontWeight.w800)),
-        AppText(subtitle, style: const TextStyle(color: cleanOpsMuted, fontSize: 9)),
+        FittedBox(fit: BoxFit.scaleDown, alignment: AlignmentDirectional.centerStart, child: Text(value, style: const TextStyle(color: cleanOpsText, fontSize: 25, fontWeight: FontWeight.w900))),
+        AppText(title, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: cleanOpsText, fontSize: 12, fontWeight: FontWeight.w800)),
+        AppText(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: cleanOpsMuted, fontSize: 10)),
         const SizedBox(height: 8),
         ClipRRect(
           borderRadius: BorderRadius.circular(20),
