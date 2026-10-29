@@ -237,43 +237,76 @@ class _ReportsCenterState extends State<ReportsCenterScreen> {
         crossAxisCount: constraints.maxWidth < 300 ? 1 : 2,
         crossAxisSpacing: 10,
         mainAxisSpacing: 10,
-        childAspectRatio: constraints.maxWidth < 300 ? 2.8 : 1.65,
+        mainAxisExtent: constraints.maxWidth < 300 ? 116 : 145,
       ),
       itemBuilder: (context, index) {
         final item = types[index];
         final selected = reportType == item.$1;
-        return AnimatedContainer(
-          duration: const Duration(milliseconds: 220),
-          curve: Curves.easeOutCubic,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(18),
-            gradient: LinearGradient(
-              colors: selected
-                  ? [const Color(0xFF09293A), const Color(0xFF103E4B)]
-                  : [const Color(0xFF071D30), const Color(0xFF0A2A3B)],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-            border: Border.all(color: selected ? const Color(0xFF36C9AF) : Colors.white24, width: selected ? 2 : 1),
-            boxShadow: selected ? [BoxShadow(color: const Color(0xFF36C9AF).withOpacity(.18), blurRadius: 14)] : null,
-          ),
+        final feature = switch (item.$1) {
+          'absence' => 'attendance',
+          'containers' => 'containers',
+          'work' => 'trips',
+          'cycles' => 'cycle',
+          'municipalities' => 'dumpsite',
+          'groups' => 'workers',
+          _ => 'reports',
+        };
+        final accent = EcoPalette.accent(feature);
+        final tint = EcoPalette.tint(feature);
+        return Semantics(
+          button: true,
+          selected: selected,
+          label: item.$2,
           child: Material(
             color: Colors.transparent,
-            child: InkWell(
-              borderRadius: BorderRadius.circular(18),
-              onTap: () {
-                if (item.$1 == 'absence') { Navigator.push(context, MaterialPageRoute(builder: (_) => const AttendanceReportsHomeScreen())); return; }
-                if (item.$1 == 'work') { Navigator.push(context, MaterialPageRoute(builder: (_) => const WorkReportsDashboard())); return; }
-                setState(() => reportType = item.$1); _refresh();
-              },
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
-                child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                  Icon(item.$3, size: 28, color: selected ? const Color(0xFF58E3CA) : Colors.white),
-                  const SizedBox(height: 7),
-                  AppText(item.$2, textAlign: TextAlign.center, maxLines: 2, overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 14)),
-                ]),
+            child: Ink(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(19),
+                gradient: LinearGradient(
+                  colors: [tint, Color.lerp(tint, Colors.white, .53)!],
+                  begin: Alignment.topRight,
+                  end: Alignment.bottomLeft,
+                ),
+                border: Border.all(
+                  color: selected ? accent : accent.withOpacity(.17),
+                  width: selected ? 2 : 1,
+                ),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Color(0x0C0B765F),
+                    blurRadius: 12,
+                    offset: Offset(0, 5),
+                  ),
+                ],
+              ),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(19),
+                onTap: () {
+                  if (item.$1 == 'absence') { Navigator.push(context, MaterialPageRoute(builder: (_) => const AttendanceReportsHomeScreen())); return; }
+                  if (item.$1 == 'work') { Navigator.push(context, MaterialPageRoute(builder: (_) => const WorkReportsDashboard())); return; }
+                  setState(() => reportType = item.$1);
+                  _refresh();
+                },
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 10),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      EcoPictorialIcon(feature: feature, icon: item.$3, size: 56),
+                      const SizedBox(height: 7),
+                      AppText(item.$2,
+                        textAlign: TextAlign.center,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: cleanOpsText,
+                          fontWeight: FontWeight.w900,
+                          fontSize: 12.5,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ),
           ),
