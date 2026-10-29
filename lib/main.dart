@@ -685,6 +685,20 @@ class AppDrawer extends StatelessWidget {
               title: const AppText('تسجيل الخروج'),
               onTap: () => context.read<AuthService>().logout(),
             ),
+            const Padding(
+              padding: EdgeInsets.only(top: 14, bottom: 8),
+              child: Center(
+                child: Text(
+                  'ECO-UI R2 • 2026.10.29',
+                  textDirection: TextDirection.ltr,
+                  style: TextStyle(
+                    color: cleanOpsMuted,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ),
           ],
         ),
       ),
