@@ -7,10 +7,24 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import '../../presentation/widgets/decision_charts.dart';
 import 'decision_analytics.dart';
+import 'supply_chain_analytics.dart';
+import '../../presentation/widgets/supply_chain_charts.dart';
 
 const _navy = PdfColor.fromInt(0xFF12304A);
 const _teal = PdfColor.fromInt(0xFF008B78);
 const _light = PdfColor.fromInt(0xFFF0F7F8);
+
+Future<Uint8List> _supplyImage(List<List<double>> series, String kind) async {
+  final recorder = ui.PictureRecorder();
+  final canvas = f.Canvas(recorder)..scale(3);
+  canvas.drawRect(const f.Rect.fromLTWH(0, 0, 600, 190), f.Paint()..color = f.Colors.white);
+  SupplyChartPainter(series, kind).paint(canvas, const f.Size(600, 190));
+  final picture = recorder.endRecording();
+  final image = await picture.toImage(1800, 570);
+  final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
+  image.dispose(); picture.dispose();
+  return bytes!.buffer.asUint8List();
+}
 
 Future<Uint8List> _ringImage(double? value, {bool gauge = false,
     List<double>? portions, List<f.Color>? colors, f.Color? color}) async {
@@ -62,7 +76,8 @@ String decisionStatusLabel(DecisionRow d) {
 Future<Uint8List> buildDecisionPdf({required DecisionAnalytics data,
     required List<DecisionRow> decisions, required String coordinator,
     required String quality, Uint8List? chartImage,
-    List<DecisionRow> plans = const [], String section = 'all'}) async {
+    List<DecisionRow> plans = const [], String section = 'all',
+    SupplyChainAnalytics? supply}) async {
   final regular = pw.Font.ttf(await rootBundle.load('assets/fonts/NotoSansArabic-Regular.ttf'));
   final bold = pw.Font.ttf(await rootBundle.load('assets/fonts/NotoSansArabic-Bold.ttf'));
   final doc = pw.Document(title: 'لوحة الإجراءات والقرارات الذكية',
@@ -221,6 +236,59 @@ Future<Uint8List> buildDecisionPdf({required DecisionAnalytics data,
         '${(fill ?? 0) >= 85 ? 'خطر: تحويل المسار إلى مكب بديل آمن وطلب التسوية' : 'دون حد الخطر 85%'}'));
     }
   }
+  if (section == 'all' || section == 'supply') {
+    final s = supply ?? SupplyChainAnalytics.from(data);
+    content.add(pw.NewPage());
+    content.add(heading('تحليل سلسلة الإمداد • SUPPLY CHAIN'));
+    content.add(note('${s.scope}\n${s.period} • أيام مكتملة حتى نهاية أمس\n'
+      'الفترة السابقة مساوية: ${s.days} يومًا. الحالة الحالية للحاويات مستقلة عن الفترة.\n'
+      '${s.historyCovered ? '' : 'الفترة السابقة غير مكتملة في السجل؛ مقارنة التغير غير متاحة.'}'));
+    content.add(card('مؤشرات الأداء', 'نقلات مسجلة ${s.recorded} • مكتملة ${s.completed}\n'
+      'الإكمال ${decisionPercent(s.completion)} • تغير النقلات ${decisionPercent(s.change)}\n'
+      'مجموع الأوزان المعروفة ${s.tons?.toStringAsFixed(2) ?? 'غير متاح'} طن\n'
+      'تغطية الوزن ${s.weighed} من ${s.completed} نقلة مكتملة؛ قد تشمل تقديرات.\n'
+      'الأصفار تعني عدم وجود سجلات في البيانات المتاحة؛ راجع جودة البيانات أعلاه.'));
+    content.add(heading('اتجاه النقلات اليومية • Line Charts'));
+    content.add(note('الأخضر: مكتملة • الأزرق: مسجلة • الوحدة: نقلة\n'
+      'المحور الزمني من الأقدم يسارًا إلى الأحدث يمينًا. الحالة حسب آخر تحديث للنقلة المسجلة في ذلك اليوم.'));
+    content.add(pw.Image(pw.MemoryImage(await _supplyImage(supplyTrendSeries(s), 'line')), height: 160));
+    content.add(pw.TableHelper.fromTextArray(headers: ['اليوم', 'المسجلة', 'المكتملة'],
+      data: [for (final p in s.trend) ['${p.day.day}/${p.day.month}', '${p.recorded}', '${p.completed}']],
+      headerStyle: pw.TextStyle(font: bold, fontSize: 9, color: PdfColors.white),
+      headerDecoration: const pw.BoxDecoration(color: _navy),
+      cellStyle: pw.TextStyle(font: regular, fontSize: 8), cellAlignment: pw.Alignment.center));
+    content.add(pw.NewPage());
+    content.add(heading('المقارنات والتوزيعات • Comparisons'));
+    // Keep each chart readable even with a large number of authorized groups.
+    for (var offset = 0; offset < s.groups.length; offset += 8) {
+      final batch = s.groups.skip(offset).take(8).toList();
+      content.add(note('مقارنة النقلات • الأخضر: الحالية • الأزرق: السابقة\n'
+        '${batch.map((g) => g.name).join(' • ')}'));
+      content.add(pw.Image(pw.MemoryImage(await _supplyImage([
+        batch.map((g) => g.current.toDouble()).toList(),
+        if (s.historyCovered) batch.map((g) => g.previous.toDouble()).toList(),
+      ], 'bar')), height: 130));
+      for (final g in batch) {
+        content.add(note('${g.name}: ${g.current} حالية / ${s.historyCovered ? g.previous : 'غير متاح'} سابقة'));
+      }
+      content.add(note('مقارنة الأوزان المعروفة • طن • نفس ترتيب المجموعات'));
+      content.add(pw.Image(pw.MemoryImage(await _supplyImage([
+        batch.map((g) => g.tons).toList()], 'bar')), height: 120));
+      for (final g in batch) {
+        content.add(note('${g.name}: ${g.weighed == 0 ? 'وزن غير متاح' : '${g.tons.toStringAsFixed(2)} طن'}'));
+      }
+    }
+    content.add(heading('توزيع حالة الحاويات الآن • Pie & Donut'));
+    final portions = [s.distribution.values.map((n) => n.toDouble()).toList()];
+    final pie = await _supplyImage(portions, 'pie');
+    final donut = await _supplyImage(portions, 'donut');
+    content.add(pw.Row(children: [for (final image in [pie, donut])
+      pw.Expanded(child: pw.Image(pw.MemoryImage(image), height: 130))]));
+    final total = s.distribution.values.fold<int>(0, (a, b) => a + b);
+    content.add(note([for (final e in s.distribution.entries)
+      '${const {'empty':'فارغة - أخضر','full':'ممتلئة - أحمر','partial':'جزئية - برتقالي','unknown':'غير معروفة - رمادي'}[e.key]}: ${e.value} '
+      '(${decisionPercent(total == 0 ? null : e.value / total)})'].join('\n')));
+  }
   content.add(pw.NewPage(freeSpace: 140));
   content.add(heading('سجل القرارات والاعتمادات'));
   final filtered = decisions.where((d) => section == 'all' ||
@@ -251,9 +319,11 @@ Future<Uint8List> buildDecisionPdf({required DecisionAnalytics data,
 Future<void> exportDecisionPdf({required DecisionAnalytics data,
     required List<DecisionRow> decisions, required String coordinator,
     required String quality, Uint8List? chartImage,
-    List<DecisionRow> plans = const [], String section = 'all'}) async {
+    List<DecisionRow> plans = const [], String section = 'all',
+    SupplyChainAnalytics? supply}) async {
   final bytes = await buildDecisionPdf(data: data, decisions: decisions,
-    coordinator: coordinator, quality: quality, plans: plans, section: section);
+    coordinator: coordinator, quality: quality, plans: plans, section: section, supply: supply);
   await Printing.layoutPdf(name: 'CleanOps_Decisions_${section}_'
     '${data.now.toIso8601String().substring(0, 10)}.pdf', onLayout: (_) async => bytes);
 }
+

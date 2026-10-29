@@ -6,6 +6,7 @@ import '../../core/services/decision_analytics.dart';
 import '../../core/services/decision_hub_service.dart';
 import '../../core/services/decision_pdf_export.dart';
 import '../widgets/decision_charts.dart';
+import 'supply_chain_dashboard.dart';
 
 class ActionDecisionHubEntry extends StatelessWidget {
   const ActionDecisionHubEntry({super.key});
@@ -115,6 +116,12 @@ class _ActionDecisionHubScreenState extends State<ActionDecisionHubScreen> {
                       'رفض الخادم ${service.writeErrors.length} قرارًا. لم تُنفذ هذه الطلبات؛ '
                       'يمكن إعادة المحاولة بعد معالجة الاتصال أو الصلاحيات.'),
                     DecisionExecutiveCharts(data: data),
+                    FilledButton.icon(
+                      icon: const Icon(Icons.analytics_outlined),
+                      label: const Padding(padding: EdgeInsets.all(12),
+                        child: Text('تحليل سلسلة الإمداد • الاتجاهات والمقارنات')),
+                      onPressed: () => Navigator.push(context, MaterialPageRoute<void>(
+                        builder: (_) => SupplyChainDashboard(service: service)))),
                     const SizedBox(height: 8),
                     OutlinedButton.icon(onPressed: _exporting ? null : () => _export(service),
                       icon: const Icon(Icons.picture_as_pdf_outlined),
@@ -492,3 +499,4 @@ class _DecisionTabs extends SliverPersistentHeaderDelegate {
   @override
   bool shouldRebuild(covariant _DecisionTabs old) => old.color != color;
 }
+

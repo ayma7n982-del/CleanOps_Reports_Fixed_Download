@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:solid_waste_operations/core/services/decision_analytics.dart';
 import 'package:solid_waste_operations/core/services/decision_pdf_export.dart';
 import 'package:solid_waste_operations/presentation/widgets/decision_charts.dart';
+import 'package:solid_waste_operations/presentation/widgets/supply_chain_charts.dart';
 
 DecisionAnalytics data() => DecisionAnalytics.calculate(
   operations: [
@@ -17,6 +18,10 @@ DecisionAnalytics data() => DecisionAnalytics.calculate(
     {'id': 't', '_entity': 'trip', 'groupId': 'g', 'status': 'completed',
       'createdAt': '2026-10-29T09:00:00', 'estimatedQuantity': 2, 'quantityUnit': 'ton',
       'ppe': {'boots': true, 'gloves': false}},
+    for (var day = 10; day <= 28; day++)
+      {'id': 'historic$day', '_entity': 'trip', 'groupId': 'g',
+        'status': 'completed', 'createdAt': '2026-10-${day}T09:00:00',
+        'weightTons': day / 10},
   ],
   users: [], containers: [{'id': 'c', 'status': 'full', 'groupId': 'g',
     'fullSince': '2026-10-28T00:00:00',
@@ -45,6 +50,9 @@ void main() {
           DecisionExecutiveCharts(data: data()),
           const DecisionComparisonBar(actual: 2, target: 5,
             label: 'النقلات المنجزة', unit: 'نقلة'),
+          for (final kind in ['line', 'bar', 'pie', 'donut'])
+            SupplyChart(series: const [[1, 2, 0], [0, 1, 2]],
+              kind: kind, description: 'اختبار الرسم'),
         ])))))));
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
@@ -54,7 +62,7 @@ void main() {
   testWidgets('every report section renders real chart images into a valid Arabic PDF',
       (tester) async {
     await tester.runAsync(() async {
-      for (final section in ['all', 'operations', 'strategic', 'health']) {
+      for (final section in ['all', 'operations', 'strategic', 'health', 'supply']) {
         final bytes = await buildDecisionPdf(data: data(), decisions: [
           {'id': 'd', 'title': 'توجيه عاجل', 'body': 'تفريغ الحاوية الحرجة',
             'kind': 'collection', 'groupId': 'g', 'status': 'issued',
@@ -68,3 +76,4 @@ void main() {
     });
   });
 }
+
