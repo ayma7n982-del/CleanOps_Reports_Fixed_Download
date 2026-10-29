@@ -148,8 +148,3 @@ jobs:
           FIREBASE_PROJECT_ID: nrc-aid
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
         run: node scripts/deploy_firestore_rules_rest.mjs
-      - name: Publish and verify decision indexes through Firestore Admin API
-        env:
-          FIREBASE_PROJECT_ID: nrc-aid
-          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-        run: node scripts/deploy_decision_indexes_rest.mjs

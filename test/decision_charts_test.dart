@@ -27,6 +27,11 @@ DecisionAnalytics data() => DecisionAnalytics.calculate(
   now: DateTime(2026, 10, 29, 10), shiftText: '08:00 - 16:00');
 
 void main() {
+  test('Arabic PDF dates avoid bidi-ambiguous ISO strings', () {
+    expect(decisionReportDate(DateTime(2026, 10, 29, 10, 5)), '29 أكتوبر 2026، 10:05');
+    expect(decisionReportDate(null), 'غير موثّق');
+    expect(decisionReportDate(DateTime(2026, 10, 29), includeTime: false), '29 أكتوبر 2026');
+  });
   testWidgets('Arabic charts remain scrollable at phone width and large font',
       (tester) async {
     tester.view.physicalSize = const Size(320, 800);

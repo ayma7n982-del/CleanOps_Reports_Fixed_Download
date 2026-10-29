@@ -58,12 +58,11 @@ class _DecisionDirectiveBannerState extends State<DecisionDirectiveBanner> {
           .where('kind', isEqualTo: 'broadcast'),
     };
     for (final q in queries.entries) {
-      _subscriptions.add(q.value.where('expiresAt',
-        isGreaterThan: Timestamp.fromDate(DateTime.now())).limit(200).snapshots(includeMetadataChanges: true)
+      _subscriptions.add(q.value.limit(20000).snapshots(includeMetadataChanges: true)
         .listen((snapshot) {
           if (!mounted || _binding != binding) return;
           setState(() {
-            _error = snapshot.docs.length == 200 ? 'سجل التوجيهات كبير؛ اطلب مراجعته من المنسق.' : null;
+            _error = snapshot.docs.length == 20000 ? 'سجل التوجيهات كبير؛ اطلب مراجعته من المنسق.' : null;
             _sources[q.key] = snapshot.docs.map((d) => <String, dynamic>{
               ...d.data(), 'id': d.id, '_pending': d.metadata.hasPendingWrites}).toList();
           });

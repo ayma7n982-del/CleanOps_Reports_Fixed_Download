@@ -1,31 +1,31 @@
-name: Deploy and verify decision indexes
+name: Verify production decision queries
 on:
   push:
     branches: [main]
     paths:
-      - 'scripts/deploy_decision_indexes_rest.mjs'
+      - 'scripts/verify_decision_queries_rest.mjs'
       - '.github/workflows/decision-indexes.yml'
+      - 'lib/core/services/decision_hub_service.dart'
+      - 'lib/core/services/decision_route_policy.dart'
+      - 'lib/presentation/widgets/decision_directive_banner.dart'
   workflow_dispatch:
 permissions:
   contents: read
-concurrency:
-  group: decision-indexes
-  cancel-in-progress: false
 jobs:
-  publish:
+  read-only-query-check:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 5
     environment: firebase-production
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - name: Check deployment script syntax
-        run: node --check scripts/deploy_decision_indexes_rest.mjs
-      - name: Create missing indexes and verify READY without changing IAM
+      - name: Validate read-only probe syntax
+        run: node --check scripts/verify_decision_queries_rest.mjs
+      - name: Verify real query plans without creating indexes or changing data
         env:
           FIREBASE_PROJECT_ID: nrc-aid
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-        run: node scripts/deploy_decision_indexes_rest.mjs
+        run: node scripts/verify_decision_queries_rest.mjs

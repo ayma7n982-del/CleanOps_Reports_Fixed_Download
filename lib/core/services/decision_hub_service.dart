@@ -16,6 +16,7 @@ class DecisionHubService extends ChangeNotifier {
   final AppUser user;
   final String shiftText;
   final _subscriptions = <StreamSubscription<QuerySnapshot<Map<String, dynamic>>>>[];
+  final _eventSubscriptions = <String, StreamSubscription<QuerySnapshot<Map<String, dynamic>>>>{};
   final _rows = <String, List<DecisionRow>>{};
   final _cached = <String, bool>{};
   final errors = <String, String>{};
@@ -86,16 +87,13 @@ class DecisionHubService extends ChangeNotifier {
       }
       _listen(collection, q);
     }
-    Query<Map<String, dynamic>> events = db.collectionGroup('status_events');
-    if (user.role == 'municipality_coordinator') {
-      events = events.where('municipalityId', isEqualTo: user.id);
-    }
-    _listen('status_events', events);
     _clock = Timer.periodic(const Duration(minutes: 1), (_) => _notify());
   }
-  void _listen(String name, Query<Map<String, dynamic>> query) {
-    _subscriptions.add(query.limit(pageLimit).snapshots(includeMetadataChanges: true)
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>> _listen(
+      String name, Query<Map<String, dynamic>> query) {
+    final subscription = query.limit(pageLimit).snapshots(includeMetadataChanges: true)
         .listen((snapshot) {
+      if (_disposed) return;
       _rows[name] = snapshot.docs.map((doc) => <String, dynamic>{
         ...Map<String, dynamic>.from(normalizeDecisionValue(doc.data()) as Map),
         'id': doc.id, '_pending': doc.metadata.hasPendingWrites,
@@ -103,12 +101,54 @@ class DecisionHubService extends ChangeNotifier {
       _cached[name] = snapshot.metadata.isFromCache;
       if (snapshot.docs.length >= pageLimit) { capped.add(name); } else { capped.remove(name); }
       errors.remove(name);
+      if (name == 'containers') _bindContainerHistory();
+      if (name.startsWith('events:')) _mergeContainerHistory();
       _notify();
     }, onError: (Object error) {
+      if (_disposed) return;
       errors[name] = '$error';
       _rows.putIfAbsent(name, () => []);
+      if (name.startsWith('events:')) _mergeContainerHistory();
       _notify();
-    }));
+    });
+    _subscriptions.add(subscription);
+    return subscription;
+  }
+  void _bindContainerHistory() {
+    final containers = (_rows['containers'] ?? <DecisionRow>[]).where(decisionActive);
+    final names = containers.map((c) => 'events:${c['id']}').toSet();
+    for (final name in _eventSubscriptions.keys.toList()) {
+      if (names.contains(name)) continue;
+      final subscription = _eventSubscriptions.remove(name)!;
+      subscription.cancel();
+      _subscriptions.remove(subscription);
+      _rows.remove(name); _cached.remove(name); errors.remove(name); capped.remove(name);
+    }
+    for (final container in containers) {
+      final id = '${container['id']}', name = 'events:${container['id']}';
+      if (_eventSubscriptions.containsKey(name)) continue;
+      Query<Map<String, dynamic>> query = db.collection('containers').doc(id)
+          .collection('status_events');
+      if (user.role == 'municipality_coordinator') {
+        query = query.where('municipalityId', isEqualTo: user.id);
+      }
+      _eventSubscriptions[name] = _listen(name, query);
+    }
+    _mergeContainerHistory();
+  }
+  void _mergeContainerHistory() {
+    final names = _eventSubscriptions.keys.toList();
+    if (!names.every(_rows.containsKey)) {
+      _rows.remove('status_events');
+      return;
+    }
+    _rows['status_events'] = names.expand((name) => _rows[name]!).toList();
+    _cached['status_events'] = names.any((name) => _cached[name] == true);
+    if (_rows['status_events']!.length >= pageLimit) {
+      capped.add('status_events');
+    } else {
+      capped.remove('status_events');
+    }
   }
   String key(String kind, String target, {String? cycleId}) {
     final day = DecisionShift.parse(DateTime.now(), shiftText).start

@@ -8,9 +8,8 @@ Future<Map<String, String>> resolveDecisionRoute(AppUser user, String requested,
   final group = user.groupId ?? '';
   if (group.isEmpty) return {'landfill': requested};
   final snapshot = await db.collection('strategic_decisions')
-      .where('groupId', isEqualTo: group).where('kind', isEqualTo: 'dumpsite_redirect')
-      .where('expiresAt', isGreaterThan: Timestamp.fromDate(DateTime.now())).limit(200).get();
-  if (snapshot.docs.length == 200) {
+      .where('groupId', isEqualTo: group).limit(20000).get();
+  if (snapshot.docs.length == 20000) {
     throw StateError('تجاوز سجل القرارات حد القراءة. اطلب مراجعة المسار من المنسق.');
   }
   final now = DateTime.now();
@@ -52,8 +51,10 @@ Future<List<Map<String, String>>> temporaryDecisionWorkers(AppUser user,
   if ((user.groupId ?? '').isEmpty) return [];
   final snapshot = await (firestore ?? FirebaseFirestore.instance)
       .collection('strategic_decisions').where('groupId', isEqualTo: user.groupId)
-      .where('kind', isEqualTo: 'temporary_coverage')
-      .where('expiresAt', isGreaterThan: Timestamp.fromDate(DateTime.now())).limit(200).get();
+      .limit(20000).get();
+  if (snapshot.docs.length == 20000) {
+    throw StateError('سجل التكليفات كبير؛ يلزم أرشفته قبل حساب كشف مؤقت كامل.');
+  }
   final result = <String, Map<String, String>>{};
   for (final doc in snapshot.docs) {
     final d = doc.data(), detail = d['details'], expires = d['expiresAt'];
