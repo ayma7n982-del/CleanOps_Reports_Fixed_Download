@@ -20,6 +20,7 @@ import '../../core/services/trip_lifecycle.dart';
 import '../../core/services/operational_insights.dart';
 import 'reports_center.dart';
 import '../widgets/app_design.dart';
+import '../widgets/eco_shortcuts.dart';
 import '../widgets/operations_overview.dart';
 import '../widgets/workspace_overview.dart';
 import 'container_management.dart';
@@ -1146,6 +1147,7 @@ class _SupervisorActionCard extends StatelessWidget {
   final Color color;
   final VoidCallback onTap;
   final bool emergency;
+
   const _SupervisorActionCard({
     required this.icon,
     required this.title,
@@ -1156,55 +1158,12 @@ class _SupervisorActionCard extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
-    final feature = emergency ? 'emergency' : 'operations';
-    final tint = EcoPalette.tint(feature);
-    final radius = BorderRadius.circular(19);
-    return Material(
-      color: Colors.transparent,
-      child: Ink(
-        decoration: BoxDecoration(
-          borderRadius: radius,
-          gradient: LinearGradient(
-            colors: [tint, Colors.white],
-            begin: Alignment.topRight,
-            end: Alignment.bottomLeft,
-          ),
-          border: Border.all(color: color.withOpacity(.24)),
-        ),
-        child: InkWell(
-          borderRadius: radius,
-          onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-            child: Row(
-              children: [
-                EcoPictorialIcon(feature: feature, icon: icon, size: 61),
-                const SizedBox(width: 11),
-                Expanded(child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    AppText(title, maxLines: 1, overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: cleanOpsText,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w900,
-                      )),
-                    const SizedBox(height: 4),
-                    AppText(subtitle, maxLines: 2, overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: cleanOpsMuted,
-                        fontSize: 11,
-                      )),
-                  ],
-                )),
-                Icon(Icons.chevron_left_rounded, color: color, size: 22),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
+  Widget build(BuildContext context) => EcoShortcutCard(
+    title: title,
+    subtitle: subtitle,
+    feature: emergency ? 'emergency' : 'operations',
+    icon: icon,
+    accent: color,
+    onTap: onTap,
+  );
 }
