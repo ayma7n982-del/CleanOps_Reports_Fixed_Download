@@ -292,6 +292,9 @@ class MessagingService extends ChangeNotifier {
     final user = _user;
     if (user == null || !canSend(type)) throw StateError('ليس لديك صلاحية إرسال الرسائل.');
     if (targetUserId.trim().isEmpty) throw ArgumentError('المرسل إليه غير محدد.');
+    if (user.role == 'group_supervisor' && targetUserId.trim() != user.municipalityCoordinatorId) {
+      throw StateError('رئيس المجموعة يستطيع إرسال رسالة مباشرة إلى منسق بلديته فقط.');
+    }
     await _send(content: content, type: type, targetUserId: targetUserId.trim());
   }
 
