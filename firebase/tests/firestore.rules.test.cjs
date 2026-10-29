@@ -86,6 +86,67 @@ test('inactive worker cannot read group messages', async () => {
   await assertFails(getDoc(doc(db('worker-a'),'messages','msg-1')));
 });
 
+
+test('message receipt is private to recipient and visible to sender', async () => {
+  await env.withSecurityRulesDisabled(async ctx => {
+    await setDoc(doc(ctx.firestore(),'messages','msg-1'), message('head-a','group-a'));
+  });
+  const path = ['messages','msg-1','receipts','worker-a'];
+  await assertSucceeds(setDoc(doc(db('worker-a'),...path), {
+    userId:'worker-a', status:'read', updatedAt:serverTimestamp(),
+  }));
+  await assertSucceeds(getDoc(doc(db('worker-a'),...path)));
+  await assertSucceeds(getDoc(doc(db('head-a'),...path)));
+  await assertSucceeds(getDocs(collection(db('head-a'),'messages','msg-1','receipts')));
+  await assertFails(getDoc(doc(db('worker-b'),...path)));
+  await assertFails(getDoc(doc(db('head-b'),...path)));
+});
+
+test('message receipt can be acknowledged but never forged, downgraded or deleted', async () => {
+  await env.withSecurityRulesDisabled(async ctx => {
+    await setDoc(doc(ctx.firestore(),'messages','msg-1'), message('head-a','group-a'));
+  });
+  const own = doc(db('worker-a'),'messages','msg-1','receipts','worker-a');
+  await assertFails(setDoc(doc(db('worker-b'),'messages','msg-1','receipts','worker-a'), {
+    userId:'worker-a', status:'read', updatedAt:serverTimestamp(),
+  }));
+  await assertFails(setDoc(doc(db('worker-b'),'messages','msg-1','receipts','worker-b'), {
+    userId:'worker-b', status:'read', updatedAt:serverTimestamp(),
+  }));
+  await assertFails(setDoc(doc(db('worker-a'),'messages','msg-1','receipts','worker-b'), {
+    userId:'worker-a', status:'read', updatedAt:serverTimestamp(),
+  }));
+  await assertSucceeds(setDoc(own, {
+    userId:'worker-a', status:'read', updatedAt:serverTimestamp(),
+  }));
+  await assertSucceeds(updateDoc(own, {
+    status:'acknowledged', updatedAt:serverTimestamp(),
+  }));
+  await assertFails(updateDoc(own, {status:'read', updatedAt:serverTimestamp()}));
+  await assertFails(deleteDoc(own));
+});
+
+test('coordinator can acknowledge municipality broadcast but not read group receipt', async () => {
+  await env.withSecurityRulesDisabled(async ctx => {
+    await setDoc(doc(ctx.firestore(),'messages','msg-1'), message('jsc','__ALL_MUNICIPALITIES__'));
+  });
+  await assertSucceeds(setDoc(doc(db('coordinator'),'messages','msg-1','receipts','coordinator'), {
+    userId:'coordinator', status:'acknowledged', updatedAt:serverTimestamp(),
+  }));
+  await assertFails(setDoc(doc(db('worker-a'),'messages','msg-1','receipts','worker-a'), {
+    userId:'worker-a', status:'read', updatedAt:serverTimestamp(),
+  }));
+});
+
+test('queries for sent and own group messages respect message list rules', async () => {
+  await env.withSecurityRulesDisabled(async ctx => {
+    await setDoc(doc(ctx.firestore(),'messages','msg-1'), message('head-a','group-a'));
+  });
+  await assertSucceeds(getDocs(query(collection(db('head-a'),'messages'),where('senderId','==','head-a'))));
+  await assertSucceeds(getDocs(query(collection(db('worker-a'),'messages'),where('targetGroupId','==','group-a'))));
+  await assertFails(getDocs(query(collection(db('worker-b'),'messages'),where('targetGroupId','==','group-a'))));
+});
+
 test('operations: active workforce can read own group but not another group', async () => {
   await env.withSecurityRulesDisabled(async ctx => {
     const admin = ctx.firestore();
