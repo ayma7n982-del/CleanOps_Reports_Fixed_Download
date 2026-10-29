@@ -45,7 +45,7 @@ class CreativeShortcutGrid extends StatelessWidget {
       final scale = (MediaQuery.textScalerOf(context).scale(14) - 14).clamp(0.0, 26.0);
       // The old 171px tile left a very large empty gap below its icon.
       // Compact cards retain both title and subtitle without dead space.
-      final height = (columns == 1 ? 105.0 : 132.0) + scale * 2.5;
+      final height = (columns == 1 ? 105.0 : 140.0) + scale * 2.5;
       return GridView.builder(
         shrinkWrap: true,
         physics: const NeverScrollableScrollPhysics(),
