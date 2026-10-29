@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
@@ -308,6 +309,38 @@ class MessagingService extends ChangeNotifier {
       throw StateError('رئيس المجموعة يستطيع إرسال رسالة مباشرة إلى منسق بلديته فقط.');
     }
     await _send(content: content, type: type, targetUserId: targetUserId.trim());
+  }
+
+  Future<String> sendExternalSms({
+    required String targetUserId,
+    required String content,
+  }) async {
+    final actor = _user;
+    if (actor == null ||
+        !const ['donor_manager', 'jsc_coordinator', 'municipality_coordinator'].contains(actor.role)) {
+      throw StateError('هذه القناة مخصصة للإدارة.');
+    }
+    if (Firebase.apps.isEmpty || !config.onlineMessagingEnabled) {
+      throw StateError('تحتاج الرسائل الخارجية لاتصال فعّال بخادم Firebase.');
+    }
+    final text = content.trim();
+    if (text.isEmpty || text.length > 500 || targetUserId.trim().isEmpty) {
+      throw ArgumentError('حدد المستلم واكتب نصًا من 1 إلى 500 حرف.');
+    }
+    // The server resolves the phone number from the recipient's Firestore
+    // profile and enforces municipality and role scope.
+    try {
+      final response = await FirebaseFunctions.instanceFor(region: 'us-central1')
+          .httpsCallable('sendExternalSms')
+          .call<Map<String, dynamic>>({
+        'targetUserId': targetUserId.trim(),
+        'content': text,
+        'requestId': _uuid.v4(),
+      });
+      return '${response.data['status'] ?? 'unknown'}';
+    } on FirebaseFunctionsException catch (e) {
+      throw StateError(e.message ?? 'تعذر تأكيد إرسال SMS من الخادم.');
+    }
   }
 
   Future<void> _send({required String content, required String type, String? targetUserId, String? targetGroupId}) async {
