@@ -240,6 +240,17 @@ service cloud.firestore {
       }
     }
 
+    // External SMS audit is written by a trusted Cloud Function only.
+    match /external_messages/{requestId} {
+      allow get, list: if activeMessenger()
+        && (resource.data.senderId == request.auth.uid
+            || resource.data.targetUserId == request.auth.uid);
+      allow create, update, delete: if false;
+    }
+    match /external_message_limits/{limitId} {
+      allow read, write: if false;
+    }
+
     // ---------------- User profiles / GPS ----------------
     match /users/{uid} {
       allow get: if self(uid) || isL3OrL4() || (isL2() && uid == request.auth.uid);
