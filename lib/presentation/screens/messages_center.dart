@@ -554,7 +554,7 @@ class _MessagesCenterScreenState extends State<MessagesCenterScreen> {
                       await messaging.sendBroadcast(content: composer.text, type: type);
                     }
                     if (context.mounted) Navigator.pop(context);
-                    if (mounted) ScaffoldMessenger.of(this.context).showSnackBar(const SnackBar(
+                    if (mounted) ScaffoldMessenger.of(this.context).showSnackBar(SnackBar(
                       content: AppText(scheduledAt == null ? 'أُضيفت الرسالة لقائمة الانتظار، وتنتظر تأكيد الخادم.' : 'تم تسجيل موعد الإرسال لدى خادم Firebase.')));
                   } catch (e) {
                     if (mounted) ScaffoldMessenger.of(this.context).showSnackBar(SnackBar(content: AppText('تعذر إرسال الرسالة: $e')));
