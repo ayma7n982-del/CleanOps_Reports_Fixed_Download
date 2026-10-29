@@ -359,71 +359,258 @@ class _AppShellState extends State<AppShell>{
     if(user==null) return const EnterpriseLoginScreen();
     final pages=_pages(user);
     final titles=['مركز القيادة','العمليات','المساعد الذكي','التقارير','الإعدادات'];
+    final compactToolbar = MediaQuery.sizeOf(context).width < 430;
+    final messaging = context.watch<MessagingService>();
+    final hasUnread = messaging.unreadCount > 0 || data.notifications.any((n) => !n.read);
     return Directionality(
       textDirection:context.watch<LocaleController>().isArabic ? ui.TextDirection.rtl : ui.TextDirection.ltr,
       child:Scaffold(
         backgroundColor:cleanOpsBg,
         appBar:AppBar(
           title:AppText(titles[index]),
-          actions:[
-            Padding(
-              padding:const EdgeInsets.symmetric(horizontal:4),
-              child:Center(
-                child:Tooltip(
-                  message:data.automaticSyncStatus,
-                  child:Badge(
-                    isLabelVisible:data.queue.isNotEmpty,
-                    label:AppText('${data.queue.length}'),
-                    child:Icon(
-                      data.syncing
-                          ? Icons.sync_rounded
-                          : data.online
-                              ? Icons.cloud_done_outlined
-                              : Icons.cloud_off_outlined,
+          actions: compactToolbar
+              ? [
+                  IconButton(
+                    tooltip: tr('البحث الذكي'),
+                    onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const GlobalSearchPage())),
+                    icon: const Icon(Icons.search_rounded),
+                  ),
+                  PopupMenuButton<String>(
+                    tooltip: 'الرسائل والإشعارات وحالة الاتصال',
+                    icon: Badge(
+                      isLabelVisible: hasUnread || data.queue.isNotEmpty,
+                      child: const Icon(Icons.more_vert_rounded),
+                    ),
+                    onSelected: (value) {
+                      if (value == 'messages') {
+                        Navigator.push(context, MaterialPageRoute(builder: (_) => const MessagesCenterScreen()));
+                      } else if (value == 'notifications') {
+                        showNotifications(context);
+                      }
+                    },
+                    itemBuilder: (context) => [
+                      PopupMenuItem<String>(
+                        value: 'messages',
+                        child: Row(children: [
+                          const Icon(Icons.forum_outlined, color: aiBlue),
+                          const SizedBox(width: 10),
+                          Expanded(child: AppText('الرسائل', overflow: TextOverflow.ellipsis)),
+                          if (messaging.unreadCount > 0) Text('${messaging.unreadCount}', style: const TextStyle(color: aiBlue, fontWeight: FontWeight.bold)),
+                        ]),
+                      ),
+                      PopupMenuItem<String>(
+                        value: 'notifications',
+                        child: Row(children: [
+                          const Icon(Icons.notifications_none_rounded, color: aiBlue),
+                          const SizedBox(width: 10),
+                          const Expanded(child: AppText('الإشعارات')),
+                          if (data.notifications.any((n) => !n.read))
+                            const Icon(Icons.circle, color: Color(0xFFDC4545), size: 9),
+                        ]),
+                      ),
+                      PopupMenuItem<String>(
+                        enabled: false,
+                        child: Row(children: [
+                          Icon(data.online ? Icons.cloud_done_outlined : Icons.cloud_off_outlined, color: aiBlue),
+                          const SizedBox(width: 10),
+                          Expanded(child: AppText(data.automaticSyncStatus, maxLines: 2, overflow: TextOverflow.ellipsis)),
+                        ]),
+                      ),
+                    ],
+                  ),
+                ]
+              : [
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    child: Center(
+                      child: Tooltip(
+                        message: data.automaticSyncStatus,
+                        child: Badge(
+                          isLabelVisible: data.queue.isNotEmpty,
+                          label: AppText('${data.queue.length}'),
+                          child: Icon(data.syncing
+                              ? Icons.sync_rounded
+                              : data.online ? Icons.cloud_done_outlined : Icons.cloud_off_outlined),
+                        ),
+                      ),
                     ),
                   ),
-                ),
-              ),
-            ),
-            IconButton(
-              tooltip: tr('البحث الذكي'),
-              onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const GlobalSearchPage())),
-              icon: const Icon(Icons.search_rounded),
-            ),
-            Builder(builder: (context) {
-              final messaging = context.watch<MessagingService>();
-              return Badge(
-                isLabelVisible: messaging.unreadCount > 0,
-                label: Text('${messaging.unreadCount}'),
-                child: IconButton(onPressed:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>const MessagesCenterScreen())), icon:const Icon(Icons.forum_outlined)),
-              );
-            }),
-            IconButton(
-              onPressed:()=>showNotifications(context),
-              icon:Badge(isLabelVisible:data.notifications.any((n)=>!n.read),child:const Icon(Icons.notifications_none)),
-            ),
-          ],
+                  IconButton(
+                    tooltip: tr('البحث الذكي'),
+                    onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const GlobalSearchPage())),
+                    icon: const Icon(Icons.search_rounded),
+                  ),
+                  Badge(
+                    isLabelVisible: messaging.unreadCount > 0,
+                    label: Text('${messaging.unreadCount}'),
+                    child: IconButton(
+                      tooltip: 'الرسائل',
+                      onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const MessagesCenterScreen())),
+                      icon: const Icon(Icons.forum_outlined),
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'الإشعارات',
+                    onPressed: () => showNotifications(context),
+                    icon: Badge(
+                      isLabelVisible: data.notifications.any((n) => !n.read),
+                      child: const Icon(Icons.notifications_none),
+                    ),
+                  ),
+                ],
         ),
         drawer:AppDrawer(user:user,onNavigate:(i){setState(()=>index=i);Navigator.pop(context);}),
         body:pages[index],
-        bottomNavigationBar:NavigationBar(
-          selectedIndex:index,
-          onDestinationSelected:(i)=>setState(()=>index=i),
-          destinations:[
-            NavigationDestination(icon:const FeatureIcon('dashboard'),label: tr('مركز القيادة')),
-            NavigationDestination(icon:const FeatureIcon('operations'),label: tr('العمليات')),
-            NavigationDestination(icon:const Icon(Icons.auto_awesome_rounded),label: tr('المساعد الذكي')),
-            NavigationDestination(icon:const FeatureIcon('reports'),label: tr('التقارير')),
-            NavigationDestination(icon:const FeatureIcon('settings'),label: tr('الإعدادات')),
-          ],
+        bottomNavigationBar: _CleanOpsNavigationDock(
+          selectedIndex: index,
+          canQuickAction: user.can('attendance', 'create'),
+          onDestinationSelected: (next) => setState(() => index = next),
+          onQuickAction: () => quickAction(context),
         ),
-        floatingActionButton:user.can('attendance','create')
-            ? FloatingActionButton.extended(onPressed:()=>quickAction(context),icon:const Icon(Icons.add),label:const AppText('إجراء سريع'))
-            : null,
       ),
     );
   }
   void showNotifications(BuildContext context){Navigator.push(context,MaterialPageRoute(builder:(_)=>const NotificationsPage()));}
+}
+
+/// A non-overlapping, safe-area-aware navigation dock for narrow Android screens.
+/// Quick actions are intentionally part of the scaffold layout, not a floating overlay.
+class _CleanOpsNavigationDock extends StatelessWidget {
+  final int selectedIndex;
+  final bool canQuickAction;
+  final ValueChanged<int> onDestinationSelected;
+  final VoidCallback onQuickAction;
+
+  const _CleanOpsNavigationDock({
+    required this.selectedIndex,
+    required this.canQuickAction,
+    required this.onDestinationSelected,
+    required this.onQuickAction,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final destinations = <(IconData, String)>[
+      (Icons.space_dashboard_rounded, tr('مركز القيادة')),
+      (Icons.hub_rounded, tr('العمليات')),
+      (Icons.auto_awesome_rounded, tr('المساعد الذكي')),
+      (Icons.insights_rounded, tr('التقارير')),
+      (Icons.tune_rounded, tr('الإعدادات')),
+    ];
+    return Material(
+      color: cleanOpsSurface,
+      elevation: 10,
+      shadowColor: const Color(0x22073C35),
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsetsDirectional.fromSTEB(8, 6, 8, 5),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (canQuickAction)
+                Padding(
+                  padding: const EdgeInsetsDirectional.only(end: 5, bottom: 5),
+                  child: Align(
+                    alignment: AlignmentDirectional.centerEnd,
+                    child: SizedBox(
+                      height: 38,
+                      child: FilledButton.icon(
+                        onPressed: onQuickAction,
+                        style: FilledButton.styleFrom(
+                          backgroundColor: aiBlue,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(horizontal: 14),
+                          minimumSize: const Size(0, 38),
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                        ),
+                        icon: const Icon(Icons.add_rounded, size: 20),
+                        label: const AppText('إجراء سريع', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w800)),
+                      ),
+                    ),
+                  ),
+                ),
+              Row(
+                children: List.generate(destinations.length, (i) {
+                  final selected = i == selectedIndex;
+                  return Expanded(
+                    child: Semantics(
+                      button: true,
+                      selected: selected,
+                      label: destinations[i].$2,
+                      child: Tooltip(
+                        message: destinations[i].$2,
+                        child: Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            onTap: () => onDestinationSelected(i),
+                            borderRadius: BorderRadius.circular(16),
+                            child: SizedBox(
+                              height: 64,
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  AnimatedContainer(
+                                    duration: const Duration(milliseconds: 180),
+                                    curve: Curves.easeOut,
+                                    width: 43,
+                                    height: 34,
+                                    decoration: BoxDecoration(
+                                      borderRadius: BorderRadius.circular(12),
+                                      gradient: selected
+                                          ? const LinearGradient(
+                                              colors: [Color(0xFF087F6B), Color(0xFF35B9A2)],
+                                              begin: Alignment.topRight,
+                                              end: Alignment.bottomLeft,
+                                            )
+                                          : null,
+                                      color: selected ? null : Colors.transparent,
+                                    ),
+                                    child: Icon(
+                                      destinations[i].$1,
+                                      size: 22,
+                                      color: selected ? Colors.white : cleanOpsMuted,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Padding(
+                                    padding: const EdgeInsets.symmetric(horizontal: 1),
+                                    child: SizedBox(
+                                      height: 17,
+                                      width: double.infinity,
+                                      child: FittedBox(
+                                        fit: BoxFit.scaleDown,
+                                        alignment: Alignment.center,
+                                        child: Text(
+                                          destinations[i].$2,
+                                          maxLines: 1,
+                                          softWrap: false,
+                                          style: TextStyle(
+                                            color: selected ? aiBlue : cleanOpsMuted,
+                                            fontSize: 11,
+                                            fontWeight: selected ? FontWeight.w900 : FontWeight.w700,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  );
+                }),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class AppDrawer extends StatelessWidget {
