@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'app_design.dart';
-import '../../core/localization.dart';
 import '../../core/constants/app_constants.dart';
 
 /// The same role-gated callbacks supplied by each screen are retained.
@@ -143,7 +142,7 @@ class _CreativeShortcutCard extends StatelessWidget {
                         radius: 14,
                         backgroundColor: Colors.white.withOpacity(.88),
                         child: Icon(
-                          context.watch<LocaleController>().isArabic
+                          Directionality.of(context) == TextDirection.rtl
                               ? Icons.chevron_left_rounded : Icons.chevron_right_rounded,
                           size: 19,
                           color: accent,
