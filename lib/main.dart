@@ -797,29 +797,70 @@ class HeaderCard extends StatelessWidget{
   );
 }
 
-class StatCard extends StatelessWidget{
+class StatCard extends StatelessWidget {
   final Widget icon;
-  final String title,value,subtitle;
-  const StatCard({super.key,required this.icon,required this.title,required this.value,required this.subtitle});
-  @override Widget build(BuildContext context)=>SizedBox(
-    width:MediaQuery.of(context).size.width>900?260:MediaQuery.of(context).size.width>600?230:(MediaQuery.of(context).size.width-44)/2,
-    child:Card(
-      child:Padding(
-        padding:const EdgeInsets.all(16),
-        child:Column(
-          crossAxisAlignment:CrossAxisAlignment.start,
-          children:[
-            icon,
-            const SizedBox(height:12),
-            AppText(title,style:const TextStyle(color:cleanOpsMuted)),
-            const SizedBox(height:4),
-            AppText(value,style:const TextStyle(fontSize:28,fontWeight:FontWeight.w900,color:cleanOpsText)),
-            AppText(subtitle,style:const TextStyle(fontSize:12,color:cleanOpsMuted)),
+  final String title, value, subtitle;
+  const StatCard({
+    super.key,
+    required this.icon,
+    required this.title,
+    required this.value,
+    required this.subtitle,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final width = screenWidth > 900
+        ? 260.0
+        : screenWidth > 600 ? 230.0 : (screenWidth - 44) / 2;
+    return SizedBox(
+      width: width,
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            colors: [Colors.white, Color(0xFFE9F8F2)],
+            begin: Alignment.topRight,
+            end: Alignment.bottomLeft,
+          ),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: EcoPalette.border),
+          boxShadow: const [
+            BoxShadow(color: Color(0x100A715D), blurRadius: 11,
+                offset: Offset(0, 4)),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              children: [
+                icon,
+                const Spacer(),
+                Flexible(
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(value, maxLines: 1,
+                      style: const TextStyle(fontSize: 27,
+                          fontWeight: FontWeight.w900, color: cleanOpsText)),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 9),
+            AppText(title, maxLines: 2, overflow: TextOverflow.ellipsis,
+              style: const TextStyle(color: cleanOpsText,
+                  fontSize: 12.5, fontWeight: FontWeight.w900)),
+            const SizedBox(height: 3),
+            AppText(subtitle, maxLines: 2, overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 10.5, color: cleanOpsMuted)),
           ],
         ),
       ),
-    ),
-  );
+    );
+  }
 }
 
 class CardSection extends StatelessWidget{
