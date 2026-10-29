@@ -4,43 +4,63 @@ on:
   workflow_dispatch:
     inputs:
       deploy:
-        description: 'Deploy deleteManagedUser to Firebase after build'
+        description: 'Deploy deleteManagedUser to Firebase now (disable for validation only)'
         required: true
         type: boolean
-        default: false
+        default: true
 
 permissions:
   contents: read
 
 jobs:
   validate-and-deploy:
+    name: ${{ inputs.deploy && 'Deploy and verify Firebase deletion function' || 'Validation ONLY - function not deployed' }}
     runs-on: ubuntu-latest
-    # Match the existing production workflows' secret scope.
     environment: firebase-production
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-          # No npm cache until functions/package-lock.json is committed.
-          # Avoid setup-node failing before npm install on missing lockfile.
       - name: Install function dependencies
         working-directory: functions
         run: npm install --no-audit --no-fund
       - name: TypeScript build
         working-directory: functions
         run: npm run build
-      - name: Deploy only user deletion function
+      - name: Clarify validation-only result
+        if: ${{ !inputs.deploy }}
+        run: |
+          echo "### Validation only - NOT deployed" >> "$GITHUB_STEP_SUMMARY"
+          echo "The deleteManagedUser callable is not deployed by this run. Enable the deploy option to fix NOT_FOUND." >> "$GITHUB_STEP_SUMMARY"
+      - name: Deploy and verify deleteManagedUser in the production Firebase project
         if: ${{ inputs.deploy }}
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        shell: bash
         run: |
-          if [ -z "$FIREBASE_SERVICE_ACCOUNT" ]; then
-            echo "::error::Set FIREBASE_SERVICE_ACCOUNT repository secret before deployment."
+          set -euo pipefail
+          if [ -z "${FIREBASE_SERVICE_ACCOUNT:-}" ]; then
+            echo "::error::The firebase-production environment must supply the FIREBASE_SERVICE_ACCOUNT secret."
             exit 1
           fi
-          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$RUNNER_TEMP/firebase-service-account.json"
-          chmod 600 "$RUNNER_TEMP/firebase-service-account.json"
-          export GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/firebase-service-account.json"
-          npx --yes firebase-tools deploy --only functions:deleteManagedUser --project "$(node -p "JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT).project_id")" --non-interactive
-          rm -f "$RUNNER_TEMP/firebase-service-account.json"
+          project_id="$(node -p "JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT).project_id")"
+          if [ "$project_id" != "nrc-aid" ]; then
+            echo "::error::Service account project does not match the CleanOps Firebase project nrc-aid. Deployment stopped."
+            exit 1
+          fi
+          credential_file="$RUNNER_TEMP/firebase-service-account.json"
+          trap 'rm -f "$credential_file"' EXIT
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$credential_file"
+          chmod 600 "$credential_file"
+          export GOOGLE_APPLICATION_CREDENTIALS="$credential_file"
+          npx --yes firebase-tools deploy --only functions:deleteManagedUser --project nrc-aid --non-interactive
+          npx --yes firebase-tools functions:list --project nrc-aid > "$RUNNER_TEMP/deployed-functions.txt"
+          cat "$RUNNER_TEMP/deployed-functions.txt"
+          if ! grep -Fq 'deleteManagedUser' "$RUNNER_TEMP/deployed-functions.txt"; then
+            echo "::error::Deployment did not produce a visible deleteManagedUser function in nrc-aid."
+            exit 1
+          fi
+          echo "### Firebase deployment verified" >> "$GITHUB_STEP_SUMMARY"
+          echo "The deleteManagedUser function is listed in Firebase project nrc-aid." >> "$GITHUB_STEP_SUMMARY"
