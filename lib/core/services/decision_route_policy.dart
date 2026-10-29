@@ -43,3 +43,26 @@ Future<Map<String, String>> resolveDecisionRoute(AppUser user, String requested,
   }
   return {'landfill': landfill, if (used.isNotEmpty) 'routeDecisionId': used.join(',')};
 }
+
+/// Temporary additions to today's roster; the worker's permanent group remains
+/// unchanged. Names originate from the authorized operational worker record.
+Future<List<Map<String, String>>> temporaryDecisionWorkers(AppUser user,
+    {FirebaseFirestore? firestore}) async {
+  if ((user.groupId ?? '').isEmpty) return [];
+  final snapshot = await (firestore ?? FirebaseFirestore.instance)
+      .collection('strategic_decisions').where('groupId', isEqualTo: user.groupId)
+      .limit(200).get();
+  final result = <String, Map<String, String>>{};
+  for (final doc in snapshot.docs) {
+    final d = doc.data(), detail = d['details'], expires = d['expiresAt'];
+    if (d['kind'] != 'temporary_coverage' || detail is! Map ||
+        detail['assignmentType'] != 'worker' || expires is! Timestamp ||
+        !expires.toDate().isAfter(DateTime.now())) continue;
+    final id = '${detail['assignmentId']}';
+    result[id] = {'id': id, 'name': '${detail['workerName'] ?? id}',
+      'job': '${detail['workerJob'] ?? ''}', 'role': 'worker',
+      'groupId': user.groupId!, 'group': user.groupId!,
+      'groupName': user.groupId!, 'temporaryDecisionId': doc.id};
+  }
+  return result.values.toList();
+}

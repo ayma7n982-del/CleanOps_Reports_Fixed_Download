@@ -39,8 +39,25 @@ class DecisionHubService extends ChangeNotifier {
   List<DecisionRow> get plans => _rows['strategic_plans'] ?? [];
   List<DecisionRow> get operations => ['group', 'worker', 'attendance', 'trip']
       .expand((s) => _rows[s] ?? <DecisionRow>[]).toList();
+  List<DecisionRow> get activeReserveAssignments => decisions.where((d) =>
+      d['kind'] == 'temporary_coverage' && d['_pending'] != true &&
+      d['details'] is Map && (d['details'] as Map)['assignmentType'] == 'worker' &&
+      (decisionDate(d['expiresAt'])?.isAfter(DateTime.now()) ?? false)).toList();
+  bool reserveAvailable(String workerId) => !activeReserveAssignments.any(
+      (d) => (d['details'] as Map)['assignmentId'] == workerId);
+  List<DecisionRow> get effectiveOperations {
+    final assignments = <String, DecisionRow>{
+      for (final d in activeReserveAssignments) '${(d['details'] as Map)['assignmentId']}': d,
+    };
+    return operations.map((row) {
+      final assignment = assignments['${row['id']}'];
+      if (row['_entity'] != 'worker' || assignment == null) return row;
+      return <String, dynamic>{...row, 'groupId': assignment['groupId'],
+        'groupName': assignment['groupId'], 'temporaryDecisionId': assignment['id']};
+    }).toList();
+  }
   DecisionAnalytics get analytics => DecisionAnalytics.calculate(
-      operations: operations, users: _rows['users'] ?? [],
+      operations: effectiveOperations, users: _rows['users'] ?? [],
       containers: (_rows['containers'] ?? <DecisionRow>[]).map((c) => <String, dynamic>{
         ...c, 'statusHistory': (_rows['status_events'] ?? <DecisionRow>[])
           .where((e) => e['containerId'] == c['id']).toList(),
@@ -114,10 +131,23 @@ class DecisionHubService extends ChangeNotifier {
     submitted.add(id);
     writeErrors.remove(id);
     _notify();
-    final future = db.collection(collection).doc(id).set({
+    final batch = db.batch();
+    batch.set(db.collection(collection).doc(id), {
       ...payload, 'id': id, 'createdBy': user.id, 'coordinatorName': user.name,
       'createdAt': FieldValue.serverTimestamp(), 'schemaVersion': 1,
-    }).then((_) {
+    });
+    final details = payload['details'];
+    if (collection == 'strategic_decisions' && payload['kind'] == 'temporary_coverage' &&
+        details is Map && details['assignmentType'] == 'worker') {
+      batch.set(db.collection('temporary_assignments').doc('${details['assignmentLockId']}'), {
+        'decisionId': id, 'workerId': details['assignmentId'],
+        'groupId': payload['groupId'],
+        'municipalityCoordinatorId': payload['municipalityCoordinatorId'],
+        'validUntil': payload['expiresAt'], 'createdBy': user.id,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+    }
+    final future = batch.commit().then((_) {
       if (!_disposed) { writeErrors.remove(id); _notify(); }
       return true;
     }, onError: (Object error, StackTrace stack) {
@@ -146,6 +176,13 @@ class DecisionHubService extends ChangeNotifier {
       throw StateError('القرار خارج نطاق البلدية.');
     }
     final shift = DecisionShift.parse(DateTime.now(), shiftText);
+    if (kind == 'temporary_coverage' && !shift.activeAt(DateTime.now())) {
+      throw StateError('التكليف المؤقت متاح أثناء الوردية النشطة فقط.');
+    }
+    final enriched = <String, dynamic>{...details};
+    if (kind == 'temporary_coverage' && details['assignmentType'] == 'worker') {
+      enriched['assignmentLockId'] = '${details['assignmentId']}';
+    }
     return _write('strategic_decisions', key(kind, targetId.isEmpty ? groupId : targetId), {
       'kind': kind, 'title': title, 'body': body, 'groupId': groupId,
       'municipalityCoordinatorId': owner, 'targetId': targetId,
@@ -153,8 +190,10 @@ class DecisionHubService extends ChangeNotifier {
           ? 'global' : 'municipality:$owner',
       'status': 'issued', 'priority': kind == 'health' ? 'critical' : 'urgent',
       'shiftDate': shift.start.toIso8601String().substring(0, 10),
-      'expiresAt': Timestamp.fromDate(DateTime.now().add(const Duration(hours: 24))),
-      'details': details,
+      'expiresAt': Timestamp.fromDate(kind == 'temporary_coverage' ? shift.end :
+          DateTime.now().add(const Duration(hours: 24))),
+      'details': enriched,
+      'additionalGroupId': kind == 'temporary_coverage' && details['assignmentType'] == 'group' ? details['assignmentId'] : '',
     });
   }
 

@@ -138,6 +138,15 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
     } catch (e) {
       debugPrint('Unable to load group attendance workers: $e');
     }
+    if (user != null && groupId.isNotEmpty) {
+      try {
+        for (final worker in await temporaryDecisionWorkers(user)) {
+          loaded.putIfAbsent(worker['id']!, () => worker);
+        }
+      } catch (error) {
+        debugPrint('Temporary coverage roster is unavailable: $error');
+      }
+    }
     if (mounted) {
       setState(() {
         workers = loaded.values.where((w) => (w['name'] ?? '').isNotEmpty).toList()
@@ -580,7 +589,7 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
                 subtitle: 'أربع مهام فقط. اختر الإجراء المطلوب مباشرة دون قوائم مزدحمة.',
               ),
               const SizedBox(height: 12),
-              const DecisionDirectiveBanner(),
+              DecisionDirectiveBanner(onCoverageChanged: _loadWorkers),
               const OperationsOverviewStrip(),
               const SizedBox(height: 12),
               WorkspaceOverview(onEmergencyTap: user.can('emergency','create')
@@ -745,6 +754,7 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
       await d.enqueue('attendance', 'create', {
         'id': id,
         'workerId': w['id'],
+        if (w['temporaryDecisionId'] != null) 'temporaryDecisionId': w['temporaryDecisionId'],
         'workerName': name,
         'workerRole': w['role'] ?? 'worker',
         'groupId': u.groupId ?? w['groupId'] ?? '',

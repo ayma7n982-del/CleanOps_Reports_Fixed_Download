@@ -8,7 +8,8 @@ import '../../core/services/decision_pdf_export.dart';
 
 /// In-app live supervisor notification; no push service or Cloud Functions.
 class DecisionDirectiveBanner extends StatefulWidget {
-  const DecisionDirectiveBanner({super.key});
+  final VoidCallback? onCoverageChanged;
+  const DecisionDirectiveBanner({super.key, this.onCoverageChanged});
   @override
   State<DecisionDirectiveBanner> createState() => _DecisionDirectiveBannerState();
 }
@@ -18,6 +19,21 @@ class _DecisionDirectiveBannerState extends State<DecisionDirectiveBanner> {
   final _pending = <String>{};
   String? _binding;
   String? _error;
+  String _coverageKey = '';
+  Timer? _timer;
+  @override
+  void initState() {
+    super.initState();
+    _timer = Timer.periodic(const Duration(minutes: 1), (_) {
+      if (_coverageKey.isNotEmpty) {
+        widget.onCoverageChanged?.call();
+        final anyActive = _sources.values.expand((x) => x).any((r) =>
+          r['kind'] == 'temporary_coverage' && r['expiresAt'] is Timestamp &&
+          (r['expiresAt'] as Timestamp).toDate().isAfter(DateTime.now()));
+        if (!anyActive) _coverageKey = '';
+      }
+    });
+  }
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
@@ -32,6 +48,9 @@ class _DecisionDirectiveBannerState extends State<DecisionDirectiveBanner> {
     final queries = <String, Query<Map<String, dynamic>>>{
       if ((u.groupId ?? '').isNotEmpty)
         'group': db.where('groupId', isEqualTo: u.groupId),
+      if ((u.groupId ?? '').isNotEmpty)
+        'secondary': db.where('additionalGroupId', isEqualTo: u.groupId)
+          .where('kind', isEqualTo: 'temporary_coverage'),
       'global': db.where('scopeKey', isEqualTo: 'global').where('kind', isEqualTo: 'broadcast'),
       if ((u.municipalityCoordinatorId ?? '').isNotEmpty)
         'municipality': db.where('scopeKey',
@@ -47,6 +66,16 @@ class _DecisionDirectiveBannerState extends State<DecisionDirectiveBanner> {
             _sources[q.key] = snapshot.docs.map((d) => <String, dynamic>{
               ...d.data(), 'id': d.id, '_pending': d.metadata.hasPendingWrites}).toList();
           });
+          final coverage = _sources.values.expand((x) => x)
+              .where((r) => r['kind'] == 'temporary_coverage')
+              .map((r) => '${r['id']}:${r['expiresAt']}').toList()..sort();
+          final key = coverage.join('|');
+          if (key != _coverageKey) {
+            _coverageKey = key;
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted && _binding == binding) widget.onCoverageChanged?.call();
+            });
+          }
         }, onError: (Object e) {
           if (mounted && _binding == binding) setState(() =>
             _error = 'تعذر تحميل التوجيهات الإدارية؛ تحقق من الاتصال والصلاحيات.');
@@ -93,6 +122,7 @@ class _DecisionDirectiveBannerState extends State<DecisionDirectiveBanner> {
   }
   @override
   void dispose() {
+    _timer?.cancel();
     for (final s in _subscriptions) { s.cancel(); }
     super.dispose();
   }

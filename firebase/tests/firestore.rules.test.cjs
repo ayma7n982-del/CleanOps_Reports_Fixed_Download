@@ -741,3 +741,47 @@ test('decision hub: own-group status retry can read missing or existing event id
   await assertSucceeds(getDoc(doc(db('head-a'),'containers','c1','status_events','missing')));
   await assertFails(getDoc(doc(db('head-b'),'containers','c1','status_events','missing')));
 });
+
+test('decision hub: reserve assignment is atomic, named and cannot be double booked', async () => {
+  await seedDecisionGroup();
+  await env.withSecurityRulesDisabled(async ctx => {
+    await setDoc(doc(ctx.firestore(),'operations','reserve'),{
+      _entity:'worker',name:'Reserve Worker',job:'collector',isReserve:true,
+      municipalityCoordinatorId:'coordinator',isActive:true,
+    });
+    await setDoc(doc(ctx.firestore(),'operations','group-c'),{
+      _entity:'group',municipalityCoordinatorId:'coordinator',isActive:true,
+    });
+  });
+  const assign=(id,groupId)=>({...decision('coordinator',groupId,'temporary_coverage'),id,
+    details:{assignmentType:'worker',assignmentId:'reserve',assignmentLockId:'reserve',
+      workerName:'Reserve Worker',workerJob:'collector'}});
+  const a=assign('reserve-decision','group-a');
+  await assertFails(setDoc(doc(db('coordinator'),'strategic_decisions',a.id),a));
+  const batch=writeBatch(db('coordinator'));
+  batch.set(doc(db('coordinator'),'strategic_decisions',a.id),a);
+  batch.set(doc(db('coordinator'),'temporary_assignments','reserve'),{
+    decisionId:a.id,workerId:'reserve',groupId:'group-a',
+    municipalityCoordinatorId:'coordinator',validUntil:a.expiresAt,
+    createdBy:'coordinator',createdAt:serverTimestamp(),
+  });
+  await assertSucceeds(batch.commit());
+  const b=assign('second-assignment','group-c'), duplicate=writeBatch(db('coordinator'));
+  duplicate.set(doc(db('coordinator'),'strategic_decisions',b.id),b);
+  duplicate.set(doc(db('coordinator'),'temporary_assignments','reserve'),{
+    decisionId:b.id,workerId:'reserve',groupId:'group-c',
+    municipalityCoordinatorId:'coordinator',validUntil:b.expiresAt,
+    createdBy:'coordinator',createdAt:serverTimestamp(),
+  });
+  await assertFails(duplicate.commit());
+});
+test('decision hub: adjacent coverage notifies both groups without widening access', async () => {
+  await seedDecisionGroup();
+  await env.withSecurityRulesDisabled(async ctx => updateDoc(doc(ctx.firestore(),'operations','group-b'),
+    {municipalityCoordinatorId:'coordinator'}));
+  const action={...decision('coordinator','group-a','temporary_coverage'),
+    additionalGroupId:'group-b',details:{assignmentType:'group',assignmentId:'group-b'}};
+  await assertSucceeds(setDoc(doc(db('coordinator'),'strategic_decisions','decision-1'),action));
+  await assertSucceeds(getDocs(query(collection(db('head-b'),'strategic_decisions'),
+    where('additionalGroupId','==','group-b'),where('kind','==','temporary_coverage'))));
+});

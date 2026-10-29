@@ -259,7 +259,7 @@ class _ActionDecisionHubScreenState extends State<ActionDecisionHubScreen> {
     final nearby = a.groups.where((g) => g.id != group.id && g.owner == group.owner &&
         adjacent is List && adjacent.contains(g.id)).toList();
     final reserves = s.operations.where((w) => w['_entity'] == 'worker' &&
-        decisionActive(w) && w['isReserve'] == true &&
+        decisionActive(w) && w['isReserve'] == true && s.reserveAvailable('${w['id']}') &&
         w['municipalityCoordinatorId'] == group.owner).toList();
     String? choice;
     final selected = await showDialog<String>(context: context, builder: (c) =>
@@ -285,11 +285,17 @@ class _ActionDecisionHubScreenState extends State<ActionDecisionHubScreen> {
     if (selected == null || !mounted) return;
     final split = selected.indexOf(':');
     final type = selected.substring(0, split), id = selected.substring(split + 1);
+    final selectedWorker = type == 'worker' ?
+        reserves.firstWhere((w) => '${w['id']}' == id) : <String, dynamic>{};
+    final name = type == 'worker' ? '${selectedWorker['name'] ?? id}' :
+        nearby.firstWhere((g) => g.id == id).name;
     await _perform(() => s.issue(kind: 'temporary_coverage', groupId: group.id,
       owner: group.owner, title: 'تغطية غياب مؤقتة',
-      body: type == 'worker' ? 'تكليف العامل الاحتياطي $id لتغطية هذه الوردية.' :
-        'تغطية مشتركة مؤقتة مع المجموعة $id لهذه الوردية.',
+      body: type == 'worker' ? 'تكليف العامل الاحتياطي $name لتغطية هذه الوردية.' :
+        'تغطية مشتركة مؤقتة مع المجموعة $name لهذه الوردية.',
       details: {'assignmentType': type, 'assignmentId': id,
+        if (type == 'worker') 'workerName': selectedWorker['name'] ?? '',
+        if (type == 'worker') 'workerJob': selectedWorker['job'] ?? '',
         'validUntil': a.shift.end.toIso8601String()}));
   }
 

@@ -836,6 +836,9 @@ service cloud.firestore {
         isL3OrL4() || (isL2() && d.municipalityCoordinatorId == request.auth.uid)
         || (role() == 'group_supervisor' && (
           (d.get('groupId', '') != '' && d.get('groupId', '') == userDoc().get('groupId', ''))
+          || (d.get('kind', '') == 'temporary_coverage'
+            && d.get('additionalGroupId', '') != ''
+            && d.get('additionalGroupId', '') == userDoc().get('groupId', ''))
           || (d.get('kind', '') == 'broadcast' && (
             d.get('scopeKey', '') == 'global'
             || d.get('scopeKey', '') == 'municipality:' + userDoc().get('municipalityCoordinatorId', '')
@@ -872,9 +875,17 @@ service cloud.firestore {
         && (
           (d.details.assignmentType == 'worker'
             && get(path).data._entity == 'worker'
-            && get(path).data.get('isReserve', false) == true)
+            && get(path).data.get('isReserve', false) == true
+            && !(get(path).data.get('status', '') in ['frozen','deleted','inactive'])
+            && d.details.workerName == get(path).data.get('name', '')
+            && d.details.workerJob == get(path).data.get('job', '')
+            && d.details.assignmentLockId == id
+            && getAfter(/databases/$(database)/documents/temporary_assignments/$(id)).data.decisionId == d.id
+            && getAfter(/databases/$(database)/documents/temporary_assignments/$(id)).data.groupId == d.groupId
+            && getAfter(/databases/$(database)/documents/temporary_assignments/$(id)).data.validUntil == d.expiresAt)
           || (d.details.assignmentType == 'group'
             && get(path).data._entity == 'group' && id != d.groupId
+            && d.get('additionalGroupId', '') == id
             && id in get(/databases/$(database)/documents/operations/$(d.groupId)).data.get('adjacentGroupIds', []))
         );
     }
@@ -905,7 +916,7 @@ service cloud.firestore {
         && userDoc().get('policies', {}).get('operations', {}).get('create', true) != false
         && d.keys().hasOnly(['id','kind','title','body','groupId','municipalityCoordinatorId',
           'targetId','scopeKey','status','priority','shiftDate','expiresAt','details',
-          'targetCycleId','createdBy','coordinatorName','createdAt','schemaVersion'])
+          'targetCycleId','createdBy','coordinatorName','createdAt','schemaVersion','additionalGroupId'])
         && d.id == id && d.createdBy == request.auth.uid
         && d.coordinatorName == userDoc().get('name', '')
         && d.createdAt == request.time && d.schemaVersion == 1
@@ -961,6 +972,33 @@ service cloud.firestore {
       allow update: if validDecisionTransition();
       allow delete: if false;
     }
+    function validTemporaryAssignmentLock(workerId) {
+      let d = request.resource.data;
+      let action = getAfter(/databases/$(database)/documents/strategic_decisions/$(d.decisionId)).data;
+      return decisionManager()
+        && d.keys().hasOnly(['decisionId','workerId','groupId',
+          'municipalityCoordinatorId','validUntil','createdBy','createdAt'])
+        && d.workerId == workerId && d.createdBy == request.auth.uid
+        && d.createdAt == request.time && d.validUntil is timestamp
+        && d.validUntil > request.time
+        && action.createdBy == request.auth.uid
+        && action.kind == 'temporary_coverage'
+        && action.details.assignmentType == 'worker'
+        && action.details.assignmentId == workerId
+        && action.groupId == d.groupId
+        && action.municipalityCoordinatorId == d.municipalityCoordinatorId
+        && action.expiresAt == d.validUntil
+        && (!isL2() || d.municipalityCoordinatorId == request.auth.uid);
+    }
+    match /temporary_assignments/{workerId} {
+      allow read: if decisionManager() && (
+        isL3OrL4() || resource.data.municipalityCoordinatorId == request.auth.uid);
+      allow create: if validTemporaryAssignmentLock(workerId);
+      allow update: if resource.data.validUntil <= request.time
+        && validTemporaryAssignmentLock(workerId);
+      allow delete: if false;
+    }
+
     match /strategic_plans/{id} {
       allow read: if decisionManager() && (
         isL3OrL4() || resource.data.municipalityCoordinatorId == request.auth.uid);
