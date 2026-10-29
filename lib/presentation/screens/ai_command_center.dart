@@ -692,7 +692,7 @@ class _QuickActions extends StatelessWidget {
               crossAxisCount: cols,
               mainAxisSpacing: 11,
               crossAxisSpacing: 11,
-              childAspectRatio: cols == 2 ? 1.05 : 1.10,
+              mainAxisExtent: cols == 2 ? 163 : 154,
             ),
             itemBuilder: (_, i) => actions[i],
           );
@@ -706,54 +706,88 @@ class _Quick extends StatelessWidget {
   final String feature, title, subtitle;
   final String? badge;
   final VoidCallback? onTap;
-  const _Quick({required this.feature, required this.title, required this.subtitle, this.badge, this.onTap});
+  const _Quick({
+    required this.feature,
+    required this.title,
+    required this.subtitle,
+    this.badge,
+    this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final isAi = feature == 'ai';
-    final accent = switch (feature) {
-      'emergency' => const Color(0xFFFF9D45),
-      'messages' => const Color(0xFF9B7CFF),
-      'reports' => const Color(0xFF5CA9FF),
-      'trips' => const Color(0xFF20D8FF),
-      'workers' || 'users' => const Color(0xFF5CFF9A),
-      'dumpsite' => const Color(0xFF22D3EE),
-      'cycle' || 'sync' => const Color(0xFF67E8F9),
-      'ai' => const Color(0xFFB56CFF),
-      _ => aiCyan,
+    final accent = EcoPalette.accent(feature);
+    final tint = EcoPalette.tint(feature);
+    final icon = switch (feature) {
+      'emergency' => Icons.warning_amber_rounded,
+      'messages' => Icons.forum_rounded,
+      'reports' => Icons.insert_chart_outlined_rounded,
+      'trips' => Icons.local_shipping_rounded,
+      'workers' || 'users' => Icons.groups_rounded,
+      'dumpsite' => Icons.delete_sweep_rounded,
+      'cycle' => Icons.event_repeat_rounded,
+      'sync' => Icons.sync_rounded,
+      'ai' => Icons.auto_awesome_rounded,
+      'containers' => Icons.delete_outline_rounded,
+      _ => Icons.hub_rounded,
     };
-    return AiGlassCard(
-      onTap: onTap,
-      padding: const EdgeInsets.all(15),
-      gradient: LinearGradient(
-        colors: isAi ? [const Color(0xFF291050), const Color(0xFF0B2940)] : [const Color(0xFF071D30), const Color(0xFF092A39)],
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-      ),
-      child: Stack(
-        children: [
-          PositionedDirectional(top: -16, end: -14, child: Container(width: 70, height: 70, decoration: BoxDecoration(shape: BoxShape.circle, color: accent.withOpacity(.09)))),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(children: [
-                AiFeatureIcon(feature, size: 30),
-                const Spacer(),
-                if (badge != null) Container(padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4), decoration: BoxDecoration(color: accent.withOpacity(.16), borderRadius: BorderRadius.circular(20), border: Border.all(color: accent.withOpacity(.30))), child: Text(badge!, style: TextStyle(color: accent, fontSize: 8, fontWeight: FontWeight.w900))),
-              ]),
+    return Semantics(
+      button: onTap != null,
+      label: title,
+      child: AiGlassCard(
+        onTap: onTap,
+        padding: const EdgeInsets.all(12),
+        gradient: LinearGradient(
+          colors: [tint, Color.lerp(tint, Colors.white, .48)!],
+          begin: Alignment.topRight,
+          end: Alignment.bottomLeft,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(children: [
+              EcoPictorialIcon(feature: feature, icon: icon, size: 56),
               const Spacer(),
-              AppText(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w900)),
-              const SizedBox(height: 3),
-              AppText(subtitle, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w600, height: 1.35)),
-              const SizedBox(height: 10),
-              Row(children: [
-                Expanded(child: Container(height: 2, decoration: BoxDecoration(borderRadius: BorderRadius.circular(10), gradient: LinearGradient(colors: [accent.withOpacity(.8), accent.withOpacity(.05)])))),
-                const SizedBox(width: 7),
-                Icon(context.watch<LocaleController>().isArabic ? Icons.arrow_back_rounded : Icons.arrow_forward_rounded, size: 17, color: accent),
-              ]),
-            ],
-          ),
-        ],
+              if (badge != null)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: accent.withOpacity(.11),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(badge!,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: accent,
+                      fontSize: 9,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+            ]),
+            const Spacer(),
+            AppText(title,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: cleanOpsText,
+                fontSize: 14,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+            const SizedBox(height: 3),
+            AppText(subtitle,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: cleanOpsMuted,
+                fontSize: 10.5,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
