@@ -690,7 +690,7 @@ class AppDrawer extends StatelessWidget {
               child: Center(
                 child: Text(
                   'ECO-UI R2 • 2026.10.29',
-                  textDirection: TextDirection.ltr,
+                  textDirection: ui.TextDirection.ltr,
                   style: TextStyle(
                     color: cleanOpsMuted,
                     fontSize: 10,
