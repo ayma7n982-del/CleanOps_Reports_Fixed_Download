@@ -16,6 +16,7 @@ import 'config_service.dart';
 import 'local_store.dart';
 import 'operations_cache_merge.dart';
 import 'sos_audience_policy.dart';
+import 'auth_service.dart';
 
 class DataService extends ChangeNotifier {
   final LocalStore store;
@@ -37,6 +38,40 @@ class DataService extends ChangeNotifier {
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? sosEmergencySub;
   bool _sosInboxRefreshing = false;
   StreamSubscription<User?>? authNotificationSub;
+  AuthService? _auth;
+  String? _cacheScope;
+
+  void bindAuth(AuthService auth) {
+    _auth?.removeListener(_onUserChanged);
+    _auth = auth;
+    auth.addListener(_onUserChanged);
+    _onUserChanged();
+  }
+
+  bool _matchesSession(String uid, String scope) =>
+      FirebaseAuth.instance.currentUser?.uid == uid &&
+      store.cachedUser()?.id == uid &&
+      store.cacheScope == scope &&
+      (_auth == null ||
+          (_auth?.currentUser?.id == uid && _cacheScope == scope));
+
+  void _onUserChanged() {
+    store.setCacheUser(_auth?.currentUser);
+    if (_cacheScope == store.cacheScope) return;
+    _cacheScope = store.cacheScope;
+    operations = store.cachedOperations();
+    notifications = store.notifications();
+    activities = store.activities();
+    operationsCapped = false;
+    lastSync = store.lastSync();
+    lastDataRefresh = store.lastDataRefresh();
+    lastSyncError = null;
+    notifyListeners();
+    if (online && _auth?.currentUser != null) {
+      unawaited(refreshOperations());
+      unawaited(refreshSosInbox());
+    }
+  }
   final Future<void> Function(SyncItem item, Map<String, dynamic> payload)?
       _syncItemOverride;
 
@@ -165,6 +200,7 @@ class DataService extends ChangeNotifier {
   bool get usingCachedData => !online && operations.isNotEmpty;
   @override
   void dispose() {
+    _auth?.removeListener(_onUserChanged);
     connectivitySub?.cancel();
     automaticSyncTimer?.cancel();
     sosNotificationSub?.cancel();
@@ -248,7 +284,9 @@ class DataService extends ChangeNotifier {
     if (!online || Firebase.apps.isEmpty || _sosInboxRefreshing) return;
     final current = FirebaseAuth.instance.currentUser;
     if (current == null) return;
+    if (!_matchesSession(current.uid, store.cacheScope)) return;
     _sosInboxRefreshing = true;
+    final scope = store.cacheScope;
     try {
       final db = FirebaseFirestore.instance;
       final profile = await db.collection('users').doc(current.uid).get();
@@ -260,6 +298,7 @@ class DataService extends ChangeNotifier {
       // Preserve existing explicit, scoped notification delivery.
       final notices = await db.collection('operations')
           .where('_entity', isEqualTo: 'notification').limit(300).get();
+      if (!_matchesSession(current.uid, scope)) return;
       for (final document in notices.docs) {
         final item = document.data();
         if (item['sourceEntity'] != 'emergency' ||
@@ -283,6 +322,7 @@ class DataService extends ChangeNotifier {
       // supervisor reading the coordinator's protected user document.
       final emergencies = await db.collection('operations')
           .where('_entity', isEqualTo: 'emergency').limit(300).get();
+      if (!_matchesSession(current.uid, scope)) return;
       for (final doc in emergencies.docs) {
         final item = doc.data();
         if (!SosAudiencePolicy.canSeeEmergency(
@@ -429,7 +469,8 @@ class DataService extends ChangeNotifier {
     final item = SyncItem(
       id: queueId,
       ownerUid: Firebase.apps.isNotEmpty
-          ? FirebaseAuth.instance.currentUser?.uid : null,
+          ? (FirebaseAuth.instance.currentUser?.uid ?? store.cachedUser()?.id)
+          : store.cachedUser()?.id,
       entity: entity,
       operation: operation,
       payload: jsonEncode(safePayload),
@@ -447,11 +488,13 @@ class DataService extends ChangeNotifier {
 
   Future<List<Map<String, dynamic>>> refreshOperations({int limit = 1000}) async {
     if (!online || Firebase.apps.isEmpty) return operations;
+    final scope = store.cacheScope;
     try {
       // Workers and supervisors are only authorized to query their own group's
       // operations. A global list query fails completely under Firestore rules.
       final account = FirebaseAuth.instance.currentUser;
       if (account == null) return operations;
+      if (!_matchesSession(account.uid, scope)) return operations;
       final cached = store.cachedUser();
       String role = cached?.id == account.uid ? cached!.role : '';
       String groupId = cached?.id == account.uid ? (cached!.groupId ?? '') : '';
@@ -484,6 +527,7 @@ class DataService extends ChangeNotifier {
         page = page.orderBy(FieldPath.documentId).limit(requested);
         if (lastDocument != null) page = page.startAfterDocument(lastDocument);
         final snapshot = await page.get(const GetOptions(source: Source.server));
+        if (!_matchesSession(account.uid, scope)) return operations;
         for (final doc in snapshot.docs) {
           loaded.add({'id': doc.id, ...doc.data()});
         }
@@ -623,6 +667,7 @@ class DataService extends ChangeNotifier {
     // Signed-out devices must not upload queued records under a future account.
     final currentUid = _syncItemOverride == null
         ? FirebaseAuth.instance.currentUser?.uid : null;
+    final scope = store.cacheScope;
     if (_syncItemOverride == null && currentUid == null) return;
     syncing = true;
     lastSyncError = null;
@@ -635,8 +680,7 @@ class DataService extends ChangeNotifier {
         if (_syncItemOverride == null &&
             FirebaseAuth.instance.currentUser?.uid != currentUid) break;
         // Retain records for a different account; its own session will retry.
-        if (_syncItemOverride == null && item.ownerUid != null &&
-            item.ownerUid != currentUid) continue;
+        if (_syncItemOverride == null && item.ownerUid != currentUid) continue;
         try {
           final payload = Map<String, dynamic>.from(jsonDecode(item.payload));
 
@@ -1049,6 +1093,13 @@ class DataService extends ChangeNotifier {
             }, SetOptions(merge: true));
           }
 
+          if (scope != store.cacheScope || FirebaseAuth.instance.currentUser?.uid != currentUid) {
+            // The write succeeded for its original owner; remove it without
+            // applying the previous account's data to the new session's cache.
+            queue = queue.where((e) => e.id != item.id).toList();
+            await store.saveQueue(queue);
+            break;
+          }
           completed++;
           if (item.entity == 'cart_redirect') {
             await _applyConfirmedCartRedirect(
@@ -1090,11 +1141,13 @@ class DataService extends ChangeNotifier {
       }
 
       if (queue.isEmpty) lastSyncError = null;
-      if (completed > 0) {
+      if (completed > 0 && scope == store.cacheScope) {
         lastSync = DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now());
         await store.saveLastSync(lastSync);
         await refreshOperations();
+        if (scope != store.cacheScope) return;
         await refreshSosInbox();
+        if (scope != store.cacheScope) return;
         await notifyUser('المزامنة مكتملة', 'تمت مزامنة $completed عملية بنجاح.', level: 'success');
         await addActivity('مزامنة البيانات', 'تم رفع $completed عملية إلى السحابة.', level: 'success');
       }

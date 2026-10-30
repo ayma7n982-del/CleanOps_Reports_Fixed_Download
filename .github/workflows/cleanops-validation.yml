@@ -91,15 +91,21 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - name: Validate Firestore rules syntax
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Install security test tools
         run: |
-          npm install --no-save firebase-tools
-          npx firebase-tools --version
-          test -s firebase/firestore.rules
-          test -s firebase.json
+          npm install --no-save firebase-tools@14
+          npm --prefix firebase/tests install
+      - name: Verify Firestore authorization
+        run: npx firebase emulators:exec --project cleanops-messaging-rules-test --only firestore "npm --prefix firebase/tests test"
+      - name: Verify Storage authorization
+        run: npx firebase emulators:exec --project cleanops-messaging-storage-test --only firestore,storage "npm --prefix firebase/tests run test:storage"
 
   firebase-deploy:
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
     needs: [android, firebase-rules]
     runs-on: ubuntu-latest
     environment: production

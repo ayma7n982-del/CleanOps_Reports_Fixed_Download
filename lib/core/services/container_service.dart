@@ -108,15 +108,18 @@ class ContainerService extends ChangeNotifier {
   List<ContainerItem> containers = [];
   bool loading = false;
   String? error;
+  int _bindingGeneration = 0;
 
   ContainerService(this.store, this.data, this.messaging);
 
   Future<void> attachUser(AppUser? user) async {
+    final generation = ++_bindingGeneration;
     await _subscription?.cancel();
+    if (generation != _bindingGeneration) return;
     _subscription = null;
     _user = user;
     error = null;
-    containers = store.cachedContainers().map(ContainerItem.fromMap).toList();
+    containers = user == null ? [] : store.cachedContainers().map(ContainerItem.fromMap).toList();
     _filterLocal();
     notifyListeners();
     if (user == null || Firebase.apps.isEmpty) return;
@@ -130,6 +133,7 @@ class ContainerService extends ChangeNotifier {
         query = query.where('municipalityId', isEqualTo: user.id);
       }
       _subscription = query.snapshots(includeMetadataChanges: true).listen((snap) {
+        if (generation != _bindingGeneration) return;
         final remote = snap.docs.map((d) => ContainerItem.fromMap({'id': d.id, ...d.data()})).toList();
         _mergeRemote(remote, fromCache: snap.metadata.isFromCache);
       }, onError: (e) {
