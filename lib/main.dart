@@ -58,7 +58,7 @@ class AppIcon extends StatelessWidget {
       boxShadow: [BoxShadow(color: aiCyan.withOpacity(.22), blurRadius: 16, spreadRadius: 1)],
     ),
     clipBehavior: Clip.antiAlias,
-    child: Image.asset('assets/app_icon.png', width: size, height: size, fit: BoxFit.cover, errorBuilder: (_, __, ___) => Container(color: aiDark2, alignment: Alignment.center, child: Icon(Icons.eco_rounded, size: size * .66, color: aiCyan))),
+    child: Image.asset('assets/brand/cleanops_logo_new.png', width: size, height: size, fit: BoxFit.contain, errorBuilder: (_, __, ___) => Center(child: Text('CleanOps', textDirection: ui.TextDirection.ltr, style: TextStyle(fontSize: size * .22, fontWeight: FontWeight.w900, color: aiBlue)))),
   );
 }
 
@@ -670,7 +670,7 @@ class HeaderCard extends StatelessWidget{
     decoration:BoxDecoration(gradient:const LinearGradient(colors:[Color(0xFF06463D),Color(0xFF0B765F),Color(0xFF119A85)]),borderRadius:BorderRadius.circular(30),boxShadow:const [BoxShadow(color:Color(0x2200B4DB),blurRadius:26,offset:Offset(0,10))]),
     child:Row(
       children:[
-        SizedBox(width:64,height:64,child:Image.asset('assets/app_icon.png',fit:BoxFit.contain,errorBuilder:(_,__,___)=>const Icon(Icons.eco_rounded,size:42,color:aiCyan))),
+        SizedBox(width:64,height:64,child:Image.asset('assets/brand/cleanops_logo_new.png',fit:BoxFit.contain,errorBuilder:(_,__,___)=>const Icon(Icons.eco_rounded,size:42,color:aiCyan))),
         const SizedBox(width:14),
         Expanded(
           child:Column(
