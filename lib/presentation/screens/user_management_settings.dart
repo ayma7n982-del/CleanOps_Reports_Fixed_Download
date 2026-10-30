@@ -79,7 +79,7 @@ class _UserManagementSettingsPageState extends State<UserManagementSettingsPage>
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const AppText('تأكيد حذف المستخدم'),
-        content: AppText('هل تريد حذف المستخدم "$name" نهائيًا الآن من Firebase Authentication وFirestore؟ لا يمكن التراجع عن العملية.'),
+        content: AppText('هل تريد تعطيل المستخدم "$name" وإخفاءه من النظام؟ سيبقى حسابه محفوظًا في Firebase للأرشفة، لكنه لن يُحسب ضمن المستخدمين النشطين.'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const AppText('إلغاء')),
           TextButton(onPressed: () => Navigator.pop(dialogContext, true), child: const AppText('حذف', style: TextStyle(color: Colors.red))),
@@ -90,7 +90,7 @@ class _UserManagementSettingsPageState extends State<UserManagementSettingsPage>
     setState(() => deletingUser = true);
     try {
       await context.read<OperationsAdminService>().deleteManagedUser(id, actorId: actor.id);
-      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: AppText('تم حذف المستخدم نهائيًا من Firebase بعد تأكيد الخادم.')));
+      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: AppText('تم تعطيل المستخدم وإخفاؤه من النظام بعد تأكيد Firebase.')));
     } catch (e) {
       if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: AppText('لم يكتمل حذف المستخدم: $e')));
     } finally {
@@ -192,7 +192,7 @@ class _UserManagementSettingsPageState extends State<UserManagementSettingsPage>
                 builder: (_, snap) {
                   if (snap.hasError) return AppText('تعذر تحميل المستخدمين: ${snap.error}');
                   if (!snap.hasData) return const Center(child: Padding(padding: EdgeInsets.all(12), child: CircularProgressIndicator()));
-                  final docs = snap.data!.docs.toList()
+                  final docs = snap.data!.docs.where((d) => d.data()['status'] != 'deleted').toList()
                     ..sort((a, b) => '${a.data()['name'] ?? ''}'.compareTo('${b.data()['name'] ?? ''}'));
                   if (docs.isEmpty) return const AppText('لا يوجد مستخدمون بعد.');
                   return Column(children: [
