@@ -1813,7 +1813,7 @@ class EnterpriseApp extends StatelessWidget {
         textButtonTheme: TextButtonThemeData(style: TextButton.styleFrom(minimumSize: const Size(0, 40), padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), textStyle: GoogleFonts.cairo(fontSize: 12, fontWeight: FontWeight.w800))),
         cardTheme: CardThemeData(
           elevation: 0,
-          margin: const EdgeInsets.symmetric(vertical: 4),
+          margin: EdgeInsets.zero,
           color: Colors.white,
           surfaceTintColor: Colors.transparent,
           shadowColor: const Color(0x130B8269),
