@@ -173,33 +173,38 @@ service cloud.firestore {
         || (resource.data.keys().hasAny(['targetGroupId']) && resource.data.targetGroupId == '__JSC__' && isL3()));
     }
     function messageCreateAllowed() {
+      // Partition by actor role FIRST. This avoids evaluating dozens of
+      // unrelated access checks and document reads on every message write.
+      // Firestore enforces a hard security-rule expression evaluation budget.
       return validMessageFields() && (
-        // Place the cheapest role-appropriate paths first. The Firestore
-        // rules evaluator has an expression limit and evaluates OR branches
-        // sequentially, including document access helpers.
-        supervisorOwnGroupTarget()
-        || (role() == 'group_supervisor'
-            && request.resource.data.targetGroupId == '__JSC__'
-            && request.resource.data.type in ['info','warning','emergency']
-            && userDoc().groupId is string)
-        || (role() == 'group_supervisor'
-            && directTargetIsValid()
-            && request.resource.data.type in ['info','warning','emergency'])
-        || (role() == 'worker'
-            && request.resource.data.targetGroupId == '__JSC__'
-            && request.resource.data.type == 'emergency'
-            && userDoc().groupId is string && userDoc().groupId.size() > 0)
-        || (isL2() && request.resource.data.targetGroupId == '__JSC__'
-            && request.resource.data.type in ['info','warning','emergency'])
-        || ((isL4() || isL3())
-            && request.resource.data.targetGroupId == '__ALL_MUNICIPALITIES__')
-        || managedDirectTarget()
-        || seniorDirectTarget()
-        || workerCoordinatorDirectTarget()
-        || (isL2() && request.resource.data.targetGroupId is string
-            && exists(/databases/$(database)/documents/operations/$(request.resource.data.targetGroupId))
-            && get(/databases/$(database)/documents/operations/$(request.resource.data.targetGroupId)).data._entity == 'group'
-            && get(/databases/$(database)/documents/operations/$(request.resource.data.targetGroupId)).data.municipalityCoordinatorId == request.auth.uid)
+        (role() == 'group_supervisor' && (
+          supervisorOwnGroupTarget()
+          || (request.resource.data.targetGroupId == '__JSC__'
+              && request.resource.data.type in ['info','warning','emergency']
+              && userDoc().groupId is string)
+          || (directTargetIsValid()
+              && request.resource.data.type in ['info','warning','emergency'])
+        ))
+        || (role() == 'worker' && (
+          workerCoordinatorDirectTarget()
+          || (request.resource.data.targetGroupId == '__JSC__'
+              && request.resource.data.type == 'emergency'
+              && userDoc().groupId is string
+              && userDoc().groupId.size() > 0)
+        ))
+        || (isL2() && (
+          (request.resource.data.targetGroupId == '__JSC__'
+              && request.resource.data.type in ['info','warning','emergency'])
+          || managedDirectTarget()
+          || (request.resource.data.targetGroupId is string
+              && exists(/databases/$(database)/documents/operations/$(request.resource.data.targetGroupId))
+              && get(/databases/$(database)/documents/operations/$(request.resource.data.targetGroupId)).data._entity == 'group'
+              && get(/databases/$(database)/documents/operations/$(request.resource.data.targetGroupId)).data.municipalityCoordinatorId == request.auth.uid)
+        ))
+        || (isL3OrL4() && (
+          request.resource.data.targetGroupId == '__ALL_MUNICIPALITIES__'
+          || seniorDirectTarget()
+        ))
       );
     }
     // Read/ack receipts live under messages/{messageId}/receipts/{userId}.
