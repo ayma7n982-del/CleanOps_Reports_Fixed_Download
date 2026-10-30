@@ -45,6 +45,10 @@ class MessageFilter {
     if (target != 'all' && destination != target) return false;
     final cutoff = now ?? DateTime.now();
     switch (period) {
+      case 'today':
+        if (message.timestamp.year != cutoff.year ||
+            message.timestamp.month != cutoff.month ||
+            message.timestamp.day != cutoff.day) return false;
       case 'week':
         if (message.timestamp.isBefore(cutoff.subtract(const Duration(days: 7)))) return false;
       case 'month':
@@ -52,13 +56,18 @@ class MessageFilter {
     }
     final q = normalized(search);
     if (q.isEmpty) return true;
-    return normalized([
+    final combined = normalized([
       message.content,
       message.senderName,
       message.senderId,
       message.targetUserId ?? '',
       message.targetGroupId ?? '',
       message.type,
-    ].join(' ')).contains(q);
+      message.type == 'emergency' ? 'طوارئ عاجل sos' : '',
+      message.type == 'warning' ? 'تحذير تنبيه' : '',
+    ].join(' '));
+    // Users can search words in any order rather than requiring one exact phrase.
+    return q.split(RegExp(r'\\s+')).where((part) => part.isNotEmpty)
+        .every(combined.contains);
   }
 }
