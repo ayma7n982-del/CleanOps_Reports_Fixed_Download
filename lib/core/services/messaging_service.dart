@@ -575,7 +575,7 @@ class MessagingService extends ChangeNotifier {
     unawaited(_writeMessage(message));
   }
 
-  Future<void> markRead(String messageId) async {
+  Future<void> markRead(String messageId, {bool recordReceipt = true}) async {
     final uid = _uid;
     if (uid == null) return;
     final readIds = store.messageReadIds(uid).toSet()..add(messageId);
@@ -600,7 +600,7 @@ class MessagingService extends ChangeNotifier {
       await _saveCache();
       notifyListeners();
     }
-    if (config.onlineMessagingEnabled && config.readReceiptsEnabled && Firebase.apps.isNotEmpty) {
+    if (recordReceipt && config.onlineMessagingEnabled && config.readReceiptsEnabled && Firebase.apps.isNotEmpty) {
       // Each recipient writes their own receipt; a group message's shared
       // isRead field must never be changed by one member reading it.
       unawaited(_writeReceipt(messageId, uid, 'read'));
@@ -636,7 +636,9 @@ class MessagingService extends ChangeNotifier {
     if (uid == null) return;
     final matches = messages.where((m) => m.messageId == messageId && m.senderId != uid);
     if (matches.isEmpty) return;
-    await markRead(messageId);
+    // Write a single authoritative receipt instead of racing a 'read'
+    // write against the stronger 'acknowledged' state.
+    await markRead(messageId, recordReceipt: false);
     if (config.readReceiptsEnabled && config.onlineMessagingEnabled && Firebase.apps.isNotEmpty) {
       unawaited(_writeReceipt(messageId, uid, 'acknowledged'));
     }
