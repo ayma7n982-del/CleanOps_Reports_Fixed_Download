@@ -367,6 +367,23 @@ service cloud.firestore {
           && getAfter(/databases/$(database)/documents/admin_requests/$(request.resource.data.deletionRequestId)).data.status == 'pending'
         )
         || (
+          // Municipality coordinator can soft-delete only workers in their own municipality.
+          // No account may delete itself; Auth accounts remain on Spark.
+          isL2()
+          && uid != request.auth.uid
+          && workforceManagedByL2()
+          && requestedWorkforceManagedByL2()
+          && isWorkforceRole(resource.data.role)
+          && request.resource.data.role == resource.data.role
+          && request.resource.data.username == resource.data.username
+          && request.resource.data.isActive == false
+          && request.resource.data.status == 'deleted'
+          && request.resource.data.updatedBy == request.auth.uid
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'isActive','status','updatedBy','updatedAt'
+          ])
+        )
+        || (
           // Explicit deactivation is permitted during an active cycle.
           // Freezing remains blocked until cycleHasEnded below.
           isL2()
