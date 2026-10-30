@@ -101,11 +101,7 @@ class EcoBootSplash extends StatelessWidget {
                                   'assets/brand/cleanops_logo_new.png',
                                   fit: BoxFit.contain,
                                   filterQuality: FilterQuality.high,
-                                  errorBuilder: (_, __, ___) => const Icon(
-                                    Icons.eco_rounded,
-                                    color: Color(0xFF087F6B),
-                                    size: 73,
-                                  ),
+                                  errorBuilder: (_, __, ___) => const FittedBox(fit: BoxFit.scaleDown, child: Text('CleanOps', style: TextStyle(fontWeight: FontWeight.w900, color: Color(0xFF087F6B)))),
                                 ),
                               ),
                               PositionedDirectional(
