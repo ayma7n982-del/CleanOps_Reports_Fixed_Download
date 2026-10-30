@@ -1152,12 +1152,34 @@ class _MessagesCenterScreenState extends State<MessagesCenterScreen> {
                             dense: true,
                             leading: const Icon(Icons.sms_outlined, color: aiCyan),
                             title: AppText('${item.data()['content'] ?? ''}', maxLines: 2),
-                            subtitle: AppText('المستلم: ${item.data()['targetUserId'] ?? ''}'),
-                            trailing: AppText(
-                              item.data()['status'] == 'submitted' ? 'قبله المزود'
-                                : item.data()['status'] == 'failed' ? 'فشل'
-                                : 'قيد المعالجة',
-                              style: const TextStyle(fontSize: 11)),
+                            subtitle: AppText('المستلم: ${recipients
+                                .where((entry) => entry.$1 == item.data()['targetUserId'])
+                                .map((entry) => entry.$2)
+                                .firstOrNull ?? 'مستلم مسجل'}'),
+                            trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+                              AppText(
+                                item.data()['status'] == 'delivered' ? 'تم التسليم'
+                                  : item.data()['status'] == 'sent' ? 'أرسلها المزود'
+                                  : item.data()['status'] == 'submitted' ? 'قبله المزود'
+                                  : item.data()['status'] == 'failed' ? 'فشل'
+                                  : 'قيد المعالجة',
+                                style: const TextStyle(fontSize: 11)),
+                              if (item.data()['providerMessageSid'] != null)
+                                IconButton(
+                                  tooltip: 'تحديث حالة التسليم من المزود',
+                                  icon: const Icon(Icons.refresh_rounded, size: 19),
+                                  onPressed: () async {
+                                    try {
+                                      await FirebaseFunctions.instanceFor(region: 'us-central1')
+                                          .httpsCallable('refreshExternalSmsStatus')
+                                          .call<Map<String, dynamic>>({'messageId': item.id});
+                                    } catch (e) {
+                                      if (mounted) ScaffoldMessenger.of(this.context).showSnackBar(
+                                        SnackBar(content: AppText(MessagingFeedback.describe(e))));
+                                    }
+                                  },
+                                ),
+                            ]),
                           ),
                       ]);
                     },
