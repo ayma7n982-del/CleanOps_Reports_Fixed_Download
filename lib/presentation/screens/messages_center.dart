@@ -40,6 +40,7 @@ class _MessagesCenterScreenState extends State<MessagesCenterScreen> {
   String messageTypeFilter = 'all';
   String messageTargetFilter = 'all';
   String messagePeriodFilter = 'all';
+  bool showAdvancedMessageFilters = false;
   String searchText = '';
   final searchController = TextEditingController();
 
@@ -257,12 +258,23 @@ class _MessagesCenterScreenState extends State<MessagesCenterScreen> {
                             ]),
                           ),
                           const SizedBox(height: 10),
+                          OutlinedButton.icon(
+                            icon: Icon(showAdvancedMessageFilters
+                                ? Icons.expand_less_rounded : Icons.tune_rounded),
+                            label: AppText(showAdvancedMessageFilters
+                                ? 'إخفاء الفلاتر المتقدمة' : 'نوع الرسالة • الوجهة • التاريخ'),
+                            onPressed: () => setState(
+                                () => showAdvancedMessageFilters = !showAdvancedMessageFilters),
+                          ),
+                          if (showAdvancedMessageFilters) ...[
+                          const SizedBox(height: 10),
                           LayoutBuilder(builder: (context, constraints) => Wrap(
                             spacing: 10, runSpacing: 10, children: [
                               SizedBox(
                                 width: constraints.maxWidth > 440
                                     ? (constraints.maxWidth - 20) / 3 : constraints.maxWidth,
                                 child: DropdownButtonFormField<String>(
+                                  key: ValueKey('message-type-$messageTypeFilter'),
                                   value: messageTypeFilter,
                                   isExpanded: true,
                                   decoration: const InputDecoration(labelText: 'نوع الرسالة', isDense: true),
@@ -279,6 +291,7 @@ class _MessagesCenterScreenState extends State<MessagesCenterScreen> {
                                 width: constraints.maxWidth > 440
                                     ? (constraints.maxWidth - 20) / 3 : constraints.maxWidth,
                                 child: DropdownButtonFormField<String>(
+                                  key: ValueKey('message-target-$messageTargetFilter'),
                                   value: availableTargets.contains(messageTargetFilter)
                                       ? messageTargetFilter : 'all',
                                   isExpanded: true,
@@ -299,6 +312,7 @@ class _MessagesCenterScreenState extends State<MessagesCenterScreen> {
                                 width: constraints.maxWidth > 440
                                     ? (constraints.maxWidth - 20) / 3 : constraints.maxWidth,
                                 child: DropdownButtonFormField<String>(
+                                  key: ValueKey('message-period-$messagePeriodFilter'),
                                   value: messagePeriodFilter,
                                   isExpanded: true,
                                   decoration: const InputDecoration(labelText: 'الفترة', isDense: true),
@@ -312,6 +326,7 @@ class _MessagesCenterScreenState extends State<MessagesCenterScreen> {
                               ),
                             ],
                           )),
+                          ],
                           if (hasActiveFilters)
                             Align(
                               alignment: AlignmentDirectional.centerEnd,
