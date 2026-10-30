@@ -1553,14 +1553,14 @@ class StartupFailureScreen extends StatelessWidget {
                     children: [
                       const Icon(Icons.error_outline, size: 64, color: Colors.redAccent),
                       const SizedBox(height: 16),
-                      const AppText('تعذر بدء التطبيق', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
+                      const Text('تعذر بدء التطبيق', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
                       const SizedBox(height: 12),
                       Text(message, textAlign: TextAlign.center),
                       const SizedBox(height: 20),
                       FilledButton.icon(
                         onPressed: () => main(),
                         icon: const Icon(Icons.refresh),
-                        label: const AppText('إعادة المحاولة'),
+                        label: const Text('إعادة المحاولة'),
                       ),
                     ],
                   ),
