@@ -67,6 +67,21 @@ void main() {
       currentUserId: 'worker', period: 'month', now: now), isFalse);
   });
 
+  test('Multiword search matches Arabic words in different order', () {
+    final message = item(text: 'تم إصلاح الحاوية في المجموعة');
+    expect(MessageFilter.matches(message,
+      currentUserId: 'worker', search: 'المجموعة إصلاح', now: now), isTrue);
+    expect(MessageFilter.matches(message,
+      currentUserId: 'worker', search: 'كلمة مفقودة', now: now), isFalse);
+  });
+
+  test('Today period excludes older days', () {
+    expect(MessageFilter.matches(item(created: DateTime(2026, 10, 30, 8)),
+      currentUserId: 'worker', period: 'today', now: now), isTrue);
+    expect(MessageFilter.matches(item(created: DateTime(2026, 10, 29, 23, 59)),
+      currentUserId: 'worker', period: 'today', now: now), isFalse);
+  });
+
   test('Only emergency cards enter the urgent folder', () {
     expect(MessageFilter.matches(item(type: 'emergency'),
       currentUserId: 'worker', folder: 'urgent', now: now), isTrue);
