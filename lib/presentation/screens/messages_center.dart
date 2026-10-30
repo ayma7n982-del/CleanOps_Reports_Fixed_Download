@@ -279,7 +279,7 @@ class _MessagesCenterScreenState extends State<MessagesCenterScreen> {
                       ),
                     ],
                     if (!isMine) ...[
-                      if (messaging.canSend('info')) ...[
+                      if (messaging.canReplyTo(message)) ...[
                         const SizedBox(height: 10),
                         OutlinedButton.icon(
                           onPressed: () => _openReply(message, messaging),
@@ -623,6 +623,13 @@ class _MessagesCenterScreenState extends State<MessagesCenterScreen> {
               child: ListView(shrinkWrap: true, children: [
                 const AppText('الرد على الرسالة',
                   style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
+                if (context.read<AuthService>().currentUser?.role == 'municipality_coordinator' &&
+                    original.targetGroupId == MessagingService.allMunicipalitiesGroup)
+                  const Padding(
+                    padding: EdgeInsets.only(top: 8),
+                    child: AppText('سيصل الرد إلى منسق المجلس، وفق صلاحيات الإدارة.',
+                      style: TextStyle(color: cleanOpsMuted, fontSize: 12)),
+                  ),
                 const SizedBox(height: 10),
                 AppText(original.content, maxLines: 3,
                   style: const TextStyle(color: cleanOpsMuted)),
@@ -634,10 +641,7 @@ class _MessagesCenterScreenState extends State<MessagesCenterScreen> {
                   onPressed: busy ? null : () async {
                     setSheetState(() => busy = true);
                     try {
-                      await messaging.sendToUser(
-                        targetUserId: original.senderId,
-                        content: reply.text, type: 'info',
-                        replyToMessageId: original.messageId);
+                      await messaging.replyToMessage(original, reply.text);
                       if (sheetContext.mounted) Navigator.pop(sheetContext);
                       if (mounted) ScaffoldMessenger.of(this.context).showSnackBar(
                         const SnackBar(content: AppText('أُدرج الرد في قائمة الإرسال؛ تحقق من حالة الخادم.')));
