@@ -70,7 +70,7 @@ void main() {
     final v31 = source('android/app/src/main/res/values-v31/styles.xml');
     expect(v31, contains('windowSplashScreenAnimatedIcon'));
     expect(v31, contains('windowSplashScreenBackground'));
-    expect(v31, contains('@drawable/cleanops_splash_clear'));
+    expect(v31, contains('@mipmap/ic_launcher'));
     expect(v31, isNot(contains('@drawable/cleanops_splash_logo')));
     expect(source('lib/presentation/widgets/eco_boot_splash.dart'),
         contains('assets/brand/cleanops_logo_new.png'));
