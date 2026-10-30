@@ -575,6 +575,8 @@ class MessagingService extends ChangeNotifier {
           .doc(message.messageId).set({
         'messageId': message.messageId,
         'senderId': message.senderId,
+        if (message.senderName.isNotEmpty) 'senderName': message.senderName,
+        if (message.senderRole.isNotEmpty) 'senderRole': message.senderRole,
         'targetGroupId': target,
         if (message.targetUserId != null) 'targetUserId': message.targetUserId,
         if (message.replyToMessageId != null) 'replyToMessageId': message.replyToMessageId,
