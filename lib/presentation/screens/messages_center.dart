@@ -175,8 +175,8 @@ class _MessagesCenterScreenState extends State<MessagesCenterScreen> {
                         if (messaging.canSend('info'))
                           OutlinedButton.icon(
                             icon: const Icon(Icons.event_note_rounded),
-                            label: const AppText('الجدولة'),
-                            onPressed: () => _showScheduledMessages(user, messaging),
+                            label: const AppText('جدولة رسالة'),
+                            onPressed: () => _openComposer(user, messaging, startWithSchedule: true),
                           ),
                         if (const ['donor_manager','jsc_coordinator','municipality_coordinator'].contains(user.role))
                           OutlinedButton.icon(
@@ -625,14 +625,14 @@ class _MessagesCenterScreenState extends State<MessagesCenterScreen> {
     );
   }
 
-  Future<void> _openComposer(AppUser user, MessagingService messaging, {String initialMode = 'broadcast'}) async {
+  Future<void> _openComposer(AppUser user, MessagingService messaging, {String initialMode = 'broadcast', bool startWithSchedule = false}) async {
     composer.clear();
     type = user.role == 'group_supervisor' ? 'emergency' : 'info';
     selectedGroup = null;
     supervisorBroadcast = false;
     recipientMode = initialMode;
     selectedRecipient = null;
-    scheduledAt = null;
+    scheduledAt = startWithSchedule ? DateTime.now().add(const Duration(days: 1)) : null;
     final data = context.read<DataService>();
     try { await data.refreshOperations(); } catch (_) {}
     if (!mounted) return;
