@@ -135,12 +135,12 @@ class _EnterpriseLoginScreenState extends State<EnterpriseLoginScreen> with Sing
     final onlineReady = data.online && firebaseReady;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF4F8FB),
+      backgroundColor: const Color(0xFFF2FAF6),
       body: SafeArea(
         child: Stack(
           children: [
-            const Positioned(top: -100, right: -90, child: _LoginOrb(size: 240, color: Color(0x2200B4DB))),
-            const Positioned(bottom: -130, left: -90, child: _LoginOrb(size: 260, color: Color(0x1A00E676))),
+            const Positioned(top: -100, right: -90, child: _LoginOrb(size: 240, color: Color(0x338BDDBB))),
+            const Positioned(bottom: -130, left: -90, child: _LoginOrb(size: 260, color: Color(0x4466CAA7))),
             PositionedDirectional(
               top: 10,
               end: 14,
@@ -184,7 +184,7 @@ class _EnterpriseLoginScreenState extends State<EnterpriseLoginScreen> with Sing
                     decoration: BoxDecoration(
                       color: Colors.white,
                       borderRadius: BorderRadius.circular(30),
-                      border: Border.all(color: const Color(0xFFE2EEF3)),
+                      border: Border.all(color: const Color(0xFFD1EADD)),
                       boxShadow: const [
                         BoxShadow(color: Color(0x1A061A2A), blurRadius: 30, offset: Offset(0, 14)),
                       ],
@@ -211,10 +211,10 @@ class _EnterpriseLoginScreenState extends State<EnterpriseLoginScreen> with Sing
                         ),
                         const SizedBox(height: 5),
                         const AppText(
-                          'AI Operations Command Center',
+                          'إدارة ذكية • فرق متصلة • تقارير دقيقة',
                           textAlign: TextAlign.center,
                           style: TextStyle(
-                            color: Color(0xFF009AC2),
+                            color: Color(0xFF087F6B),
                             fontSize: 11,
                             fontWeight: FontWeight.w800,
                             letterSpacing: .8,
@@ -418,15 +418,15 @@ class _Field extends StatelessWidget {
       controller: controller,
       obscureText: obscureText,
       keyboardType: keyboardType,
-      style: const TextStyle(color: Color(0xFF102A43)),
-      cursorColor: const Color(0xFF00B87A),
+      style: const TextStyle(color: Color(0xFF173B35)),
+      cursorColor: const Color(0xFF087F6B),
       textDirection: TextDirection.ltr,
       onSubmitted: onSubmitted,
       decoration: InputDecoration(
         filled: true,
-        fillColor: Colors.white,
-        labelStyle: const TextStyle(color: Color(0xFF607080)),
-        floatingLabelStyle: const TextStyle(color: Color(0xFF009AC2)),
+        fillColor: const Color(0xFFF1FAF5),
+        labelStyle: const TextStyle(color: Color(0xFF52776C)),
+        floatingLabelStyle: const TextStyle(color: Color(0xFF087F6B)),
         labelText: tr(label),
         prefixIconColor: const Color(0xFF607080),
         suffixIconColor: const Color(0xFF607080),
@@ -439,15 +439,79 @@ class _Field extends StatelessWidget {
 
 class _AnimatedLogo extends StatelessWidget {
   const _AnimatedLogo();
+
   @override
   Widget build(BuildContext context) => SizedBox(
-    width: 118,
-    height: 118,
-    child: Image.asset(
-      'assets/brand/cleanops_icon_new.png',
-      fit: BoxFit.contain,
-      errorBuilder: (_, __, ___) => const Icon(Icons.eco_rounded, color: aiCyan, size: 60),
-      filterQuality: FilterQuality.high,
+    width: 146,
+    height: 146,
+    child: Stack(
+      alignment: Alignment.center,
+      clipBehavior: Clip.none,
+      children: [
+        Container(
+          width: 146,
+          height: 146,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: const Color(0xFFE5F8ED),
+            border: Border.all(color: const Color(0xFFC4E8D6), width: 1.5),
+          ),
+        ),
+        Container(
+          width: 113,
+          height: 113,
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(28),
+            border: Border.all(color: const Color(0xFFE5F2EC)),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x203D967B),
+                blurRadius: 19,
+                offset: Offset(0, 7),
+              ),
+            ],
+          ),
+          child: Image.asset(
+            'assets/brand/cleanops_icon_new.png',
+            fit: BoxFit.contain,
+            filterQuality: FilterQuality.high,
+            errorBuilder: (_, __, ___) => const Icon(
+              Icons.eco_rounded, color: aiBlue, size: 70),
+          ),
+        ),
+        PositionedDirectional(
+          top: 6,
+          end: 5,
+          child: Container(
+            width: 28,
+            height: 28,
+            decoration: const BoxDecoration(
+              shape: BoxShape.circle,
+              color: Color(0xFF0C9D80),
+            ),
+            alignment: Alignment.center,
+            child: const Icon(Icons.auto_awesome_rounded,
+                size: 16, color: Colors.white),
+          ),
+        ),
+        PositionedDirectional(
+          bottom: 8,
+          start: 4,
+          child: Container(
+            width: 26,
+            height: 26,
+            decoration: const BoxDecoration(
+              shape: BoxShape.circle,
+              color: Color(0xFF338EAF),
+            ),
+            alignment: Alignment.center,
+            child: const Icon(Icons.recycling_rounded,
+                size: 17, color: Colors.white),
+          ),
+        ),
+      ],
     ),
   );
 }
