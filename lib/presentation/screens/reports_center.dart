@@ -37,7 +37,10 @@ class _ReportsCenterState extends State<ReportsCenterScreen> {
     final data = context.read<DataService>(); final user = context.read<AuthService>().currentUser;
     future = ReportService(data).load(days: days, startDate: startDate, endDate: endDate, user: user, municipality: municipality, group: group, cycle: cycle, reportType: reportType, reportId: _stableReportId(data));
   }
-  void _refresh() => _reload();
+  void _refresh() {
+    if (!mounted) return;
+    setState(_reload);
+  }
 
   void _applyPeriodPreset(String preset) {
     final now = DateTime.now();
@@ -125,7 +128,16 @@ class _ReportsCenterState extends State<ReportsCenterScreen> {
   Widget _body(ReportSnapshot s) {
     final u = context.read<AuthService>().currentUser!;
     return RefreshIndicator(onRefresh: () async { _refresh(); await future; }, child: ListView(padding: const EdgeInsets.fromLTRB(14, 14, 14, 120), children: [
-      _hero(s), const SizedBox(height: 12), _specializedReports(), const SizedBox(height: 12), _filters(s), const SizedBox(height: 12),
+      _hero(s),
+      if (s.sourceMayBeIncomplete) ...[
+        const SizedBox(height: 8),
+        const Card(child: ListTile(
+          leading: Icon(Icons.warning_amber_rounded, color: Colors.orange),
+          title: AppText('قد تكون بعض سجلات التقرير غير مكتملة'),
+          subtitle: AppText('تم الوصول إلى حد استرجاع 10000 سجل. راجع الفترة والفلاتر قبل اعتماد التقرير.'),
+        )),
+      ],
+      const SizedBox(height: 12), _specializedReports(), const SizedBox(height: 12), _filters(s), const SizedBox(height: 12),
       _typeCards(), const SizedBox(height: 12), _kpis(s), const SizedBox(height: 12),
       _selectedReport(s), const SizedBox(height: 12), _charts(s), const SizedBox(height: 12), _actions(s, u),
     ]));
