@@ -60,6 +60,7 @@ class _MessagesCenterScreenState extends State<MessagesCenterScreen> {
     final availableTargets = allMessages
         .map((message) => message.targetGroupId ?? '')
         .where((target) => target.isNotEmpty)
+        .map((target) => target.startsWith('__USER__:') ? '__DIRECT__' : target)
         .toSet().toList()..sort();
     final visibleMessages = allMessages.where((message) => MessageFilter.matches(
       message,
@@ -388,6 +389,7 @@ class _MessagesCenterScreenState extends State<MessagesCenterScreen> {
   }
 
   String _targetDisplayName(String target) {
+    if (target == '__DIRECT__') return 'الرسائل المباشرة';
     if (target == MessagingService.allMunicipalitiesGroup) return 'كل البلديات';
     if (target == '__JSC__') return 'منسق المجلس';
     if (target.startsWith('__USER__:')) return 'رسالة مباشرة';
