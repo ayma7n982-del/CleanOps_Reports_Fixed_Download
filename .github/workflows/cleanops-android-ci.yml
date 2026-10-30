@@ -59,6 +59,8 @@ jobs:
         run: flutter config --jdk-dir="$JAVA_HOME"
       - name: Resolve dependencies
         run: flutter pub get
+      - name: Generate Android launcher icon from CleanOps brand
+        run: dart run flutter_launcher_icons
       - name: Set up Gradle 8.14
         uses: gradle/actions/setup-gradle@v4
         with:
