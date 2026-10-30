@@ -70,7 +70,11 @@ void main() {
     final v31 = source('android/app/src/main/res/values-v31/styles.xml');
     expect(v31, contains('windowSplashScreenAnimatedIcon'));
     expect(v31, contains('windowSplashScreenBackground'));
-    expect(v31, contains('@drawable/cleanops_splash_logo'));
+    expect(v31, contains('@drawable/cleanops_splash_clear'));
+    expect(v31, isNot(contains('@drawable/cleanops_splash_logo')));
+    expect(source('lib/presentation/widgets/eco_boot_splash.dart'),
+        contains('assets/brand/cleanops_logo_new.png'));
+    expect(source('lib/main.dart'), contains('assets/brand/cleanops_logo_new.png'));
   });
 
   test('all 27 registered screens remain present and readable by the audit',
