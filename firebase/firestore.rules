@@ -110,7 +110,7 @@ service cloud.firestore {
     function messageTypeAllowed() { return request.resource.data.type in ['info', 'warning', 'emergency']; }
     function validMessageFields() {
       return activeMessenger()
-        && request.resource.data.keys().hasOnly(['messageId','senderId','targetGroupId','targetUserId','replyToMessageId','content','timestamp','type','isRead'])
+        && request.resource.data.keys().hasOnly(['messageId','senderId','senderName','senderRole','targetGroupId','targetUserId','replyToMessageId','content','timestamp','type','isRead'])
         && request.resource.data.targetGroupId is string
         && (!request.resource.data.keys().hasAny(['targetUserId'])
             || (request.resource.data.targetUserId is string
@@ -125,6 +125,11 @@ service cloud.firestore {
         && request.resource.data.isRead == false
         && request.resource.data.messageId is string
         && request.resource.data.senderId == request.auth.uid
+        && (!request.resource.data.keys().hasAny(['senderName'])
+            || (userDoc().name is string
+                && request.resource.data.senderName == userDoc().name))
+        && (!request.resource.data.keys().hasAny(['senderRole'])
+            || request.resource.data.senderRole == role())
         && request.resource.data.content is string
         && request.resource.data.content.size() > 0
         && request.resource.data.timestamp is timestamp
