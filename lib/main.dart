@@ -156,7 +156,7 @@ class _SetupWizardState extends State<SetupWizardPage>{
           Container(
             padding:const EdgeInsets.all(18),
             decoration:BoxDecoration(
-              gradient:const LinearGradient(colors:[Color(0xFF041522),Color(0xFF0A3045),Color(0xFF063B3B)],begin:Alignment.topLeft,end:Alignment.bottomRight),
+              gradient:const LinearGradient(colors:[Color(0xFF06463D),Color(0xFF0B765F),Color(0xFF119A85)],begin:Alignment.topRight,end:Alignment.bottomLeft),
               borderRadius:BorderRadius.circular(26),
               border:Border.all(color:aiCyan.withOpacity(.16)),
               boxShadow:[BoxShadow(color:aiCyan.withOpacity(.08),blurRadius:30,offset:const Offset(0,12))],
@@ -185,7 +185,7 @@ class _SetupWizardState extends State<SetupWizardPage>{
               Container(
                 width:double.infinity,
                 padding:const EdgeInsets.all(16),
-                decoration:BoxDecoration(color:aiDark2.withOpacity(.55),borderRadius:BorderRadius.circular(18),border:Border.all(color:aiCyan.withOpacity(.10))),
+                decoration:BoxDecoration(color:EcoPalette.mint,borderRadius:BorderRadius.circular(18),border:Border.all(color:EcoPalette.border)),
                 child:Row(crossAxisAlignment:CrossAxisAlignment.start,children:[
                   const AiFeatureIcon('settings',size:18),
                   const SizedBox(width:11),
@@ -667,7 +667,7 @@ class HeaderCard extends StatelessWidget{
   const HeaderCard({super.key,required this.user,required this.online,required this.queue});
   @override Widget build(BuildContext context)=>Container(
     padding:const EdgeInsets.all(20),
-    decoration:BoxDecoration(gradient:const LinearGradient(colors:[Color(0xFF061A2A),Color(0xFF0A2A43),Color(0xFF006A72)]),borderRadius:BorderRadius.circular(30),boxShadow:const [BoxShadow(color:Color(0x2200B4DB),blurRadius:26,offset:Offset(0,10))]),
+    decoration:BoxDecoration(gradient:const LinearGradient(colors:[Color(0xFF06463D),Color(0xFF0B765F),Color(0xFF119A85)]),borderRadius:BorderRadius.circular(30),boxShadow:const [BoxShadow(color:Color(0x2200B4DB),blurRadius:26,offset:Offset(0,10))]),
     child:Row(
       children:[
         SizedBox(width:64,height:64,child:Image.asset('assets/app_icon.png',fit:BoxFit.contain,errorBuilder:(_,__,___)=>const Icon(Icons.eco_rounded,size:42,color:aiCyan))),
@@ -676,7 +676,7 @@ class HeaderCard extends StatelessWidget{
           child:Column(
             crossAxisAlignment:CrossAxisAlignment.start,
             children:[
-              const AppText('AI OPERATIONS',style:TextStyle(color:Color(0xFF18D7FF),fontSize:11,fontWeight:FontWeight.w900,letterSpacing:1.2)),
+              const AppText('AI OPERATIONS',style:TextStyle(color:Color(0xFFAEF7E2),fontSize:11,fontWeight:FontWeight.w900,letterSpacing:1.2)),
               AppText('مرحبًا، ${user.name}',style:const TextStyle(fontSize:22,fontWeight:FontWeight.w900,color:Colors.white),overflow:TextOverflow.ellipsis),
               AppText(roleNames[user.role]??'',style:const TextStyle(color:Color(0xFF00E676),fontWeight:FontWeight.w700,fontSize:12)),
               const SizedBox(height:8),
