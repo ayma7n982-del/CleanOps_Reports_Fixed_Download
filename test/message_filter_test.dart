@@ -82,6 +82,14 @@ void main() {
       currentUserId: 'worker', period: 'today', now: now), isFalse);
   });
 
+  test('Direct messages have one understandable destination filter', () {
+    final direct = item(target:'__USER__:worker-a');
+    expect(MessageFilter.matches(direct,
+      currentUserId:'head', target:'__DIRECT__', now:now), isTrue);
+    expect(MessageFilter.matches(item(target:'group-a'),
+      currentUserId:'head', target:'__DIRECT__', now:now), isFalse);
+  });
+
   test('Only emergency cards enter the urgent folder', () {
     expect(MessageFilter.matches(item(type: 'emergency'),
       currentUserId: 'worker', folder: 'urgent', now: now), isTrue);
