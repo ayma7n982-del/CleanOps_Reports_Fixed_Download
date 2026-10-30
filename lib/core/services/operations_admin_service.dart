@@ -386,59 +386,48 @@ class OperationsAdminService {
       for (final d in snap.docs) {
         final x = d.data();
         final r = '${x['role'] ?? ''}';
+        if (x['status'] == 'deleted') continue;
         roles[r] = (roles[r] ?? 0) + 1;
-        if (x['isActive'] != false) active++;
+        if (x['isActive'] != false && x['status'] != 'deleted') active++;
       }
-      return {'totalUsers': snap.docs.length, 'activeUsers': active, 'roles': roles};
+      return {'totalUsers': roles.values.fold<int>(0, (sum, n) => sum + n), 'activeUsers': active, 'roles': roles};
     });
   }
 
-  /// Permanently delete through the Firebase callable, never through GitHub.
-  /// The server returns ok only after it verifies that both Auth and Firestore
-  /// no longer contain the account. No success is assumed from a queued request.
+  /// Soft-delete on Spark: no Cloud Functions or GitHub during the action.
+  /// Keep the Auth account for audit; Security Rules block inactive accounts.
   Future<void> deleteManagedUser(String userId, {required String actorId}) async {
     final uid = userId.trim();
-    final actor = actorId.trim();
-    if (uid.isEmpty || actor.isEmpty || uid == actor) {
-      throw const UserProvisionException('لا يمكن حذف حسابك الحالي.');
+    if (uid.isEmpty || actorId.trim().isEmpty || uid == actorId ||
+        FirebaseAuth.instance.currentUser?.uid != actorId) {
+      throw const UserProvisionException('لا توجد صلاحية لحذف هذا الحساب.');
     }
-    try {
-      final response = await FirebaseFunctions.instanceFor(
-        app: Firebase.app(),
-        region: 'us-central1',
-      ).httpsCallable('deleteManagedUser').call(<String, dynamic>{'userId': uid});
-      final result = response.data;
-      if (result is! Map || result['ok'] != true || result['userId'] != uid) {
-        throw const UserProvisionException(
-          'لم يؤكد خادم Firebase حذف الحساب من المصادقة وقاعدة البيانات.',
-        );
-      }
-    } on FirebaseFunctionsException catch (error) {
-      final code = error.code.toLowerCase();
-      final message = (error.message ?? '').toLowerCase();
-      if (code == 'not-found' || code == 'not_found' ||
-          message.contains('not_found') || message.contains('not found')) {
-        throw const UserProvisionException(
-          'خدمة حذف المستخدمين غير متاحة في Firebase. يجب نشر وظيفة '
-          'deleteManagedUser في مشروع nrc-aid (منطقة us-central1) '
-          'ثم إعادة المحاولة. لم يتم تأكيد الحذف.',
-        );
-      }
-      if (code == 'permission-denied' || code == 'unauthenticated') {
-        throw const UserProvisionException(
-          'رفض Firebase الحذف بسبب الصلاحيات أو انتهاء تسجيل الدخول. '
-          'تحقق من صلاحيات حسابك وسجل الدخول مجددًا.',
-        );
-      }
-      if (code == 'unavailable' || code == 'deadline-exceeded') {
-        throw const UserProvisionException(
-          'تعذر الوصول إلى Firebase أو انتهت مهلة الاتصال. '
-          'تحقق من الشبكة وحالة الحساب قبل إعادة المحاولة.',
-        );
-      }
-      throw UserProvisionException(
-        'رفض Firebase حذف الحساب: ${error.message ?? error.code}',
-      );
+    final actorSnap = await _users.doc(actorId).get(const GetOptions(source: Source.server));
+    final actorRole = actorSnap.data()?['role'];
+    if (actorSnap.data()?['isActive'] == false ||
+        !const ['donor_manager', 'municipality_coordinator'].contains(actorRole)) {
+      throw const UserProvisionException('حساب المدير غير نشط أو لا يملك صلاحية الحذف.');
+    }
+    final ref = _users.doc(uid);
+    final before = await ref.get(const GetOptions(source: Source.server));
+    final target = before.data();
+    if (target == null) throw const UserProvisionException('المستخدم غير موجود.');
+    if (target['status'] == 'deleted' && target['isActive'] == false) return;
+    if (actorRole == 'municipality_coordinator' &&
+        (target['municipalityCoordinatorId'] != actorId ||
+         !const ['worker', 'group_supervisor'].contains(target['role']))) {
+      throw const UserProvisionException('لا يمكن حذف مستخدم خارج نطاق البلدية.');
+    }
+    await ref.update({
+      'isActive': false,
+      'status': 'deleted',
+      'updatedBy': actorId,
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+    final verified = await ref.get(const GetOptions(source: Source.server));
+    if (verified.data()?['isActive'] != false ||
+        verified.data()?['status'] != 'deleted') {
+      throw const UserProvisionException('لم يؤكد Firebase إخفاء المستخدم وتعطيله.');
     }
   }
 
