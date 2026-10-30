@@ -53,6 +53,10 @@ class MessagingSettingsPage extends StatelessWidget {
   const MessagingSettingsPage({super.key});
   @override Widget build(BuildContext context){
     final c=context.watch<ConfigService>();
+    final user = context.watch<AuthService>().currentUser;
+    final canAccessSms = user != null && const [
+      'donor_manager', 'jsc_coordinator', 'municipality_coordinator'
+    ].contains(user.role);
     return Scaffold(appBar:AppBar(title:const AppText('إعدادات الرسائل'),actions:const [Padding(padding:EdgeInsetsDirectional.only(end:14),child:AiFeatureIcon('messages',size:16))]),body:ListView(padding:const EdgeInsets.fromLTRB(16,16,16,120),children:[
       AiSectionCard(title:'وضع الرسائل',subtitle:'محلي + Online مع مزامنة تلقائية عند توفر الشبكة',feature:'messages',child:Column(children:[
         SwitchListTile(value:c.localMessagingEnabled,onChanged:(v)=>_save(context,c,local:v),title:const AppText('الرسائل المحلية'),subtitle:const AppText('حفظ Inbox وOutbox وDrafts محليًا للعمل دون إنترنت.')),
@@ -63,7 +67,7 @@ class MessagingSettingsPage extends StatelessWidget {
         ListTile(title:const AppText('مدة الاحتفاظ المحلي'),subtitle:AppText('${c.messageRetentionDays} يومًا'),trailing:DropdownButton<int>(value:c.messageRetentionDays,items:const [7,30,90,365].map((x)=>DropdownMenuItem(value:x,child:Text('$x يوم'))).toList(),onChanged:(v)=>v==null?null:_save(context,c,retention:v))),
       ])),
       const SizedBox(height:12),
-      AiSectionCard(
+      if (canAccessSms) AiSectionCard(
         title: 'بوابة SMS الخارجية',
         subtitle: 'إعداد Twilio مستقل عن إعدادات API العامة؛ المفاتيح تبقى على Firebase.',
         feature: 'messages',
