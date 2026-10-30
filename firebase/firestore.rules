@@ -261,8 +261,13 @@ service cloud.firestore {
           && receiptUid == request.auth.uid && receiptRecipient(messageId)
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status','updatedAt'])
           && resource.data.userId == request.auth.uid
-          && resource.data.status == 'read'
-          && request.resource.data.status == 'acknowledged'
+          && request.resource.data.userId == resource.data.userId
+          && resource.data.status in ['read', 'acknowledged']
+          && request.resource.data.status in ['read', 'acknowledged']
+          // Repeated reads/acknowledgements are safe, but a confirmed
+          // acknowledgement can never be downgraded to merely read.
+          && (resource.data.status == 'read'
+              || request.resource.data.status == 'acknowledged')
           && request.resource.data.updatedAt == request.time;
         allow delete: if false;
       }
