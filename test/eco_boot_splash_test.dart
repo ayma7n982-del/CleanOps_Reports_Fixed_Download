@@ -69,9 +69,10 @@ void main() {
     final xml = file.readAsStringSync();
     expect(xml, contains('android:windowSplashScreenBackground'));
     expect(xml, contains('android:windowSplashScreenAnimatedIcon'));
-    expect(xml, contains('@drawable/cleanops_splash_clear'));
+    expect(xml, contains('@mipmap/ic_launcher'));
     expect(xml, isNot(contains('@drawable/cleanops_splash_logo')));
-    expect(File('android/app/src/main/res/drawable/cleanops_splash_clear.xml').existsSync(), isTrue);
+    final pubspec = File('pubspec.yaml').readAsStringSync();
+    expect(pubspec, contains('adaptive_icon_foreground: assets/brand/cleanops_logo_new.png'));
     expect(xml, contains('android:windowSplashScreenBackground">#E8F7EF'));
   });
 
@@ -81,6 +82,7 @@ void main() {
     expect(xml, contains('#F8FCFA'));
     expect(xml, contains('#D9F0E6'));
     expect(xml, isNot(contains('cleanops_splash_logo')));
+    expect(xml, contains('@mipmap/ic_launcher'));
     expect(File('assets/brand/cleanops_logo_new.png').existsSync(), isTrue);
     expect(File('lib/presentation/widgets/eco_boot_splash.dart').readAsStringSync(),
         contains('assets/brand/cleanops_logo_new.png'));
