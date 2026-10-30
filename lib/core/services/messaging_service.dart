@@ -11,6 +11,7 @@ import 'package:uuid/uuid.dart';
 import '../models/core_models.dart';
 import 'local_store.dart';
 import 'config_service.dart';
+import 'messaging_feedback.dart';
 
 class MessageItem {
   final String messageId;
@@ -161,7 +162,7 @@ class MessagingService extends ChangeNotifier {
         }
         unawaited(_saveCache());
       }, onError: (Object error, StackTrace stack) {
-        lastError = error.toString();
+        lastError = MessagingFeedback.describe(error);
         debugPrint('Messaging stream error: $error');
         notifyListeners();
       }));
@@ -460,7 +461,7 @@ class MessagingService extends ChangeNotifier {
       });
       return '${response.data['status'] ?? 'unknown'}';
     } on FirebaseFunctionsException catch (e) {
-      throw StateError(e.message ?? 'تعذر تسجيل جدولة الرسالة.');
+      throw StateError(MessagingFeedback.describe(e));
     }
   }
 
@@ -471,7 +472,7 @@ class MessagingService extends ChangeNotifier {
           .httpsCallable('cancelScheduledMessage')
           .call<Map<String, dynamic>>({'id': scheduleId});
     } on FirebaseFunctionsException catch (e) {
-      throw StateError(e.message ?? 'تعذر إلغاء الجدولة.');
+      throw StateError(MessagingFeedback.describe(e));
     }
   }
 
@@ -503,7 +504,7 @@ class MessagingService extends ChangeNotifier {
       });
       return '${response.data['status'] ?? 'unknown'}';
     } on FirebaseFunctionsException catch (e) {
-      throw StateError(e.message ?? 'تعذر تأكيد إرسال SMS من الخادم.');
+      throw StateError(MessagingFeedback.describe(e));
     }
   }
 
@@ -596,15 +597,15 @@ class MessagingService extends ChangeNotifier {
         message.messageId, message.senderId, permanent ? 'failed' : 'pending');
       if (_uid == message.senderId) {
         lastError = permanent
-            ? 'رفض Firebase الرسالة: ${e.message ?? e.code}'
-            : 'تعذر الاتصال حاليًا؛ الرسالة بانتظار المزامنة.';
+            ? MessagingFeedback.describe(e)
+            : 'تعذّر الاتصال حاليًا؛ الرسالة بانتظار المزامنة.';
         notifyListeners();
       }
       debugPrint('Messaging write ${permanent ? "rejected" : "pending"}: $e');
     } catch (e) {
       _setDeliveryState(message.messageId, message.senderId, 'failed');
       if (_uid == message.senderId) {
-        lastError = 'فشل إرسال الرسالة: $e';
+        lastError = MessagingFeedback.describe(e);
         notifyListeners();
       }
       debugPrint('Messaging write failed: $e');
