@@ -7,6 +7,7 @@ import '../../core/models/core_models.dart';
 import '../../core/services/auth_service.dart';
 import '../../core/services/container_service.dart';
 import '../../core/services/data_service.dart';
+import '../../core/services/operational_activity.dart';
 import '../screens/global_search.dart';
 import '../screens/live_operations_map.dart';
 import '../screens/enterprise_operations_hub.dart' show SyncCenterPage, AlertsCenterPage;
@@ -135,14 +136,8 @@ class _WorkspaceOverviewState extends State<WorkspaceOverview> {
     final critical = scoped.where((x)=>x.status=='full' ||
       x.issueStatus=='reported').length;
     final pending = service.queue.where((x)=>x.ownerUid==user.id).length;
-    final dated = confirmed.where((x)=>x['createdAt'] is String &&
-      DateTime.tryParse(x['createdAt'])!=null).toList()
-      ..sort((a,b)=>'${b['createdAt']}'.compareTo('${a['createdAt']}'));
-    final now=DateTime.now();
-    final today = dated.where((x) {
-      final d=DateTime.tryParse('${x['createdAt']}')?.toLocal();
-      return d!=null && d.year==now.year && d.month==now.month && d.day==now.day;
-    }).length;
+    final dated = OperationalActivity.ordered(confirmed);
+    final today = OperationalActivity.countOnDate(dated, DateTime.now());
     return Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
       AiSectionCard(title:'يتطلب إجراءك',feature:'emergency',
         subtitle:'بحسب السجلات المتاحة وصلاحيات حسابك',
@@ -230,7 +225,7 @@ class _WorkspaceOverviewState extends State<WorkspaceOverview> {
               for(final x in dated.take(5)) ListTile(dense:true,
                 leading:const Icon(Icons.history),
                 title:Text('${x['_entity'] ?? 'عملية'} • ${x['id'] ?? ''}'),
-                subtitle:Text('${x['createdAt']}'),
+                subtitle:Text(OperationalActivity.label(x)),
                 trailing:const Icon(Icons.info_outline),
                 onTap:()=>showDialog<void>(context:context,builder:(ctx)=>
                   AlertDialog(
@@ -238,7 +233,7 @@ class _WorkspaceOverviewState extends State<WorkspaceOverview> {
                     content:SingleChildScrollView(child:SelectableText(
                       'النوع: ${x['_entity'] ?? 'عملية'}\n'
                       'الرقم: ${x['id'] ?? ''}\n'
-                      'التاريخ: ${x['createdAt'] ?? ''}\n'
+                      'التاريخ: ${OperationalActivity.label(x)}\n'
                       'الحالة: ${x['status'] ?? 'غير محددة'}\n'
                       'منفذ الإجراء: ${x['userId'] ?? x['requestedBy'] ?? x['reportedBy'] ?? 'غير محدد'}',
                     )),
@@ -300,24 +295,23 @@ class _FieldAlertsPage extends StatelessWidget {
       }
       return groupId.isNotEmpty && (item['groupId'] == groupId ||
           item['reportedBy'] == userId);
-    }).toList()
-      ..sort((a, b) => '${b['createdAt'] ?? ''}'
-          .compareTo('${a['createdAt'] ?? ''}'));
+    }).toList();
+    final sorted = OperationalActivity.ordered(items);
     return Scaffold(
       appBar: AppBar(title: const Text('بلاغات SOS لمجموعتي')),
-      body: items.isEmpty
+      body: sorted.isEmpty
           ? const Center(child: Text('لا توجد بلاغات مفتوحة ضمن بيانات مجموعتك.'))
           : ListView.separated(
               padding: const EdgeInsets.all(12),
-              itemCount: items.length,
+              itemCount: sorted.length,
               separatorBuilder: (_, __) => const Divider(height: 1),
               itemBuilder: (context, index) {
-                final item = items[index];
+                final item = sorted[index];
                 return ListTile(
                   leading: const Icon(Icons.warning_amber_rounded, color: Colors.red),
                   title: Text('${item['street'] ?? item['locationName'] ?? 'بلاغ ميداني'}'),
                   subtitle: Text('الحالة: ${item['status'] ?? 'urgent'}'
-                      ' • ${item['createdAt'] ?? 'بدون تاريخ'}'),
+                      ' • ${OperationalActivity.label(item)}'),
                   trailing: const Icon(Icons.info_outline),
                   onTap: () => showDialog<void>(
                     context: context,
