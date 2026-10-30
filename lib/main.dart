@@ -1716,6 +1716,11 @@ class EnterpriseApp extends StatelessWidget {
           bodyColor: cleanOpsText,
           displayColor: cleanOpsText,
         ),
+        dividerTheme: const DividerThemeData(
+          color: EcoPalette.border,
+          thickness: 1,
+          space: 20,
+        ),
         appBarTheme: const AppBarTheme(
           backgroundColor: Color(0xFFF3F8F5),
           foregroundColor: Color(0xFF173B35),
@@ -1808,10 +1813,14 @@ class EnterpriseApp extends StatelessWidget {
         textButtonTheme: TextButtonThemeData(style: TextButton.styleFrom(minimumSize: const Size(0, 40), padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), textStyle: GoogleFonts.cairo(fontSize: 12, fontWeight: FontWeight.w800))),
         cardTheme: CardThemeData(
           elevation: 0,
-          margin: EdgeInsets.zero,
-          color: cleanOpsSurface,
+          margin: const EdgeInsets.symmetric(vertical: 4),
+          color: Colors.white,
           surfaceTintColor: Colors.transparent,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22), side: BorderSide(color: cleanOpsBorder)),
+          shadowColor: const Color(0x130B8269),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(22),
+            side: const BorderSide(color: EcoPalette.border),
+          ),
         ),
         navigationBarTheme: const NavigationBarThemeData(
           backgroundColor: Colors.white,
