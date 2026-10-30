@@ -1325,40 +1325,48 @@ class SettingsPage extends StatelessWidget{
               _switch(context,'صور الشوارع',config.streetPhotosEnabled,user.role=='donor_manager','streetPhotos'),
               _switch(context,'الكارة البديلة',config.alternativeCartEnabled,user.role=='donor_manager','alternativeCart'),
               if(user.role=='donor_manager')
-                LayoutBuilder(builder: (context, box) => Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 9, horizontal: 4),
-                  child: Flex(
-                    direction: box.maxWidth < 340 ? Axis.vertical : Axis.horizontal,
-                    crossAxisAlignment: box.maxWidth < 340
-                        ? CrossAxisAlignment.start : CrossAxisAlignment.center,
+                LayoutBuilder(builder: (context, box) {
+                  final label = Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Flexible(
-                        flex: 3,
-                        fit: box.maxWidth < 340 ? FlexFit.loose : FlexFit.tight,
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const AppText('تجميد المرحلة',
-                                style: TextStyle(fontWeight: FontWeight.w800)),
-                            AppText(config.stageFrozen
-                                ? 'المرحلة مجمّدة — التعديلات التشغيلية مقفلة'
-                                : 'يمكن تجميد المرحلة بعد الاعتماد',
-                                maxLines: 3,
-                                style: const TextStyle(
-                                    fontSize: 11, color: cleanOpsMuted)),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: 8, height: 8),
-                      FilledButton.tonalIcon(
-                        onPressed: config.stageFrozen
-                            ? null : () => config.freezeStage(),
-                        icon: const Icon(Icons.lock_outline, size: 17),
-                        label: const AppText('تجميد'),
-                      ),
+                      const AppText('تجميد المرحلة',
+                          style: TextStyle(fontWeight: FontWeight.w800)),
+                      AppText(config.stageFrozen
+                          ? 'المرحلة مجمّدة — التعديلات التشغيلية مقفلة'
+                          : 'يمكن تجميد المرحلة بعد الاعتماد',
+                          maxLines: 3,
+                          style: const TextStyle(
+                              fontSize: 11, color: cleanOpsMuted)),
                     ],
-                  ),
-                )),
+                  );
+                  final action = FilledButton.tonalIcon(
+                    onPressed: config.stageFrozen
+                        ? null : () => config.freezeStage(),
+                    icon: const Icon(Icons.lock_outline, size: 17),
+                    label: const AppText('تجميد'),
+                  );
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 9, horizontal: 4),
+                    child: box.maxWidth < 340
+                        ? Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              label,
+                              const SizedBox(height: 10),
+                              action,
+                            ],
+                          )
+                        : Row(
+                            children: [
+                              Expanded(child: label),
+                              const SizedBox(width: 8),
+                              action,
+                            ],
+                          ),
+                  );
+                }),
             ],
           ),
         ),
