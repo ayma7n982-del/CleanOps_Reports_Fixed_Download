@@ -5,6 +5,7 @@ import '../../core/services/config_service.dart';
 import '../../core/services/auth_service.dart';
 import '../../core/services/messaging_service.dart';
 import '../widgets/app_design.dart';
+import 'sms_provider_settings.dart';
 import '../../core/constants/app_constants.dart';
 
 class ApiSettingsPage extends StatefulWidget {
@@ -61,6 +62,20 @@ class MessagingSettingsPage extends StatelessWidget {
         SwitchListTile(value:c.saveSentMessagesLocally,onChanged:(v)=>_save(context,c,save:v),title:const AppText('حفظ الرسائل المرسلة محليًا')),
         ListTile(title:const AppText('مدة الاحتفاظ المحلي'),subtitle:AppText('${c.messageRetentionDays} يومًا'),trailing:DropdownButton<int>(value:c.messageRetentionDays,items:const [7,30,90,365].map((x)=>DropdownMenuItem(value:x,child:Text('$x يوم'))).toList(),onChanged:(v)=>v==null?null:_save(context,c,retention:v))),
       ])),
+      const SizedBox(height:12),
+      AiSectionCard(
+        title: 'بوابة SMS الخارجية',
+        subtitle: 'إعداد Twilio مستقل عن إعدادات API العامة؛ المفاتيح تبقى على Firebase.',
+        feature: 'messages',
+        child: ListTile(
+          leading: const Icon(Icons.sms_rounded, color: aiCyan),
+          title: const AppText('إعدادات SMS وإدخال API'),
+          subtitle: const AppText('فحص الجاهزية أو حفظ مفاتيح Twilio بصلاحية المدير.'),
+          trailing: const Icon(Icons.chevron_left_rounded),
+          onTap: () => Navigator.push(context,
+            MaterialPageRoute(builder: (_) => const SmsProviderSettingsPage())),
+        ),
+      ),
       const SizedBox(height:12),
       const AiSectionCard(title:'التشغيل Offline / Online',feature:'sync',child:Column(children:[ListTile(leading:Icon(Icons.offline_bolt_rounded,color:aiGreen),title:AppText('Offline'),subtitle:AppText('يمكن قراءة الرسائل المحفوظة وإنشاء رسالة جديدة حسب الصلاحيات.')),
       ListTile(leading:Icon(Icons.cloud_sync_rounded,color:aiCyan),title:AppText('Online'),subtitle:AppText('Firestore يستقبل الرسائل ويعيد مزامنة الطابور بعد عودة الاتصال.'))])),
