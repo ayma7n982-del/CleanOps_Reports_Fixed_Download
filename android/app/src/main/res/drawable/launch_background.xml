@@ -22,4 +22,10 @@
             <stroke android:width="1dp" android:color="#DBEFE4" />
         </shape>
     </item>
+    <!-- Same launcher asset regenerated from assets/brand/cleanops_logo_new.png. -->
+    <item
+        android:drawable="@mipmap/ic_launcher"
+        android:gravity="center"
+        android:width="136dp"
+        android:height="136dp" />
 </layer-list>
