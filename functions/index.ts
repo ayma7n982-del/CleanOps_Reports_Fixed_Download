@@ -1,5 +1,5 @@
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
-import { defineSecret } from 'firebase-functions/params';
+import { readSmsCredentials, smsProviderStatus, configureTwilioCredentials } from './sms_provider';
 import { onDocumentWritten } from 'firebase-functions/v2/firestore';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { initializeApp } from 'firebase-admin/app';
@@ -945,14 +945,39 @@ export const redirectCartAssignment = onCall({ region: 'us-central1' }, async (r
 
 // External messaging is entirely server-side. Never expose the provider token
 // or accept a free-form phone number from a Flutter client.
-const twilioAccountSid = defineSecret('CLEANOPS_TWILIO_ACCOUNT_SID');
-const twilioAuthToken = defineSecret('CLEANOPS_TWILIO_AUTH_TOKEN');
-const twilioSender = defineSecret('CLEANOPS_TWILIO_FROM');
+// Only the owner may configure the provider; recipient scope remains
+// enforced by the server for all outbound messages.
+export const getSmsProviderStatus = onCall({region: 'us-central1'}, async (request) => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Authentication required.');
+  const actor = await requireActor(request.auth.uid);
+  if (!isManagementRole(String(actor.role ?? ''))) {
+    throw new HttpsError('permission-denied', 'Management access required.');
+  }
+  return smsProviderStatus();
+});
 
-export const sendExternalSms = onCall({
-  region: 'us-central1',
-  secrets: [twilioAccountSid, twilioAuthToken, twilioSender],
-}, async (request) => {
+export const configureSmsProvider = onCall({region: 'us-central1'}, async (request) => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Authentication required.');
+  const actor = await requireActor(request.auth.uid);
+  if (actor.role !== 'donor_manager') {
+    throw new HttpsError('permission-denied', 'Only the level-4 administrator can configure SMS.');
+  }
+  const input = (request.data ?? {}) as Record<string, unknown>;
+  await configureTwilioCredentials({
+    accountSid: String(input.accountSid ?? '').trim(),
+    authToken: String(input.authToken ?? '').trim(),
+    from: String(input.from ?? '').trim(),
+  });
+  await db.collection('sms_provider_audit').add({
+    updatedBy: request.auth.uid,
+    updatedAt: FieldValue.serverTimestamp(),
+    action: 'credentials_rotated',
+    // Intentionally no credentials or sender phone in the audit log.
+  });
+  return { saved: true };
+});
+
+export const sendExternalSms = onCall({region: 'us-central1'}, async (request) => {
   if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in first.');
   const senderId = request.auth.uid;
   const actor = await requireActor(senderId);
@@ -989,9 +1014,10 @@ export const sendExternalSms = onCall({
   if (!/^\+[1-9][0-9]{7,14}$/.test(to)) {
     throw new HttpsError('failed-precondition', 'Recipient needs a verified international-format phone number.');
   }
-  const sid = twilioAccountSid.value();
-  const token = twilioAuthToken.value();
-  const from = twilioSender.value();
+  const credentials = await readSmsCredentials();
+  const sid = credentials.accountSid;
+  const token = credentials.authToken;
+  const from = credentials.from;
   if (!sid || !token || !/^\+[1-9][0-9]{7,14}$/.test(from)) {
     throw new HttpsError('failed-precondition', 'SMS provider has not been configured securely.');
   }
@@ -1057,6 +1083,53 @@ export const sendExternalSms = onCall({
   }
 });
 
+
+// A manual status refresh displays the provider's actual delivery result,
+// without claiming that "submitted" means "delivered".
+export const refreshExternalSmsStatus = onCall({region: 'us-central1'}, async (request) => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Authentication required.');
+  const actor = await requireActor(request.auth.uid);
+  if (!isManagementRole(String(actor.role ?? ''))) {
+    throw new HttpsError('permission-denied', 'Management access required.');
+  }
+  const id = String((request.data as Record<string, unknown> | undefined)?.messageId ?? '');
+  if (!/^[A-Za-z0-9_-]{8,180}$/.test(id)) {
+    throw new HttpsError('invalid-argument', 'Invalid message identifier.');
+  }
+  const ref = db.collection('external_messages').doc(id);
+  const snapshot = await ref.get();
+  const entry = snapshot.data();
+  if (!entry || entry.senderId !== request.auth.uid) {
+    throw new HttpsError('permission-denied', 'This SMS record is not yours.');
+  }
+  const providerId = String(entry.providerMessageSid ?? '');
+  if (!/^SM[0-9a-f]{32}$/i.test(providerId)) {
+    return {status: String(entry.status ?? 'unknown'), refreshed: false};
+  }
+  const {accountSid, authToken} = await readSmsCredentials();
+  let response;
+  try {
+    response = await fetch(
+      `https://api.twilio.com/2010-04-01/Accounts/${encodeURIComponent(accountSid)}/Messages/${providerId}.json`,
+      {headers: {Authorization: `Basic ${Buffer.from(`${accountSid}:${authToken}`).toString('base64')}`},
+        signal: AbortSignal.timeout(12000)},
+    );
+  } catch (_) {
+    throw new HttpsError('unavailable', 'SMS provider is temporarily unreachable.');
+  }
+  if (!response.ok) {
+    throw new HttpsError('unavailable', 'SMS delivery status could not be checked.');
+  }
+  const data = (await response.json()) as Record<string, unknown>;
+  const providerStatus = String(data.status ?? 'unknown').toLowerCase();
+  const normalized = providerStatus === 'delivered' ? 'delivered'
+    : providerStatus === 'undelivered' || providerStatus === 'failed' ? 'failed'
+    : providerStatus === 'sent' ? 'sent' : 'submitted';
+  await ref.update({
+    status: normalized, providerStatus, checkedAt: FieldValue.serverTimestamp(),
+  });
+  return {status: normalized, refreshed: true};
+});
 
 // Scheduling uses the trusted server, not a phone timer that stops when the
 // user closes the app. The scheduler re-checks live role and destination scope.
