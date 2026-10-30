@@ -1,0 +1,75 @@
+name: Messaging production deployment (manual and verified)
+
+on:
+  workflow_dispatch:
+    inputs:
+      deploy:
+        description: 'Deploy tested messaging rules, indexes, Storage and scoped functions to nrc-aid'
+        type: boolean
+        required: true
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: messaging-production
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Install Firebase CLI, security tests and Functions
+        run: |
+          npm install --global firebase-tools@14
+          npm --prefix firebase/tests install
+          npm --prefix functions install
+      - name: Verify TypeScript Functions
+        run: npm --prefix functions run build
+      - name: Verify Firestore messaging permissions
+        run: firebase emulators:exec --project cleanops-messaging-rules-test --only firestore "npm --prefix firebase/tests test"
+      - name: Verify Storage attachment privacy
+        run: firebase emulators:exec --project cleanops-messaging-storage-test --only firestore,storage "npm --prefix firebase/tests run test:storage"
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Verify Flutter messaging and visual compatibility
+        run: |
+          flutter pub get
+          flutter analyze --no-fatal-infos --no-fatal-warnings
+          flutter test test/message_filter_test.dart
+          flutter test test/messaging_offline_permissions_test.dart
+
+  deploy:
+    needs: validate
+    if: github.ref == 'refs/heads/main' && inputs.deploy == true
+    runs-on: ubuntu-latest
+    environment: firebase-production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Authenticate to the selected Firebase project
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+      - name: Install Firebase CLI
+        run: npm install --global firebase-tools@14
+      - name: Install Functions dependencies
+        run: npm --prefix functions install
+      - name: Publish verified messaging backend only
+        run: |
+          firebase deploy --project nrc-aid --non-interactive \
+            --only "firestore:rules,firestore:indexes,storage,functions:sendExternalSms,functions:getSmsProviderStatus,functions:configureSmsProvider,functions:refreshExternalSmsStatus,functions:scheduleInternalMessage,functions:cancelScheduledMessage,functions:dispatchScheduledMessages"
