@@ -173,11 +173,12 @@ service cloud.firestore {
         || (resource.data.keys().hasAny(['targetGroupId']) && resource.data.targetGroupId == '__JSC__' && isL3()));
     }
     function messageCreateAllowed() {
+      let actorRole = role();
       // Partition by actor role FIRST. This avoids evaluating dozens of
       // unrelated access checks and document reads on every message write.
       // Firestore enforces a hard security-rule expression evaluation budget.
       return validMessageFields() && (
-        (role() == 'group_supervisor' && (
+        (actorRole == 'group_supervisor' && (
           supervisorOwnGroupTarget()
           || (request.resource.data.targetGroupId == '__JSC__'
               && request.resource.data.type in ['info','warning','emergency']
@@ -185,7 +186,7 @@ service cloud.firestore {
           || (directTargetIsValid()
               && request.resource.data.type in ['info','warning','emergency'])
         ))
-        || (role() == 'worker' && (
+        || (actorRole == 'worker' && (
           workerCoordinatorDirectTarget()
           || (request.resource.data.targetGroupId == '__JSC__'
               && request.resource.data.type == 'emergency'
