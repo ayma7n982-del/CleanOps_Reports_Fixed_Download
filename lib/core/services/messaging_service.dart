@@ -333,6 +333,48 @@ class MessagingService extends ChangeNotifier {
     await _send(content: content, type: type, targetUserId: targetUserId.trim(), replyToMessageId: replyToMessageId);
   }
 
+  /// Route replies through a permitted channel rather than assuming that
+  /// every sender can receive direct messages from every management role.
+  bool canReplyTo(MessageItem original) {
+    final user = _user;
+    if (user == null || original.senderId == user.id || !canSend('info')) {
+      return false;
+    }
+    if (user.role == 'group_supervisor') {
+      return (user.municipalityCoordinatorId ?? '').isNotEmpty &&
+          original.senderId == user.municipalityCoordinatorId;
+    }
+    // Council escalations from field accounts are not authorized direct
+    // recipients for the JSC in the current Firestore security model.
+    if (user.role == 'jsc_coordinator' &&
+        original.targetGroupId == '__JSC__') {
+      return false;
+    }
+    return true;
+  }
+
+  Future<void> replyToMessage(MessageItem original, String content) async {
+    final user = _user;
+    if (user == null || !canReplyTo(original)) {
+      throw StateError('لا تسمح صلاحيات هذا الدور بالرد مباشرة على هذه الرسالة.');
+    }
+    if (user.role == 'municipality_coordinator' &&
+        original.targetGroupId == allMunicipalitiesGroup) {
+      // Level 2 cannot privately message an arbitrary donor account.
+      // The approved management reply route is the JSC council channel.
+      await _send(
+        content: content, type: 'info',
+        targetGroupId: '__JSC__', replyToMessageId: original.messageId);
+      return;
+    }
+    await sendToUser(
+      targetUserId: original.senderId,
+      content: content,
+      type: 'info',
+      replyToMessageId: original.messageId,
+    );
+  }
+
   /// Add up to five compressed photos only after the parent message reaches
   /// Firestore. Attachment uploads require network; they are never mislabeled
   /// as offline-synchronized message text.
