@@ -78,6 +78,8 @@ class ReportSnapshot {
   final String reportId;
   final String periodLabel;
   final DateTime generatedAt;
+  /// True when the online source reached its maximum fetch bound.
+  final bool sourceMayBeIncomplete;
 
   const ReportSnapshot({
     required this.trips,
@@ -103,6 +105,7 @@ class ReportSnapshot {
     required this.reportId,
     required this.periodLabel,
     required this.generatedAt,
+    this.sourceMayBeIncomplete = false,
   });
 
   double get ppeRate => attendance == 0 ? 0 : (ppeCompliant / attendance).clamp(0.0, 1.0).toDouble();
@@ -156,7 +159,9 @@ class ReportService {
       } catch (_) {}
     }
 
-    final cached = await data.refreshOperations();
+    // Long custom cycles must not silently use only the first 1000 records.
+    final cached = await data.refreshOperations(limit: 10000);
+    final sourceMayBeIncomplete = data.online && data.operationsCapped;
     for (final m in cached) {
       if (m['isDeleted'] == true || !_inDateRange(m, start, end) || !_inScope(m, user)) continue;
       if (!_matchesFilters(m, municipality: municipality, group: group, cycle: cycle)) continue;
@@ -260,7 +265,7 @@ class ReportService {
     if (user?.role == 'municipality_coordinator' && user!.scope.trim().isNotEmpty && user.scope != 'assigned_only' && user.scope != 'all') municipalities.add(user.scope.trim());
     final municipalityNames = municipalities.toList()..sort();
     if (municipality != null && municipality.isNotEmpty && !municipalityNames.contains(municipality)) municipalityNames.insert(0, municipality);
-    return ReportSnapshot(trips: trips, alternativeTrips: alternativeTrips, attendance: attendance, absence: absence, ppeCompliant: ppe, emergencies: emergencies, emergencyOpen: emergencyOpen, emergencySecured: emergencySecured, landfillCapacity: landfill, heavyMachineryHours: heavyMachineryHours, tripsByGroup: byGroup, tripsByDay: byDay, attendanceByGroup: attendanceByGroup, ppeByGroup: ppeByGroup, emergenciesByGroup: emergenciesByGroup, containerByStatus: containerByStatus, containersTotal: containersTotal, containersFull: containersFull, containersPartial: containersPartial, containersEmpty: containersEmpty, containerIssues: containerIssues, workers: workers.length, supervisors: supervisors.length, groups: groups.length, municipalities: municipalities.length, dumpsites: dumpsites, cycleCount: cycleCount, municipalityNames: municipalityNames, tripsByMunicipality: tripsByMunicipality, attendanceByMunicipality: attendanceByMunicipality, absenceByGroup: absenceByGroup, containersByMunicipality: containersByMunicipality, containersByGroup: containersByGroup, cycles: cycles, selectedMunicipality: municipality, selectedGroup: group, selectedCycle: cycle, reportType: reportType, reportId: reportId ?? 'CO-${now.millisecondsSinceEpoch}', periodLabel: '${DateFormat('yyyy-MM-dd').format(start)} → ${DateFormat('yyyy-MM-dd').format(end)}', generatedAt: now);
+    return ReportSnapshot(trips: trips, alternativeTrips: alternativeTrips, attendance: attendance, absence: absence, ppeCompliant: ppe, emergencies: emergencies, emergencyOpen: emergencyOpen, emergencySecured: emergencySecured, landfillCapacity: landfill, heavyMachineryHours: heavyMachineryHours, tripsByGroup: byGroup, tripsByDay: byDay, attendanceByGroup: attendanceByGroup, ppeByGroup: ppeByGroup, emergenciesByGroup: emergenciesByGroup, containerByStatus: containerByStatus, containersTotal: containersTotal, containersFull: containersFull, containersPartial: containersPartial, containersEmpty: containersEmpty, containerIssues: containerIssues, workers: workers.length, supervisors: supervisors.length, groups: groups.length, municipalities: municipalities.length, dumpsites: dumpsites, cycleCount: cycleCount, municipalityNames: municipalityNames, tripsByMunicipality: tripsByMunicipality, attendanceByMunicipality: attendanceByMunicipality, absenceByGroup: absenceByGroup, containersByMunicipality: containersByMunicipality, containersByGroup: containersByGroup, cycles: cycles, selectedMunicipality: municipality, selectedGroup: group, selectedCycle: cycle, reportType: reportType, reportId: reportId ?? 'CO-${now.millisecondsSinceEpoch}', sourceMayBeIncomplete: sourceMayBeIncomplete, periodLabel: '${DateFormat('yyyy-MM-dd').format(start)} → ${DateFormat('yyyy-MM-dd').format(end)}', generatedAt: now);
   }
 
   bool _matchesFilters(Map<String,dynamic> m, {String? municipality, String? group, String? cycle}) {
