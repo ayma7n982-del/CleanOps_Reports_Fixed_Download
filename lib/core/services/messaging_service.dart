@@ -182,15 +182,18 @@ class MessagingService extends ChangeNotifier {
       messages[index] = MessageItem(
         messageId: message.messageId,
         senderId: message.senderId,
-        targetUserId: message.targetUserId,
-        targetGroupId: message.targetGroupId,
-        replyToMessageId: message.replyToMessageId,
+        targetUserId: message.targetUserId ?? local.targetUserId,
+        targetGroupId: message.targetGroupId ?? local.targetGroupId,
+        replyToMessageId: message.replyToMessageId ?? local.replyToMessageId,
         content: message.content,
         timestamp: message.timestamp,
         type: message.type,
         isRead: local.isRead || message.isRead,
-        senderName: message.senderName,
-        senderRole: message.senderRole,
+        // Firestore intentionally omits untrusted display-name fields.
+        // Preserve the authenticated sender's local display metadata instead
+        // of replacing it with a raw UID after a successful server echo.
+        senderName: message.senderName.isNotEmpty ? message.senderName : local.senderName,
+        senderRole: message.senderRole.isNotEmpty ? message.senderRole : local.senderRole,
         deliveryStatus: message.deliveryStatus,
       );
     } else {
