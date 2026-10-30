@@ -50,6 +50,17 @@ jobs:
             echo "::error::Service account project does not match the CleanOps Firebase project nrc-aid. Deployment stopped."
             exit 1
           fi
+          # Identify the deployment principal without exposing its private key.
+          # This makes IAM errors actionable for the project administrator.
+          service_email="$(node -p "JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT).client_email")"
+          if [ -z "$service_email" ]; then
+            echo "::error::The Firebase service-account secret has no client_email."
+            exit 1
+          fi
+          echo "### Firebase deployment identity" >> "$GITHUB_STEP_SUMMARY"
+          echo "Project: nrc-aid" >> "$GITHUB_STEP_SUMMARY"
+          echo "Service account: \`$service_email\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "If deployment fails with HTTP 403 for serviceusage.googleapis.com, grant this service account the missing IAM permission serviceusage.services.get in project nrc-aid; consult Google Cloud IAM." >> "$GITHUB_STEP_SUMMARY"
           credential_file="$RUNNER_TEMP/firebase-service-account.json"
           trap 'rm -f "$credential_file"' EXIT
           printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$credential_file"
