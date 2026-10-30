@@ -247,6 +247,19 @@ test('external SMS audit is readable only by sender or recipient and never writa
 });
 
 
+test('municipality coordinator replies to management broadcast via council channel', async () => {
+  await env.withSecurityRulesDisabled(async ctx => {
+    await setDoc(doc(ctx.firestore(), 'messages', 'notice'), {
+      ...message('manager', '__ALL_MUNICIPALITIES__'),
+      messageId: 'notice',
+    });
+  });
+  await assertSucceeds(setDoc(doc(db('coordinator'), 'messages', 'reply'), {
+    ...message('coordinator', '__JSC__'),
+    messageId: 'reply', replyToMessageId: 'notice',
+  }));
+});
+
 test('reply metadata is accepted only for a readable parent message', async () => {
   await env.withSecurityRulesDisabled(async ctx => {
     await setDoc(doc(ctx.firestore(),'messages','original'), {
