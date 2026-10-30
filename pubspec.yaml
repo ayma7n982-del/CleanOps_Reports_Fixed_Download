@@ -1,6 +1,6 @@
 name: solid_waste_operations
 publish_to: none
-version: 4.9.5+16
+version: 4.9.6+17
 description: Enterprise offline-first solid waste collection operations platform.
 environment:
   sdk: '>=3.3.0 <4.0.0'
