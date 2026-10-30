@@ -67,7 +67,7 @@ class MessageFilter {
       message.type == 'warning' ? 'تحذير تنبيه' : '',
     ].join(' '));
     // Users can search words in any order rather than requiring one exact phrase.
-    return q.split(RegExp(r'\\s+')).where((part) => part.isNotEmpty)
+    return q.split(RegExp(r'\s+')).where((part) => part.isNotEmpty)
         .every(combined.contains);
   }
 }
