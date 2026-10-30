@@ -4,6 +4,8 @@ import '../../core/services/decision_pdf_export.dart';
 import '../../core/services/supply_chain_analytics.dart';
 import '../widgets/decision_charts.dart';
 import '../widgets/supply_chain_charts.dart';
+import '../widgets/app_design.dart';
+import '../../core/constants/app_constants.dart';
 
 class SupplyChainDashboard extends StatefulWidget {
   final DecisionHubService service;
@@ -21,7 +23,7 @@ class _SupplyChainDashboardState extends State<SupplyChainDashboard> {
     child: Padding(padding: const EdgeInsets.all(16),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Text(title, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800,
-          color: Color(0xFF12304A))), const SizedBox(height: 12), ...children])));
+          color: EcoPalette.ink)), const SizedBox(height: 12), ...children])));
   @override
   Widget build(BuildContext context) => Directionality(textDirection: TextDirection.rtl,
     child: AnimatedBuilder(animation: widget.service, builder: (context, _) {
@@ -29,12 +31,12 @@ class _SupplyChainDashboardState extends State<SupplyChainDashboard> {
       final selected = data.groups.any((g) => g.id == groupId) ? groupId : null;
       final d = SupplyChainAnalytics.from(data, days: days, groupId: selected);
       final quality = s.complete ? 'بيانات مكتملة من الخادم' : 'بيانات جزئية أو محلية؛ المقارنات غير مؤكدة';
-      return Scaffold(backgroundColor: const Color(0xFFF0F7F6),
+      return Scaffold(backgroundColor: cleanOpsBg,
         appBar: AppBar(title: const Text('تحليل سلسلة الإمداد')),
         body: ListView(padding: const EdgeInsets.all(16), children: [
           Container(padding: const EdgeInsets.all(22),
             decoration: BoxDecoration(borderRadius: BorderRadius.circular(24),
-              gradient: const LinearGradient(colors: [Color(0xFF12304A), Color(0xFF008B78)])),
+              gradient: const LinearGradient(colors: [Color(0xFF06463D), Color(0xFF119A85)], begin: Alignment.topRight, end: Alignment.bottomLeft)),
             child: const Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text('SUPPLY CHAIN DASHBOARD', style: TextStyle(color: Color(0xFF8AE0CA))),
               SizedBox(height: 8), Text('الجمع • النقل • الاستيعاب',
