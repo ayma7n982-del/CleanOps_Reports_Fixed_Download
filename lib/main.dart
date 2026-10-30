@@ -1574,6 +1574,39 @@ class StartupFailureScreen extends StatelessWidget {
   }
 }
 
+/// Non-blocking operational hydration: never holds the launch screen hostage
+/// on weak connections. Existing Firebase roles and sync mechanisms are used.
+Future<void> _completeOnlineStartup(
+  AuthService auth,
+  DataService data,
+  ConfigService config,
+) async {
+  try {
+    await config.loadRemote();
+  } catch (e, stack) {
+    debugPrint('Remote config initialization failed: $e');
+    debugPrintStack(stackTrace: stack);
+  }
+  final account = auth.currentUser;
+  if (account != null && StartupDiagnostics.firebaseReady) {
+    try {
+      await config.attachRole(account.role);
+    } catch (e, stack) {
+      debugPrint('Role configuration initialization failed: $e');
+      debugPrintStack(stackTrace: stack);
+    }
+  }
+  if (account != null) {
+    try {
+      await data.refreshOperations();
+      await data.sync();
+    } catch (e, stack) {
+      debugPrint('Post-auth synchronization failed: $e');
+      debugPrintStack(stackTrace: stack);
+    }
+  }
+}
+
 Future<void> main() async {
   // Keep widget build failures visible instead of silently leaving a blank/white route.
   ErrorWidget.builder = (FlutterErrorDetails details) => Material(
@@ -1598,6 +1631,16 @@ Future<void> main() async {
     ),
   );
   WidgetsFlutterBinding.ensureInitialized();
+  // Render the approved Flutter splash immediately. Firebase, cached session
+  // recovery and local storage may still need initialization; the Android OS
+  // must not leave a stale, unbranded native splash on screen meanwhile.
+  runApp(const MaterialApp(
+    debugShowCheckedModeBanner: false,
+    home: Scaffold(
+      backgroundColor: Color(0xFFF8FCFA),
+      body: EcoBootSplash(progress: .65),
+    ),
+  ));
   await StartupDiagnostics.initializeFirebase();
 
   late final Box localBox;
@@ -1664,30 +1707,10 @@ Future<void> main() async {
       debugPrintStack(stackTrace: stack);
     }
 
+    // Restore role defaults synchronously before the first operational frame.
+    // The live Firestore policy subscription remains authoritative afterward.
     if (auth.currentUser != null) {
-      try {
-        await data.refreshOperations();
-        await data.sync();
-      } catch (e, stack) {
-        debugPrint('Post-auth synchronization failed: $e');
-        debugPrintStack(stackTrace: stack);
-      }
-    }
-
-    try {
-      await config.loadRemote();
-    } catch (e, stack) {
-      debugPrint('Remote config initialization failed: $e');
-      debugPrintStack(stackTrace: stack);
-    }
-
-    try {
-      if (auth.currentUser != null && StartupDiagnostics.firebaseReady) {
-        await config.attachRole(auth.currentUser!.role);
-      }
-    } catch (e, stack) {
-      debugPrint('Role configuration initialization failed: $e');
-      debugPrintStack(stackTrace: stack);
+      config.seedFor(auth.currentUser!.role);
     }
 
     SharedPreferences prefs;
@@ -1722,6 +1745,10 @@ Future<void> main() async {
         child: const EnterpriseApp(),
       ),
     );
+    // All remote reads and uploads continue with the app already responsive.
+    // They are the same operations previously awaited above runApp, with
+    // errors contained so offline startup and automatic sync keep working.
+    unawaited(_completeOnlineStartup(auth, data, config));
   } catch (e, stack) {
     debugPrint('Unexpected startup failure: $e');
     debugPrintStack(stackTrace: stack);
