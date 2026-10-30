@@ -65,7 +65,7 @@ flutter:
 
 flutter_launcher_icons:
   android: true
-  ios: true
+  ios: false
   image_path: assets/brand/cleanops_logo_new.png
 
 # Keep record platform packages on a mutually compatible API generation.
