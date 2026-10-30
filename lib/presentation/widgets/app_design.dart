@@ -313,7 +313,7 @@ class AiHero extends StatelessWidget {
     ),
     child: Row(
       children: [
-        SizedBox(width: 64, height: 64, child: Image.asset('assets/brand/cleanops_icon_new.png', fit: BoxFit.contain, errorBuilder: (_, __, ___) => const Icon(Icons.eco_rounded, color: aiCyan, size: 48))),
+        SizedBox(width: 64, height: 64, child: Image.asset('assets/brand/cleanops_logo_new.png', fit: BoxFit.contain, errorBuilder: (_, __, ___) => const Icon(Icons.eco_rounded, color: aiCyan, size: 48))),
         const SizedBox(width: 14),
         Expanded(
           child: Column(
