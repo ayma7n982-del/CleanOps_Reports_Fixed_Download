@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:solid_waste_operations/presentation/widgets/eco_boot_splash.dart';
+import 'package:solid_waste_operations/main.dart' show StartupFailureScreen;
 
 void main() {
   test('Flutter splash renders before Firebase and remote service initialization', () {
@@ -30,6 +31,19 @@ void main() {
     expect(serverSync, lessThan(mainBegin));
     expect(source, contains('await config.attachRole(account.role)'));
     expect(source, contains('await data.sync();'));
+  });
+
+  testWidgets('offline storage startup failure remains readable without providers',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(320, 700));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      const StartupFailureScreen(message: 'تعذرت تهيئة التخزين المحلي'),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('تعذر بدء التطبيق'), findsOneWidget);
+    expect(find.text('إعادة المحاولة'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('first frame remains visibly branded at Samsung mobile width',
