@@ -1155,17 +1155,42 @@ class _MessagesCenterScreenState extends State<MessagesCenterScreen> {
                   const AppText('يحدد الخادم رقم الهاتف من حساب المستلم ويُراجع صلاحياتك. قبول المزود لا يعني وصول الرسالة إلى الهاتف.',
                     style: TextStyle(color: cleanOpsMuted, fontSize: 12)),
                   const SizedBox(height: 14),
-                  DropdownButtonFormField<String>(
-                    isExpanded: true,
-                    value: recipientId,
-                    decoration: const InputDecoration(labelText: 'المستلم'),
-                    items: recipients.map((entry) => DropdownMenuItem(
-                      value: entry.$1,
-                      child: Text(entry.$2, overflow: TextOverflow.ellipsis),
-                    )).toList(),
-                    onChanged: busy ? null : (value) =>
-                        setSheetState(() => recipientId = value),
-                  ),
+                  const AppText('المستلم المصرح به',
+                    style: TextStyle(color: cleanOpsMuted, fontSize: 11)),
+                  const SizedBox(height: 6),
+                  Builder(builder: (context) {
+                    final recipient = recipients.firstWhere(
+                      (entry) => entry.$1 == recipientId,
+                      orElse: () => recipients.first,
+                    );
+                    final parts = recipient.$2.split(' • ');
+                    return Material(
+                      color: const Color(0xFFEAF8F2),
+                      borderRadius: BorderRadius.circular(17),
+                      child: ListTile(
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+                        leading: const CircleAvatar(
+                          backgroundColor: Color(0xFFD4F2E6),
+                          child: Icon(Icons.person_outline_rounded, color: aiBlue),
+                        ),
+                        title: AppText(parts.first, maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontWeight: FontWeight.w800)),
+                        subtitle: AppText(parts.length > 1 ? parts.last : 'مستخدم',
+                            maxLines: 1, overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                                color: cleanOpsMuted, fontSize: 11)),
+                        trailing: const Icon(Icons.expand_more_rounded, color: aiBlue),
+                        onTap: busy ? null : () async {
+                          final id = await _chooseDirectRecipient(
+                              context, recipients, recipientId);
+                          if (id != null && context.mounted) {
+                            setSheetState(() => recipientId = id);
+                          }
+                        },
+                      ),
+                    );
+                  }),
                   const SizedBox(height: 12),
                   TextField(
                     controller: body,
