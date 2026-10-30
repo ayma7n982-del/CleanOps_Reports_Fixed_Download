@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../core/constants/app_constants.dart';
 import '../../core/localization.dart';
@@ -16,6 +17,7 @@ import '../../core/services/messaging_service.dart';
 import '../../core/services/message_filter.dart';
 import '../../core/services/messaging_feedback.dart';
 import 'enterprise_settings_pages.dart';
+import 'sms_provider_settings.dart';
 import '../widgets/app_design.dart';
 
 class MessagesCenterScreen extends StatefulWidget {
@@ -180,6 +182,13 @@ class _MessagesCenterScreenState extends State<MessagesCenterScreen> {
                             icon: const Icon(Icons.sms_outlined),
                             label: const AppText('SMS'),
                             onPressed: () => _openExternalSms(user, messaging),
+                          ),
+                        if (const ['donor_manager','jsc_coordinator','municipality_coordinator'].contains(user.role))
+                          OutlinedButton.icon(
+                            icon: const Icon(Icons.vpn_key_outlined),
+                            label: const AppText('إعداد SMS / API'),
+                            onPressed: () => Navigator.push(context,
+                              MaterialPageRoute(builder: (_) => const SmsProviderSettingsPage())),
                           ),
                         OutlinedButton.icon(
                           icon: const Icon(Icons.settings_outlined),
@@ -983,6 +992,47 @@ class _MessagesCenterScreenState extends State<MessagesCenterScreen> {
   }
 
   Future<void> _openExternalSms(AppUser user, MessagingService messaging) async {
+    if (Firebase.apps.isEmpty) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: AppText('يلزم اتصال Firebase للتحقق من خدمة SMS.')));
+      return;
+    }
+    try {
+      final check = await FirebaseFunctions.instanceFor(region: 'us-central1')
+          .httpsCallable('getSmsProviderStatus').call<Map<String, dynamic>>();
+      if (check.data['ready'] != true) {
+        if (!mounted) return;
+        await showDialog<void>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            title: const AppText('خدمة SMS غير مهيّأة'),
+            content: const AppText(
+              'لم يتم ربط مزوّد SMS بعد. افتح إعدادات SMS لإدخال بيانات API والتحقق من الاتصال. يمكن للمدير فقط حفظ المفاتيح.'),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(dialogContext),
+                  child: const AppText('إلغاء')),
+              FilledButton.icon(
+                icon: const Icon(Icons.settings_outlined),
+                label: const AppText('إعدادات SMS'),
+                onPressed: () {
+                  Navigator.pop(dialogContext);
+                  Navigator.push(context,
+                    MaterialPageRoute(builder: (_) => const SmsProviderSettingsPage()));
+                },
+              ),
+            ],
+          ),
+        );
+        return;
+      }
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: AppText(MessagingFeedback.describe(error))));
+      await Navigator.push(context,
+        MaterialPageRoute(builder: (_) => const SmsProviderSettingsPage()));
+      return;
+    }
     final recipients = await _loadDirectRecipients(user);
     if (!mounted) return;
     if (recipients.isEmpty) {
@@ -1008,8 +1058,16 @@ class _MessagesCenterScreenState extends State<MessagesCenterScreen> {
               child: ListView(
                 shrinkWrap: true,
                 children: [
-                  const AppText('رسالة خارجية SMS',
-                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
+                  Row(children: [
+                    const Expanded(child: AppText('رسالة خارجية SMS',
+                        style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900))),
+                    IconButton(
+                      tooltip: 'إعدادات SMS وAPI',
+                      icon: const Icon(Icons.settings_outlined),
+                      onPressed: () => Navigator.push(context,
+                        MaterialPageRoute(builder: (_) => const SmsProviderSettingsPage())),
+                    ),
+                  ]),
                   const SizedBox(height: 8),
                   const AppText('يحدد الخادم رقم الهاتف من حساب المستلم ويُراجع صلاحياتك. قبول المزود لا يعني وصول الرسالة إلى الهاتف.',
                     style: TextStyle(color: cleanOpsMuted, fontSize: 12)),
