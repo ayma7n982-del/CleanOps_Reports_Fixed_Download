@@ -69,6 +69,11 @@ test('unauthenticated users cannot read messages', async () => {
   await assertFails(getDoc(doc(env.unauthenticatedContext().firestore(),'messages','msg-1')));
 });
 
+test('supervisor can report a warning directly to their municipality coordinator', async () => {
+  await assertSucceeds(setDoc(doc(db('head-a'),'messages','msg-1'), {
+    ...message('head-a','__USER__:coordinator','warning'),
+  }));
+});
 test('supervisor warning broadcast is rejected', async () => {
   await assertFails(setDoc(doc(db('head-a'),'messages','msg-1'), message('head-a','group-a','warning')));
 });
