@@ -69,7 +69,9 @@ void main() {
     final xml = file.readAsStringSync();
     expect(xml, contains('android:windowSplashScreenBackground'));
     expect(xml, contains('android:windowSplashScreenAnimatedIcon'));
-    expect(xml, contains('@drawable/cleanops_splash_logo'));
+    expect(xml, contains('@drawable/cleanops_splash_clear'));
+    expect(xml, isNot(contains('@drawable/cleanops_splash_logo')));
+    expect(File('android/app/src/main/res/drawable/cleanops_splash_clear.xml').existsSync(), isTrue);
     expect(xml, contains('android:windowSplashScreenBackground">#E8F7EF'));
   });
 
@@ -78,6 +80,9 @@ void main() {
         .readAsStringSync();
     expect(xml, contains('#F8FCFA'));
     expect(xml, contains('#D9F0E6'));
-    expect(xml, contains('cleanops_splash_logo'));
+    expect(xml, isNot(contains('cleanops_splash_logo')));
+    expect(File('assets/brand/cleanops_logo_new.png').existsSync(), isTrue);
+    expect(File('lib/presentation/widgets/eco_boot_splash.dart').readAsStringSync(),
+        contains('assets/brand/cleanops_logo_new.png'));
   });
 }
