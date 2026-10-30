@@ -448,6 +448,25 @@ class DataService extends ChangeNotifier {
   Future<List<Map<String, dynamic>>> refreshOperations({int limit = 1000}) async {
     if (!online || Firebase.apps.isEmpty) return operations;
     try {
+      // Workers and supervisors are only authorized to query their own group's
+      // operations. A global list query fails completely under Firestore rules.
+      final account = FirebaseAuth.instance.currentUser;
+      if (account == null) return operations;
+      final cached = store.cachedUser();
+      String role = cached?.id == account.uid ? cached!.role : '';
+      String groupId = cached?.id == account.uid ? (cached!.groupId ?? '') : '';
+      if (role.isEmpty) {
+        final profile = await FirebaseFirestore.instance.collection('users')
+            .doc(account.uid).get(const GetOptions(source: Source.server));
+        role = '${profile.data()?['role'] ?? ''}';
+        groupId = '${profile.data()?['groupId'] ?? ''}';
+      }
+      if (role == 'worker' || role == 'group_supervisor') {
+        if (groupId.isEmpty) return operations;
+      } else if (!const ['municipality_coordinator', 'jsc_coordinator',
+                   'donor_manager'].contains(role)) {
+        return operations;
+      }
       // Read in bounded pages: a single limit(1000) silently omitted older
       // records and made long-cycle report totals incomplete.
       final boundedLimit = limit.clamp(1, 10000).toInt();
@@ -458,9 +477,11 @@ class DataService extends ChangeNotifier {
       do {
         final requested = (boundedLimit - loaded.length).clamp(1, pageSize).toInt();
         Query<Map<String, dynamic>> page = FirebaseFirestore.instance
-            .collection('operations')
-            .orderBy(FieldPath.documentId)
-            .limit(requested);
+            .collection('operations');
+        if (role == 'worker' || role == 'group_supervisor') {
+          page = page.where('groupId', isEqualTo: groupId);
+        }
+        page = page.orderBy(FieldPath.documentId).limit(requested);
         if (lastDocument != null) page = page.startAfterDocument(lastDocument);
         final snapshot = await page.get(const GetOptions(source: Source.server));
         for (final doc in snapshot.docs) {
