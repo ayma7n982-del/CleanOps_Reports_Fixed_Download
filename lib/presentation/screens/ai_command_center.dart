@@ -160,7 +160,7 @@ class _FocusHeader extends StatelessWidget {
         ),
         child: Row(
           children: [
-            SizedBox(width: 48, height: 48, child: Image.asset('assets/brand/cleanops_icon_new.png', fit: BoxFit.contain, errorBuilder: (_, __, ___) => const Icon(Icons.eco_rounded, color: aiCyan, size: 48))),
+            SizedBox(width: 48, height: 48, child: Image.asset('assets/brand/cleanops_logo_new.png', fit: BoxFit.contain, errorBuilder: (_, __, ___) => const Icon(Icons.eco_rounded, color: aiCyan, size: 48))),
             const SizedBox(width: 10),
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -352,7 +352,7 @@ class _Hero extends StatelessWidget {
       ),
       child: Row(
         children: [
-          SizedBox(width: width < 500 ? 58 : 72, height: width < 500 ? 58 : 72, child: Image.asset('assets/brand/cleanops_icon_new.png', fit: BoxFit.contain, errorBuilder: (_, __, ___) => const Icon(Icons.eco_rounded, color: aiCyan, size: 48))),
+          SizedBox(width: width < 500 ? 58 : 72, height: width < 500 ? 58 : 72, child: Image.asset('assets/brand/cleanops_logo_new.png', fit: BoxFit.contain, errorBuilder: (_, __, ___) => const Icon(Icons.eco_rounded, color: aiCyan, size: 48))),
           const SizedBox(width: 13),
           Expanded(
             child: Column(
