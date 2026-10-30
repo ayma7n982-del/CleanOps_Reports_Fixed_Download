@@ -25,8 +25,7 @@ class WorkspaceAction {
 
 class WorkspaceOverview extends StatefulWidget {
   final List<WorkspaceAction> actions;
-  final VoidCallback? onEmergencyTap;
-  const WorkspaceOverview({super.key, required this.actions, this.onEmergencyTap});
+  const WorkspaceOverview({super.key, required this.actions});
   @override
   State<WorkspaceOverview> createState() => _WorkspaceOverviewState();
 }
@@ -94,10 +93,10 @@ class _WorkspaceOverviewState extends State<WorkspaceOverview> {
     MaterialPageRoute(builder: (_) => page));
 
   void _openEmergency(AppUser user) {
-    // The alert center reads the same permission-scoped records; it is not
-    // a fake confirmation or a privileged action.
-    if (widget.onEmergencyTap != null) {
-      widget.onEmergencyTap!();
+    // Viewing an existing alert must never open the create-SOS form.
+    // Field personnel only see incidents from their assigned group.
+    if (user.role == 'group_supervisor' || user.role == 'worker') {
+      _open(_FieldAlertsPage(userId: user.id, groupId: user.groupId ?? ''));
     } else {
       _open(const AlertsCenterPage());
     }
@@ -279,5 +278,68 @@ class _ScopedContainersMap extends StatelessWidget {
               TextSourceAttribution('Esri, Maxar, Earthstar Geographics and GIS User Community'),
             ]),
           ]));
+  }
+}
+
+
+/// Read-only incident inbox; the red SOS shortcut remains the separate create
+/// action. Uses only group-scoped operations already loaded by DataService.
+class _FieldAlertsPage extends StatelessWidget {
+  final String userId;
+  final String groupId;
+  const _FieldAlertsPage({required this.userId, required this.groupId});
+
+  @override
+  Widget build(BuildContext context) {
+    final items = context.watch<DataService>().operations.where((item) {
+      if (item['_entity'] != 'emergency' || item['isDeleted'] == true) {
+        return false;
+      }
+      if (const ['closed', 'resolved', 'secured'].contains(item['status'])) {
+        return false;
+      }
+      return groupId.isNotEmpty && (item['groupId'] == groupId ||
+          item['reportedBy'] == userId);
+    }).toList()
+      ..sort((a, b) => '${b['createdAt'] ?? ''}'
+          .compareTo('${a['createdAt'] ?? ''}'));
+    return Scaffold(
+      appBar: AppBar(title: const Text('بلاغات SOS لمجموعتي')),
+      body: items.isEmpty
+          ? const Center(child: Text('لا توجد بلاغات مفتوحة ضمن بيانات مجموعتك.'))
+          : ListView.separated(
+              padding: const EdgeInsets.all(12),
+              itemCount: items.length,
+              separatorBuilder: (_, __) => const Divider(height: 1),
+              itemBuilder: (context, index) {
+                final item = items[index];
+                return ListTile(
+                  leading: const Icon(Icons.warning_amber_rounded, color: Colors.red),
+                  title: Text('${item['street'] ?? item['locationName'] ?? 'بلاغ ميداني'}'),
+                  subtitle: Text('الحالة: ${item['status'] ?? 'urgent'}'
+                      ' • ${item['createdAt'] ?? 'بدون تاريخ'}'),
+                  trailing: const Icon(Icons.info_outline),
+                  onTap: () => showDialog<void>(
+                    context: context,
+                    builder: (dialogContext) => AlertDialog(
+                      title: const Text('تفاصيل بلاغ الطوارئ'),
+                      content: SelectableText(
+                        'الموقع: ${item['street'] ?? 'غير محدد'}\n'
+                        'الحالة: ${item['status'] ?? 'urgent'}\n'
+                        'إحداثيات: ${item['latitude'] ?? '—'}, '
+                        '${item['longitude'] ?? '—'}\n'
+                        'المعرف: ${item['id'] ?? ''}'),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(dialogContext),
+                          child: const Text('إغلاق'),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+    );
   }
 }
