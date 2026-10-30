@@ -31,6 +31,7 @@ beforeEach(async () => {
     ]) {
       await setDoc(doc(db, 'users', id), {
         role, groupId, isActive: active, municipalityCoordinatorId: 'coordinator',
+        name: id + '-name',
       });
     }
   });
@@ -46,6 +47,20 @@ test('supervisor sends to own group', async () => {
 });
 test('supervisor cannot send to another group', async () => {
   await assertFails(setDoc(doc(db('head-a'), 'messages', 'msg-1'), message('head-a','group-b')));
+});
+test('message sender name is verified against the authenticated user profile', async () => {
+  await assertSucceeds(setDoc(doc(db('head-a'),'messages','msg-1'), {
+    ...message('head-a','group-a'), senderName:'head-a-name',
+    senderRole:'group_supervisor',
+  }));
+  await assertFails(setDoc(doc(db('head-b'),'messages','forged-name'), {
+    ...message('head-b','group-b'), messageId:'forged-name',
+    senderName:'someone-else', senderRole:'group_supervisor',
+  }));
+  await assertFails(setDoc(doc(db('head-b'),'messages','forged-role'), {
+    ...message('head-b','group-b'), messageId:'forged-role',
+    senderName:'head-b-name', senderRole:'donor_manager',
+  }));
 });
 test('supervisor cannot spoof sender', async () => {
   await assertFails(setDoc(doc(db('head-a'), 'messages', 'msg-1'), message('head-b','group-a')));
