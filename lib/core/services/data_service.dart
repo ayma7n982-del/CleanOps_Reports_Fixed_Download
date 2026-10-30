@@ -26,6 +26,8 @@ class DataService extends ChangeNotifier {
   List<SyncItem> queue = [];
   List<Map<String, dynamic>> operations = [];
   bool online = false, syncing = false;
+  /// Whether the last online operations refresh reached its record limit.
+  bool operationsCapped = false;
   String lastSync = 'لم تتم المزامنة بعد';
   String lastDataRefresh = '';
   String? lastSyncError;
@@ -446,16 +448,31 @@ class DataService extends ChangeNotifier {
   Future<List<Map<String, dynamic>>> refreshOperations({int limit = 1000}) async {
     if (!online || Firebase.apps.isEmpty) return operations;
     try {
-      final snap = await FirebaseFirestore.instance
-          .collection('operations')
-          .limit(limit)
-          .get();
+      // Read in bounded pages: a single limit(1000) silently omitted older
+      // records and made long-cycle report totals incomplete.
+      final boundedLimit = limit.clamp(1, 10000).toInt();
+      const pageSize = 400;
       final loaded = <Map<String, dynamic>>[];
-      for (final doc in snap.docs) {
-        loaded.add({'id': doc.id, ...doc.data()});
-      }
+      QueryDocumentSnapshot<Map<String, dynamic>>? lastDocument;
+      bool hasMore = false;
+      do {
+        final requested = (boundedLimit - loaded.length).clamp(1, pageSize).toInt();
+        Query<Map<String, dynamic>> page = FirebaseFirestore.instance
+            .collection('operations')
+            .orderBy(FieldPath.documentId)
+            .limit(requested);
+        if (lastDocument != null) page = page.startAfterDocument(lastDocument);
+        final snapshot = await page.get(const GetOptions(source: Source.server));
+        for (final doc in snapshot.docs) {
+          loaded.add({'id': doc.id, ...doc.data()});
+        }
+        if (snapshot.docs.isNotEmpty) lastDocument = snapshot.docs.last;
+        hasMore = snapshot.docs.length == requested;
+        if (!hasMore) break;
+      } while (loaded.length < boundedLimit);
+      operationsCapped = hasMore && loaded.length >= boundedLimit;
       operations = _mergeOperations(loaded, operations);
-      await store.saveCachedOperations(operations.take(limit).toList());
+      await store.saveCachedOperations(operations.take(boundedLimit).toList());
       lastDataRefresh = DateTime.now().toIso8601String();
       await store.saveLastDataRefresh(lastDataRefresh);
       notifyListeners();
