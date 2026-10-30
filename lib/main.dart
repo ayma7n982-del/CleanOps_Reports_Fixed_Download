@@ -30,6 +30,7 @@ import 'presentation/screens/container_management.dart';
 import 'presentation/screens/equipment_search.dart';
 import 'presentation/screens/global_search.dart';
 import 'presentation/widgets/app_design.dart';
+import 'presentation/widgets/eco_boot_splash.dart';
 import 'presentation/widgets/creative_shortcuts.dart';
 import 'presentation/widgets/smart_excel_import.dart';
 import 'firebase_options.dart';
@@ -123,115 +124,13 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
   void dispose(){controller.dispose();super.dispose();}
 
   @override
-  Widget build(BuildContext context)=>Scaffold(
-    backgroundColor: const Color(0xFF020B15),
+  Widget build(BuildContext context) => Scaffold(
+    backgroundColor: const Color(0xFFF8FCFA),
     body: AnimatedBuilder(
       animation: controller,
-      builder: (_, __) {
-        final t = Curves.easeOutCubic.transform(controller.value);
-        final pulse = .5 + .5 * math.sin(controller.value * math.pi * 2.2);
-        return Stack(
-          fit: StackFit.expand,
-          children: [
-            CustomPaint(painter: _CleanOpsSplashPainter(progress: t, pulse: pulse)),
-            Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Transform.scale(
-                    scale: .72 + .28 * t + .015 * pulse,
-                    child: Opacity(
-                      opacity: Curves.easeOut.transform(controller.value.clamp(0.0, 1.0)),
-                      child: Container(
-                        width: 250,
-                        height: 250,
-                        padding: const EdgeInsets.all(18),
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          gradient: RadialGradient(colors: [aiCyan.withOpacity(.16), aiGreen.withOpacity(.06), Colors.transparent]),
-                          boxShadow: [
-                            BoxShadow(color: aiCyan.withOpacity(.16 + .12 * pulse), blurRadius: 46 + 18 * pulse, spreadRadius: 8),
-                            BoxShadow(color: aiGreen.withOpacity(.10), blurRadius: 80, spreadRadius: 10),
-                          ],
-                        ),
-                        child: Image.asset(
-                          'assets/app_icon.png',
-                          fit: BoxFit.contain,
-                          filterQuality: FilterQuality.high,
-                          errorBuilder: (_, __, ___) => const Icon(Icons.eco_rounded, size: 130, color: aiCyan),
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                  Opacity(
-                    opacity: ((controller.value - .25) / .55).clamp(0.0, 1.0),
-                    child: const AppText('CleanOps', style: TextStyle(color: Colors.white, fontSize: 30, fontWeight: FontWeight.w900, letterSpacing: .4)),
-                  ),
-                  const SizedBox(height: 5),
-                  Opacity(
-                    opacity: ((controller.value - .40) / .45).clamp(0.0, 1.0),
-                    child: const AppText('Solid Waste Operations', style: TextStyle(color: aiCyan, fontSize: 12, fontWeight: FontWeight.w700, letterSpacing: 1.2)),
-                  ),
-                  const SizedBox(height: 18),
-                  SizedBox(
-                    width: 150,
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(20),
-                      child: LinearProgressIndicator(
-                        minHeight: 3,
-                        value: controller.value,
-                        backgroundColor: Colors.white.withOpacity(.06),
-                        color: aiGreen,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  Opacity(opacity: ((controller.value - .55) / .35).clamp(0.0, 1.0), child: const AppText('معًا نحو بيئة أنظف', style: TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.w700))),
-                ],
-              ),
-            ),
-          ],
-        );
-      },
+      builder: (context, _) => EcoBootSplash(progress: controller.value),
     ),
   );
-}
-
-class _CleanOpsSplashPainter extends CustomPainter {
-  final double progress;
-  final double pulse;
-  _CleanOpsSplashPainter({required this.progress, required this.pulse});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final center = Offset(size.width / 2, size.height / 2 - 12);
-    final maxR = math.max(size.width, size.height) * .68;
-    final bg = Paint()..shader = RadialGradient(colors: [const Color(0xFF06314A), const Color(0xFF031525), const Color(0xFF020B15)], stops: const [.0, .48, 1.0]).createShader(Offset.zero & size);
-    canvas.drawRect(Offset.zero & size, bg);
-
-    for (var i = 0; i < 4; i++) {
-      final phase = ((progress * 1.15) + i * .22) % 1.0;
-      final radius = maxR * (.10 + phase * .90);
-      final alpha = (1 - phase) * .22;
-      final ring = Paint()..style = PaintingStyle.stroke..strokeWidth = 1.3 + (1 - phase) * 1.5..color = (i.isEven ? aiCyan : aiGreen).withOpacity(alpha);
-      canvas.drawCircle(center, radius, ring);
-    }
-
-    final glow = Paint()..shader = RadialGradient(colors: [aiCyan.withOpacity(.16 + .08 * pulse), aiGreen.withOpacity(.04), Colors.transparent]).createShader(Rect.fromCircle(center: center, radius: maxR * .46));
-    canvas.drawCircle(center, maxR * .46, glow);
-
-    for (var i = 0; i < 26; i++) {
-      final a = (i * math.pi * 2 / 26) + progress * math.pi * 1.4;
-      final r = maxR * (.20 + (i % 5) * .055);
-      final p = center + Offset(math.cos(a) * r, math.sin(a) * r);
-      final dot = Paint()..color = (i.isEven ? aiCyan : aiGreen).withOpacity(.18 + .55 * pulse);
-      canvas.drawCircle(p, 1.2 + (i % 3) * .55, dot);
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _CleanOpsSplashPainter oldDelegate) => oldDelegate.progress != progress || oldDelegate.pulse != pulse;
 }
 
 class SetupWizardPage extends StatefulWidget {
