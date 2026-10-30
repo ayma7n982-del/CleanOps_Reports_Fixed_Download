@@ -474,7 +474,7 @@ class _AnimatedLogo extends StatelessWidget {
             ],
           ),
           child: Image.asset(
-            'assets/brand/cleanops_icon_new.png',
+            'assets/brand/cleanops_logo_new.png',
             fit: BoxFit.contain,
             filterQuality: FilterQuality.high,
             errorBuilder: (_, __, ___) => const Icon(
