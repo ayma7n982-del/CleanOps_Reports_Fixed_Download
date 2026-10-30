@@ -13,6 +13,7 @@ import '../../core/models/core_models.dart';
 import '../../core/services/auth_service.dart';
 import '../../core/services/data_service.dart';
 import '../../core/services/messaging_service.dart';
+import '../../core/services/message_filter.dart';
 import '../widgets/app_design.dart';
 
 class MessagesCenterScreen extends StatefulWidget {
@@ -32,6 +33,9 @@ class _MessagesCenterScreenState extends State<MessagesCenterScreen> {
   String? selectedRecipient;
   DateTime? scheduledAt;
   String messageFilter = 'all';
+  String messageTypeFilter = 'all';
+  String messageTargetFilter = 'all';
+  String messagePeriodFilter = 'all';
   String searchText = '';
   final searchController = TextEditingController();
 
@@ -47,16 +51,24 @@ class _MessagesCenterScreenState extends State<MessagesCenterScreen> {
     final messaging = context.watch<MessagingService>();
     final user = context.watch<AuthService>().currentUser;
     if (user == null) return const SizedBox.shrink();
-    final visibleMessages = messaging.messages.where((message) {
-      if (messageFilter == 'inbox' && message.senderId == user.id) return false;
-      if (messageFilter == 'sent' && message.senderId != user.id) return false;
-      if (messageFilter == 'unread' && (message.isRead || message.senderId == user.id)) return false;
-      final term = searchText.trim().toLowerCase();
-      return term.isEmpty || message.content.toLowerCase().contains(term) ||
-          message.senderName.toLowerCase().contains(term) ||
-          message.senderId.toLowerCase().contains(term) ||
-          (message.targetGroupId ?? '').toLowerCase().contains(term);
-    }).toList();
+    final allMessages = messaging.messages;
+    final availableTargets = allMessages
+        .map((message) => message.targetGroupId ?? '')
+        .where((target) => target.isNotEmpty)
+        .toSet().toList()..sort();
+    final visibleMessages = allMessages.where((message) => MessageFilter.matches(
+      message,
+      currentUserId: user.id,
+      folder: messageFilter,
+      search: searchText,
+      type: messageTypeFilter,
+      target: messageTargetFilter,
+      period: messagePeriodFilter,
+    )).toList();
+    final filteredCount = visibleMessages.length;
+    final hasActiveFilters = messageFilter != 'all' || messageTypeFilter != 'all' ||
+        messageTargetFilter != 'all' || messagePeriodFilter != 'all' ||
+        searchText.trim().isNotEmpty;
     return Directionality(
       textDirection: context.watch<LocaleController>().isArabic ? ui.TextDirection.rtl : ui.TextDirection.ltr,
       child: Scaffold(
@@ -86,10 +98,21 @@ class _MessagesCenterScreenState extends State<MessagesCenterScreen> {
               ],
             ),
             if (messaging.syncing) const Padding(padding: EdgeInsets.all(14), child: SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))),
-            Badge(
-              isLabelVisible: messaging.unreadCount > 0,
-              label: Text('${messaging.unreadCount}'),
-              child: const Padding(padding: EdgeInsets.symmetric(horizontal: 12), child: Icon(Icons.mark_email_unread_outlined)),
+            IconButton(
+              tooltip: 'عرض الرسائل غير المقروءة',
+              onPressed: () => setState(() {
+                messageFilter = 'unread';
+                messageTypeFilter = 'all';
+                messageTargetFilter = 'all';
+                messagePeriodFilter = 'all';
+                searchText = '';
+                searchController.clear();
+              }),
+              icon: Badge(
+                isLabelVisible: messaging.unreadCount > 0,
+                label: Text('${messaging.unreadCount}'),
+                child: const Icon(Icons.mark_email_unread_outlined),
+              ),
             ),
           ],
         ),
@@ -108,40 +131,144 @@ class _MessagesCenterScreenState extends State<MessagesCenterScreen> {
                       trailing: IconButton(onPressed: messaging.retryPendingWrites, icon: const Icon(Icons.sync_rounded, color: Colors.white)),
                     ),
                     const SizedBox(height: 14),
-                    TextField(
-                      controller: searchController,
-                      onChanged: (value) => setState(() => searchText = value),
-                      decoration: InputDecoration(
-                        prefixIcon: const Icon(Icons.search_rounded),
-                        hintText: 'ابحث في الرسائل أو المرسل أو المجموعة',
-                        suffixIcon: searchText.isEmpty ? null : IconButton(
-                          icon: const Icon(Icons.close_rounded),
-                          onPressed: () { searchController.clear(); setState(() => searchText = ''); },
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: Row(children: [
-                        for (final filter in const [
-                          ('all', 'الكل'), ('inbox', 'الوارد'),
-                          ('sent', 'المرسل'), ('unread', 'غير المقروء'),
-                        ]) Padding(
-                          padding: const EdgeInsetsDirectional.only(end: 8),
-                          child: ChoiceChip(
-                            label: Text(filter.$2),
-                            selected: messageFilter == filter.$1,
-                            onSelected: (_) => setState(() => messageFilter = filter.$1),
+                    Card(
+                      color: aiDark2.withOpacity(.55),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+                      child: Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          Row(children: [
+                            const Icon(Icons.tune_rounded, color: aiCyan, size: 20),
+                            const SizedBox(width: 8),
+                            const Expanded(child: AppText('تصفية الرسائل', style: TextStyle(fontWeight: FontWeight.w900))),
+                            AppText('$filteredCount من ${allMessages.length}',
+                                style: const TextStyle(color: cleanOpsMuted, fontSize: 12)),
+                          ]),
+                          const SizedBox(height: 10),
+                          TextField(
+                            controller: searchController,
+                            onChanged: (value) => setState(() => searchText = value),
+                            decoration: InputDecoration(
+                              prefixIcon: const Icon(Icons.search_rounded),
+                              hintText: 'ابحث بالكلمات أو المرسل أو المجموعة',
+                              suffixIcon: searchText.isEmpty ? null : IconButton(
+                                tooltip: 'مسح البحث',
+                                icon: const Icon(Icons.close_rounded),
+                                onPressed: () {
+                                  searchController.clear();
+                                  setState(() => searchText = '');
+                                },
+                              ),
+                            ),
                           ),
-                        ),
-                      ]),
+                          const SizedBox(height: 10),
+                          SingleChildScrollView(
+                            scrollDirection: Axis.horizontal,
+                            child: Row(children: [
+                              for (final filter in const [
+                                ('all', 'الكل'),
+                                ('inbox', 'الوارد'),
+                                ('sent', 'المرسل'),
+                                ('unread', 'غير المقروء'),
+                                ('urgent', 'الطوارئ'),
+                                ('pending', 'قيد المزامنة'),
+                                ('failed', 'فشل الإرسال'),
+                              ])
+                                Padding(
+                                  padding: const EdgeInsetsDirectional.only(end: 6),
+                                  child: ChoiceChip(
+                                    label: Text(filter.$2),
+                                    selected: messageFilter == filter.$1,
+                                    onSelected: (_) => setState(() => messageFilter = filter.$1),
+                                  ),
+                                ),
+                            ]),
+                          ),
+                          const SizedBox(height: 10),
+                          LayoutBuilder(builder: (context, constraints) => Wrap(
+                            spacing: 10, runSpacing: 10, children: [
+                              SizedBox(
+                                width: constraints.maxWidth > 440
+                                    ? (constraints.maxWidth - 20) / 3 : constraints.maxWidth,
+                                child: DropdownButtonFormField<String>(
+                                  value: messageTypeFilter,
+                                  isExpanded: true,
+                                  decoration: const InputDecoration(labelText: 'نوع الرسالة', isDense: true),
+                                  items: const [
+                                    DropdownMenuItem(value: 'all', child: Text('كل الأنواع')),
+                                    DropdownMenuItem(value: 'info', child: Text('معلومة')),
+                                    DropdownMenuItem(value: 'warning', child: Text('تحذير')),
+                                    DropdownMenuItem(value: 'emergency', child: Text('طوارئ')),
+                                  ],
+                                  onChanged: (value) => setState(() => messageTypeFilter = value ?? 'all'),
+                                ),
+                              ),
+                              SizedBox(
+                                width: constraints.maxWidth > 440
+                                    ? (constraints.maxWidth - 20) / 3 : constraints.maxWidth,
+                                child: DropdownButtonFormField<String>(
+                                  value: availableTargets.contains(messageTargetFilter)
+                                      ? messageTargetFilter : 'all',
+                                  isExpanded: true,
+                                  decoration: const InputDecoration(labelText: 'المجموعة / الوجهة', isDense: true),
+                                  items: [
+                                    const DropdownMenuItem(value: 'all', child: Text('جميع الوجهات')),
+                                    for (final target in availableTargets)
+                                      DropdownMenuItem(
+                                        value: target,
+                                        child: Text(_targetDisplayName(target),
+                                            overflow: TextOverflow.ellipsis),
+                                      ),
+                                  ],
+                                  onChanged: (value) => setState(() => messageTargetFilter = value ?? 'all'),
+                                ),
+                              ),
+                              SizedBox(
+                                width: constraints.maxWidth > 440
+                                    ? (constraints.maxWidth - 20) / 3 : constraints.maxWidth,
+                                child: DropdownButtonFormField<String>(
+                                  value: messagePeriodFilter,
+                                  isExpanded: true,
+                                  decoration: const InputDecoration(labelText: 'الفترة', isDense: true),
+                                  items: const [
+                                    DropdownMenuItem(value: 'all', child: Text('كل التواريخ')),
+                                    DropdownMenuItem(value: 'week', child: Text('آخر 7 أيام')),
+                                    DropdownMenuItem(value: 'month', child: Text('آخر 30 يومًا')),
+                                  ],
+                                  onChanged: (value) => setState(() => messagePeriodFilter = value ?? 'all'),
+                                ),
+                              ),
+                            ],
+                          )),
+                          if (hasActiveFilters)
+                            Align(
+                              alignment: AlignmentDirectional.centerEnd,
+                              child: TextButton.icon(
+                                onPressed: _clearMessageFilters,
+                                icon: const Icon(Icons.filter_alt_off_rounded, size: 18),
+                                label: const AppText('إعادة ضبط الفلاتر'),
+                              ),
+                            ),
+                        ]),
+                      ),
                     ),
                     const SizedBox(height: 14),
                     if (visibleMessages.isEmpty)
-                      const Padding(
-                        padding: EdgeInsets.symmetric(vertical: 32),
-                        child: Center(child: AppText('لا توجد رسائل مطابقة للعرض الحالي.')),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 30),
+                        child: Column(children: [
+                          const Icon(Icons.mark_email_read_outlined, color: cleanOpsMuted, size: 44),
+                          const SizedBox(height: 8),
+                          AppText(allMessages.isEmpty
+                              ? 'لا توجد رسائل بعد. يمكنك إنشاء رسالة جديدة.'
+                              : 'لا توجد رسائل مطابقة لهذه الفلاتر.',
+                              textAlign: TextAlign.center),
+                          if (hasActiveFilters)
+                            TextButton(
+                              onPressed: _clearMessageFilters,
+                              child: const AppText('عرض جميع الرسائل'),
+                            ),
+                        ]),
                       ),
                     ...visibleMessages.map((message) => _messageCard(message, user.id, messaging)),
                   ],
@@ -156,22 +283,23 @@ class _MessagesCenterScreenState extends State<MessagesCenterScreen> {
     );
   }
 
-  Widget _emptyState(AppUser user, MessagingService messaging) => ListView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(18, 18, 18, 120),
-        children: [
-          _statusBanner(messaging),
-          const SizedBox(height: 28),
-          const Icon(Icons.mark_email_unread_outlined, size: 78, color: aiCyan),
-          const SizedBox(height: 16),
-          const AppText('لا توجد رسائل بعد', textAlign: TextAlign.center, style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900)),
-          const SizedBox(height: 8),
-          const AppText('ستظهر الرسائل الموجهة إليك أو إلى مجموعتك هنا تلقائيًا.', textAlign: TextAlign.center, style: TextStyle(color: cleanOpsMuted)),
-          const SizedBox(height: 18),
-          if (messaging.canSend(type))
-            FilledButton.icon(onPressed: sending ? null : () => _openComposer(user, messaging), icon: const Icon(Icons.send_rounded), label: const AppText('إرسال رسالة')),
-        ],
-      );
+  String _targetDisplayName(String target) {
+    if (target == MessagingService.allMunicipalitiesGroup) return 'كل البلديات';
+    if (target == '__JSC__') return 'منسق المجلس';
+    if (target.startsWith('__USER__:')) return 'رسالة مباشرة';
+    return 'مجموعة $target';
+  }
+
+  void _clearMessageFilters() {
+    searchController.clear();
+    setState(() {
+      messageFilter = 'all';
+      messageTypeFilter = 'all';
+      messageTargetFilter = 'all';
+      messagePeriodFilter = 'all';
+      searchText = '';
+    });
+  }
 
   Widget _statusBanner(MessagingService service) {
     final error = service.lastError;
