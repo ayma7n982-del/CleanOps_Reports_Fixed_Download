@@ -593,9 +593,7 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
               DecisionDirectiveBanner(onCoverageChanged: _loadWorkers),
               const OperationsOverviewStrip(),
               const SizedBox(height: 12),
-              WorkspaceOverview(onEmergencyTap: user.can('emergency','create')
-                ? () => _openAction(context, 'SOS / طوارئ', _emergency(config))
-                : null, actions: [
+              WorkspaceOverview(actions: [
                 if (user.can('attendance','create'))
                   WorkspaceAction('attendance','حضور مجموعتي',Icons.fact_check,
                     () => _openAction(context,'حضور مجموعتي',_attendance(config))),
