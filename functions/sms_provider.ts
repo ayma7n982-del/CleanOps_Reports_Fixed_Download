@@ -76,20 +76,28 @@ export async function smsProviderStatus(): Promise<{ready: boolean; sender: stri
 async function writeSecret(secretId: string, value: string): Promise<void> {
   const parent = await secretParent();
   const secretPath = `${parent}/secrets/${secretId}`;
-  try {
-    await secretClient.getSecret({name: secretPath});
-  } catch (error) {
-    const code = (error as {code?: number})?.code;
-    if (code !== 5) throw error;
-    await secretClient.createSecret({
-      parent, secretId,
-      secret: {replication: {automatic: {}}},
-    });
-  }
-  await secretClient.addSecretVersion({
+  const appendVersion = () => secretClient.addSecretVersion({
     parent: secretPath,
     payload: {data: Buffer.from(value, 'utf8')},
   });
+  try {
+    // Existing secrets require only Secret Version Adder, not project-wide
+    // Secret Manager Admin permission.
+    await appendVersion();
+  } catch (error) {
+    if ((error as {code?: number})?.code !== 5) throw error;
+    // Initial setup: an administrator may create these three secrets once.
+    // Afterwards the function can run with narrowly scoped access.
+    try {
+      await secretClient.createSecret({
+        parent, secretId,
+        secret: {replication: {automatic: {}}},
+      });
+    } catch (createError) {
+      if ((createError as {code?: number})?.code !== 6) throw createError;
+    }
+    await appendVersion();
+  }
 }
 
 /** Only an authenticated Level-4 admin may invoke this on the server. */
