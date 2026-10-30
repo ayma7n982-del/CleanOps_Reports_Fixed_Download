@@ -1,12 +1,23 @@
 name: Eco visual release validation
 
-# Run once when this workflow is introduced, or manually for a chosen SHA.
-# Do not cancel a verified visual build when unrelated main commits land.
+# Verify every change to the shared visual language, screen layouts,
+# native branding and regression tests. Do not cancel an unrelated
+# visual build when messaging or Firebase changes land on main.
 on:
   push:
     branches: [main]
     paths:
       - '.github/workflows/eco-visual-validation.yml'
+      - 'lib/main.dart'
+      - 'lib/presentation/screens/**'
+      - 'lib/presentation/widgets/**'
+      - 'lib/core/constants/app_constants.dart'
+      - 'test/*visual*'
+      - 'test/*shortcut*'
+      - 'android/app/src/main/res/**'
+      - 'assets/**'
+      - 'pubspec.yaml'
+      - 'pubspec.lock'
   workflow_dispatch:
 
 permissions:
