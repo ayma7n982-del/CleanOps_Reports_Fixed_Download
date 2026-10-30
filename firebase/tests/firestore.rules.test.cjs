@@ -30,7 +30,7 @@ beforeEach(async () => {
       ['manager', 'donor_manager', null, true],
     ]) {
       await setDoc(doc(db, 'users', id), {
-        role, groupId, isActive: active, municipalityCoordinatorId: 'coordinator',
+        role, groupId, isActive: active, municipalityCoordinatorId: 'coordinator', username:id,
       });
     }
   });
@@ -39,6 +39,116 @@ const db = (uid) => env.authenticatedContext(uid).firestore();
 const message = (senderId, targetGroupId, type='info') => ({
   messageId: 'msg-1', senderId, targetGroupId, type,
   content: 'Operational message', timestamp: Timestamp.now(), isRead: false,
+});
+
+async function seedMunicipalityScopes() {
+  await env.withSecurityRulesDisabled(async ctx => {
+    const admin = ctx.firestore();
+    await setDoc(doc(admin, 'users', 'coordinator-b'), {
+      role:'municipality_coordinator', isActive:true,
+    });
+    for (const [group, owner] of [['scope-a', 'coordinator'], ['scope-b', 'coordinator-b']]) {
+      await setDoc(doc(admin, 'operations', group), {
+        _entity:'group', name:group, municipalityCoordinatorId:owner,
+        cycleId:'scope-cycle', isActive:true, isDeleted:false,
+      });
+    }
+    await setDoc(doc(admin, 'work_cycles', 'scope-cycle'), {
+      status:'active', startDate:Timestamp.fromMillis(0), endDate:Timestamp.fromMillis(4102444800000),
+    });
+    await setDoc(doc(admin, 'users', 'outside-worker'), {
+      role:'worker', groupId:'scope-b', municipalityCoordinatorId:'coordinator-b', isActive:true,
+    });
+  });
+}
+
+test('municipality groups: legitimate edit/delete allowed; foreign ownership, spoofing and retagging denied', async () => {
+  await seedMunicipalityScopes();
+  const own = doc(db('coordinator'), 'operations', 'scope-a');
+  const foreign = doc(db('coordinator'), 'operations', 'scope-b');
+  await assertSucceeds(updateDoc(own, {name:'Updated group', updatedBy:'coordinator'}));
+  await assertFails(updateDoc(foreign, {name:'Unauthorized'}));
+  await assertFails(updateDoc(foreign, {municipalityCoordinatorId:'coordinator'}));
+  await assertFails(updateDoc(own, {municipalityCoordinatorId:'coordinator-b'}));
+  await assertFails(updateDoc(own, {_entity:'report'}));
+  await assertFails(updateDoc(own, {untrustedPolicy:true}));
+  await assertFails(deleteDoc(foreign));
+  await assertSucceeds(deleteDoc(own));
+});
+
+test('municipality group/worker creation requires the authenticated owner', async () => {
+  for (const kind of ['group','worker']) {
+    await assertSucceeds(setDoc(doc(db('coordinator'), 'operations', `own-${kind}`), {
+      _entity:kind, name:'Own record', municipalityCoordinatorId:'coordinator',
+    }));
+    await assertFails(setDoc(doc(db('coordinator'), 'operations', `spoof-${kind}`), {
+      _entity:kind, municipalityCoordinatorId:'coordinator-b',
+    }));
+  }
+});
+
+test('report approval cannot be bypassed by direct client creates or updates', async () => {
+  await env.withSecurityRulesDisabled(async ctx => {
+    await setDoc(doc(ctx.firestore(), 'operations', 'protected-report'), {
+      _entity:'report', reportKind:'work_report', groupId:'group-b',
+      reportedBy:'head-b', status:'submitted',
+    });
+  });
+  for (const uid of ['head-a','head-b','inactive-head','coordinator','jsc','manager']) {
+    await assertFails(updateDoc(doc(db(uid), 'operations', 'protected-report'), {status:'approved'}));
+    await assertFails(setDoc(doc(db(uid), 'operations', `forged-report-${uid}`), {
+      _entity:'report', reportKind:'work_report', groupId:'group-a', reportedBy:uid, status:'closed',
+    }));
+  }
+  // Legitimate own-group field operations still work alongside trusted reports.
+  await assertSucceeds(setDoc(doc(db('head-a'), 'operations', 'legitimate-trip'), {
+    _entity:'trip', groupId:'group-a', supervisorId:'head-a', status:'in_progress',
+  }));
+});
+
+test('managed worker get and profile edits succeed; unrelated worker and management profiles remain private', async () => {
+  await seedMunicipalityScopes();
+  const own = doc(db('coordinator'), 'users', 'worker-a');
+  await assertSucceeds(getDoc(own));
+  await assertSucceeds(updateDoc(own, {name:'Updated worker', phone:'+970599000000'}));
+  await assertFails(getDoc(doc(db('coordinator'), 'users', 'outside-worker')));
+  await assertFails(getDoc(doc(db('coordinator'), 'users', 'jsc')));
+  await assertFails(getDoc(doc(db('worker-a'), 'users', 'worker-b')));
+  await assertSucceeds(getDoc(doc(db('worker-a'), 'users', 'worker-a')));
+});
+
+test('workforce provisioning rejects foreign, missing, inactive and wrong-cycle groups', async () => {
+  await seedMunicipalityScopes();
+  const profile = (id, groupId) => ({
+    id, username:id, name:'New workforce', role:'group_supervisor',
+    groupId, cycleId:'scope-cycle', municipalityCoordinatorId:'coordinator',
+    isActive:true, status:'active', createdBy:'coordinator',
+  });
+  await assertSucceeds(setDoc(doc(db('coordinator'), 'users', 'new-own'), profile('new-own', 'scope-a')));
+  for (const group of ['scope-b','missing']) {
+    const id = `new-${group}`;
+    await assertFails(setDoc(doc(db('coordinator'), 'users', id), profile(id, group)));
+  }
+  await env.withSecurityRulesDisabled(async ctx => {
+    await updateDoc(doc(ctx.firestore(), 'operations', 'scope-a'), {isActive:false});
+  });
+  await assertFails(setDoc(doc(db('coordinator'), 'users', 'new-inactive'), profile('new-inactive', 'scope-a')));
+  await env.withSecurityRulesDisabled(async ctx => {
+    await updateDoc(doc(ctx.firestore(), 'operations', 'scope-a'), {isActive:true, cycleId:'other-cycle'});
+  });
+  await assertFails(setDoc(doc(db('coordinator'), 'users', 'new-cycle'), profile('new-cycle', 'scope-a')));
+});
+
+test('worker transfers stay within owned groups and keep coordinator identity immutable', async () => {
+  await seedMunicipalityScopes();
+  const worker = doc(db('coordinator'), 'users', 'worker-a');
+  await env.withSecurityRulesDisabled(async ctx => {
+    await updateDoc(doc(ctx.firestore(), 'users', 'worker-a'), {username:'worker-a', cycleId:'scope-cycle'});
+  });
+  await assertSucceeds(updateDoc(worker, {groupId:'scope-a'}));
+  await assertFails(updateDoc(worker, {groupId:'scope-b'}));
+  await assertFails(updateDoc(worker, {groupId:'missing'}));
+  await assertFails(updateDoc(worker, {municipalityCoordinatorId:'coordinator-b'}));
 });
 
 test('supervisor sends to own group', async () => {

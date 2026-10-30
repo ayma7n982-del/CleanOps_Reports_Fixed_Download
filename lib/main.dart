@@ -1593,6 +1593,7 @@ Future<void> main() async {
       debugPrintStack(stackTrace: stack);
     }
 
+    data.bindAuth(auth);
     final messaging = MessagingService(store, config);
     final containers = ContainerService(store, data, messaging);
     try {

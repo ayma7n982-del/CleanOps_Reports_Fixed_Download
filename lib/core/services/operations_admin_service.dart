@@ -296,6 +296,12 @@ class OperationsAdminService {
       if (!cycle.exists || cycle.data()?['status'] != 'active') {
         throw const UserProvisionException('دورة العمل المختارة غير نشطة.');
       }
+      await _requireManagedGroup(cleanGroup, actorAuth.uid);
+      final group = await _operations.doc(cleanGroup).get(const GetOptions(source: Source.server));
+      if (group.data()?['isActive'] == false ||
+          (group.data()!.containsKey('cycleId') && group.data()?['cycleId'] != cleanCycle)) {
+        throw const UserProvisionException('المجموعة غير نشطة أو لا تتبع دورة العمل المختارة.');
+      }
     }
 
     // 3) Create the Auth account on a secondary app so the manager stays signed in.

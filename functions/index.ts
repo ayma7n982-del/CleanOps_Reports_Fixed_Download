@@ -161,6 +161,15 @@ async function createUserAccount({
   if (isWorkforceRole(role) && (!cycleId || !groupId)) {
     throw new HttpsError('invalid-argument', 'Workforce accounts require cycleId and groupId.');
   }
+  if (isWorkforceRole(role)) {
+    const group = await db.collection('operations').doc(groupId).get();
+    const data = group.data();
+    if (!data || data._entity !== 'group' || data.municipalityCoordinatorId !== actorUid
+      || data.isDeleted === true || data.isActive === false
+      || (data.cycleId !== undefined && data.cycleId !== cycleId)) {
+      throw new HttpsError('permission-denied', 'The group is unavailable or outside your municipality and cycle.');
+    }
+  }
   if (cycleId) {
     const cycle = await db.collection('work_cycles').doc(cycleId).get();
     if (!cycle.exists || cycle.data()?.status !== 'active') {

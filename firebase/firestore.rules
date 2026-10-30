@@ -7,7 +7,7 @@ service cloud.firestore {
       return signedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid))
         ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data : {};
     }
-    function role() { return userDoc().role != null ? userDoc().role : ''; }
+    function role() { return userDoc().get('role', ''); }
     function isL4() { return role() == 'donor_manager' && userDoc().isActive != false; }
     function isL3() { return role() == 'jsc_coordinator' && userDoc().isActive != false; }
     function isL2() { return role() == 'municipality_coordinator' && userDoc().isActive != false; }
@@ -24,6 +24,30 @@ service cloud.firestore {
         && exists(/databases/$(database)/documents/operations/$(groupId))
         && get(/databases/$(database)/documents/operations/$(groupId)).data._entity == 'group'
         && get(/databases/$(database)/documents/operations/$(groupId)).data.municipalityCoordinatorId == request.auth.uid;
+    }
+    function workforceGroupAllowed(groupId, cycleId) {
+      let path = /databases/$(database)/documents/operations/$(groupId);
+      return groupManagedByL2(groupId)
+        && get(path).data.get('isDeleted', false) == false
+        && get(path).data.get('isActive', true) == true
+        && get(path).data.get('cycleId', cycleId) == cycleId;
+    }
+    function ownedWorkforceOperationCreate() {
+      return isL2()
+        && request.resource.data._entity in ['group', 'worker']
+        && request.resource.data.municipalityCoordinatorId == request.auth.uid;
+    }
+    function ownedWorkforceOperationUpdate() {
+      return ownedWorkforceOperationCreate()
+        && resource.data._entity == request.resource.data._entity
+        && resource.data.municipalityCoordinatorId == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'id','name','title','number','groupNumber','groupName','groupId',
+          'group','job','phone','municipality','municipalityName','coordinatorId',
+          'status','isActive','isDeleted','updatedBy','updatedAt','createdBy',
+          'importedBy','createdAt'
+        ])
+        && request.resource.data.get('coordinatorId', request.auth.uid) == request.auth.uid;
     }
     function workforceManagedByL2() {
       return isWorkforceRole(resource.data.role)
@@ -309,7 +333,7 @@ service cloud.firestore {
 
     // ---------------- User profiles / GPS ----------------
     match /users/{uid} {
-      allow get: if self(uid) || isL3OrL4() || (isL2() && uid == request.auth.uid);
+      allow get: if self(uid) || isL3OrL4() || (isL2() && workforceManagedByL2());
       allow list: if isL3OrL4() || (isL2() && resource.data.keys().hasAny(['municipalityCoordinatorId']) && resource.data.municipalityCoordinatorId == request.auth.uid);
       // Accounts are created directly from the app by Level 4 (management roles)
       // and Level 2 (workforce roles). The Auth account is created client-side.
@@ -332,10 +356,28 @@ service cloud.firestore {
               && request.resource.data.municipalityCoordinatorId == request.auth.uid
               && request.resource.data.groupId is string && request.resource.data.groupId.size() > 0
               && request.resource.data.cycleId is string
+              && workforceGroupAllowed(request.resource.data.groupId, request.resource.data.cycleId)
               && exists(/databases/$(database)/documents/work_cycles/$(request.resource.data.cycleId))
               && get(/databases/$(database)/documents/work_cycles/$(request.resource.data.cycleId)).data.status == 'active')
         );
       allow update: if (
+          isL2()
+          && workforceManagedByL2()
+          && requestedWorkforceManagedByL2()
+          && resource.data.get('status', '') != 'deleted'
+          && request.resource.data.get('status', '') != 'deleted'
+          && request.resource.data.role == resource.data.role
+          && request.resource.data.username == resource.data.username
+          && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['groupId', 'cycleId'])
+              || workforceGroupAllowed(request.resource.data.groupId, request.resource.data.cycleId))
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'name','phone','groupId','groupName','cycleId','isActive','status',
+            'frozenAt','frozenBy','deactivatedAt','deactivatedBy','updatedAt','updatedBy'
+          ])
+          && (request.resource.data.isActive != false
+              || cycleHasEnded(request.resource.data.cycleId))
+        )
+        || (
           isL4()
           && request.resource.data.role == resource.data.role
           && request.resource.data.username == resource.data.username
@@ -401,21 +443,6 @@ service cloud.firestore {
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
             'isActive','status','deactivatedAt','deactivatedBy','updatedAt','updatedBy'
           ])
-        )
-        || (
-          isL2()
-          && workforceManagedByL2()
-          && requestedWorkforceManagedByL2()
-          && resource.data.get('status', '') != 'deleted'
-          && request.resource.data.get('status', '') != 'deleted'
-          && request.resource.data.role == resource.data.role
-          && request.resource.data.username == resource.data.username
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-            'name','phone','groupId','groupName','cycleId','isActive','status',
-            'frozenAt','frozenBy','deactivatedAt','deactivatedBy','updatedAt','updatedBy'
-          ])
-          && (request.resource.data.isActive != false
-              || cycleHasEnded(request.resource.data.cycleId))
         )
         || (
           self(uid) && isWorkforceRole(resource.data.role) && resource.data.isActive != false
@@ -925,14 +952,17 @@ service cloud.firestore {
         (role() == 'group_supervisor' &&
           request.resource.data._entity == 'emergency' &&
           validSupervisorSosCreate())
-        || (isL4() && (request.resource.data._entity == 'report' || request.resource.data._entity == 'user'))
-        || (isL2() && (request.resource.data._entity == 'group' || request.resource.data._entity == 'worker' || validCartRedirect()))
+        || (isL4() && request.resource.data._entity == 'user')
+        || ownedWorkforceOperationCreate()
+        || (isL2() && validCartRedirect())
         || validJscEquipmentDispatchCreate(id)
         || validJscEquipmentReturnCreate(id)
-        || (isL3() && (request.resource.data._entity == 'heavy_machinery' || request.resource.data._entity == 'emergency' || request.resource.data._entity == 'notification' || request.resource.data._entity == 'report'))
-        || (role() == 'group_supervisor' && (validSupervisorTripCreate() || request.resource.data._entity == 'trip_photo' || (request.resource.data._entity == 'attendance' && userDoc().isActive != false && userDoc().groupId is string && userDoc().groupId.size() > 0 && request.resource.data.groupId == userDoc().groupId && request.resource.data.reportedBy == request.auth.uid && request.resource.data.status in ['present','absent','leave','permission','excused_absence','unexcused_absence','external_task']) || request.resource.data._entity == 'street_photo' || (request.resource.data._entity == 'emergency' && validSupervisorSosCreate()) || request.resource.data._entity == 'notification' || request.resource.data._entity == 'report'))
+        || (isL3() && (request.resource.data._entity == 'heavy_machinery' || request.resource.data._entity == 'emergency' || request.resource.data._entity == 'notification'))
+        || (role() == 'group_supervisor' && (validSupervisorTripCreate() || request.resource.data._entity == 'trip_photo' || (request.resource.data._entity == 'attendance' && userDoc().isActive != false && userDoc().groupId is string && userDoc().groupId.size() > 0 && request.resource.data.groupId == userDoc().groupId && request.resource.data.reportedBy == request.auth.uid && request.resource.data.status in ['present','absent','leave','permission','excused_absence','unexcused_absence','external_task']) || request.resource.data._entity == 'street_photo' || (request.resource.data._entity == 'emergency' && validSupervisorSosCreate()) || request.resource.data._entity == 'notification'))
       );
-      allow update: if signedIn() && (
+      allow update: if signedIn() && request.resource.data._entity == resource.data._entity && (
+        (resource.data._entity in ['group', 'worker'] && ownedWorkforceOperationUpdate())
+        ||
         // Fast path for the exact own-group trip completion. Evaluating the
         // unrelated SOS/equipment branches first exceeds the rules 1000-
         // expression limit on real trips and incorrectly denies supervisors.
@@ -952,12 +982,13 @@ service cloud.firestore {
         || validJscSosReopen()
         || validJscSosSecure()
         || validJscSosCloseAfterReopen()
-        || (isL4() && (resource.data._entity == 'report' || resource.data._entity == 'user'))
-        || (isL2() && (resource.data._entity == 'group' || resource.data._entity == 'worker' || validOperationsCartAssignmentUpdate(id)))
-        || (isL3() && (resource.data._entity == 'heavy_machinery' || resource.data._entity == 'notification' || resource.data._entity == 'report'))
-        || (role() == 'group_supervisor' && (resource.data._entity == 'trip_photo' || (resource.data._entity == 'attendance' && userDoc().isActive != false && resource.data.groupId == userDoc().groupId && request.resource.data.groupId == resource.data.groupId && request.resource.data.workerId == resource.data.workerId && request.resource.data.reportedBy == resource.data.reportedBy && resource.data.reportedBy == request.auth.uid && request.resource.data.status in ['present','absent','leave','permission','excused_absence','unexcused_absence','external_task']) || resource.data._entity == 'street_photo' || resource.data._entity == 'notification' || resource.data._entity == 'report'))
+        || (isL4() && resource.data._entity == 'user')
+        || (isL2() && validOperationsCartAssignmentUpdate(id))
+        || (isL3() && (resource.data._entity == 'heavy_machinery' || resource.data._entity == 'notification'))
+        || (role() == 'group_supervisor' && (resource.data._entity == 'trip_photo' || (resource.data._entity == 'attendance' && userDoc().isActive != false && resource.data.groupId == userDoc().groupId && request.resource.data.groupId == resource.data.groupId && request.resource.data.workerId == resource.data.workerId && request.resource.data.reportedBy == resource.data.reportedBy && resource.data.reportedBy == request.auth.uid && request.resource.data.status in ['present','absent','leave','permission','excused_absence','unexcused_absence','external_task']) || resource.data._entity == 'street_photo' || resource.data._entity == 'notification'))
       );
-      allow delete: if isL2() && resource.data._entity == 'group';
+      allow delete: if isL2() && resource.data._entity == 'group'
+        && resource.data.municipalityCoordinatorId == request.auth.uid;
     }
 
     match /admin_requests/{id} {
