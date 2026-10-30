@@ -1,0 +1,52 @@
+name: Deploy SMS gateway functions (manual)
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: cleanops-sms-provider-production
+  cancel-in-progress: false
+jobs:
+  validate:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install function dependencies
+        working-directory: functions
+        run: npm install
+      - name: Verify TypeScript
+        working-directory: functions
+        run: npm run build
+  deploy:
+    needs: validate
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: firebase-production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install Firebase CLI and function dependencies
+        run: |
+          npm install --global firebase-tools@14
+          npm --prefix functions install
+      - name: Authenticate service account and deploy SMS functions
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          if [ -z "$FIREBASE_SERVICE_ACCOUNT" ]; then
+            echo "::error::Missing FIREBASE_SERVICE_ACCOUNT secret in firebase-production."
+            exit 1
+          fi
+          credentials="$RUNNER_TEMP/cleanops-sms-service-account.json"
+          trap 'rm -f "$credentials"' EXIT
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$credentials"
+          chmod 600 "$credentials"
+          export GOOGLE_APPLICATION_CREDENTIALS="$credentials"
+          firebase deploy --project nrc-aid --non-interactive --only \
+            functions:getSmsProviderStatus,functions:configureSmsProvider,functions:sendExternalSms,functions:refreshExternalSmsStatus
