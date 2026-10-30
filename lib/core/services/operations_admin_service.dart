@@ -433,6 +433,10 @@ class OperationsAdminService {
 
   /// Level 4 only: activate / deactivate any account (blocks its next login).
   Future<void> setUserActive(String userId, bool active, {required String actorId}) async {
+    final existing = await _users.doc(userId).get(const GetOptions(source: Source.server));
+    if (!existing.exists || existing.data()?['status'] == 'deleted') {
+      throw const UserProvisionException('لا يمكن إعادة تفعيل حساب محذوف إداريًا.');
+    }
     await _users.doc(userId).update({
       'isActive': active,
       'status': active ? 'active' : 'deactivated',
@@ -476,7 +480,7 @@ class OperationsAdminService {
       final usersSnap = await usersQuery.get();
       for (final d in usersSnap.docs) {
         final x = d.data();
-        if (x['isActive'] == false || !visible(x)) continue;
+        if (x['isActive'] == false || x['status'] == 'deleted' || !visible(x)) continue;
         activeUsers++;
         final role = '${x['role'] ?? ''}';
         if (role == 'worker') workers++;
