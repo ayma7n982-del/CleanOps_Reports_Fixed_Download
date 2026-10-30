@@ -180,6 +180,11 @@ service cloud.firestore {
         || workerCoordinatorDirectTarget()
         || 
         ((isL4() || isL3()) && request.resource.data.targetGroupId == '__ALL_MUNICIPALITIES__')
+        // Check the inexpensive council route before document lookups for
+        // municipal group membership. This keeps reply authorization within
+        // Firestore's security-rule expression evaluation limit.
+        || (isL2() && request.resource.data.targetGroupId == '__JSC__'
+            && request.resource.data.type in ['info','warning','emergency'])
         || (isL2() && request.resource.data.targetGroupId is string && request.resource.data.targetGroupId != null
             && exists(/databases/$(database)/documents/operations/$(request.resource.data.targetGroupId))
             && get(/databases/$(database)/documents/operations/$(request.resource.data.targetGroupId)).data._entity == 'group'
@@ -189,7 +194,6 @@ service cloud.firestore {
         || (role() == 'worker' && request.resource.data.targetGroupId == '__JSC__'
             && request.resource.data.type == 'emergency'
             && userDoc().groupId is string && userDoc().groupId.size() > 0)
-        || (isL2() && request.resource.data.targetGroupId == '__JSC__' && request.resource.data.type in ['info','warning','emergency'])
       );
     }
     // Read/ack receipts live under messages/{messageId}/receipts/{userId}.
