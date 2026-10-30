@@ -784,7 +784,13 @@ class _SearchRecordPage extends StatelessWidget {
         if (actor.role == 'municipality_coordinator') return const OperationsManagementScreen(initialTab: 0);
         return null;
       case 'مجموعة':
-        return const GroupsCommandCenterPage();
+        // Field roles can inspect the selected record, but must not be routed
+        // to the management list (whose Firestore queries require management).
+        return const ['municipality_coordinator', 'jsc_coordinator',
+                'donor_manager'].contains(actor.role) &&
+            actor.can('workers', 'view')
+            ? const GroupsCommandCenterPage()
+            : null;
       case 'مكب':
         if (!actor.can('dumpsite', 'view')) return null;
         return actor.role == 'donor_manager'
@@ -795,6 +801,7 @@ class _SearchRecordPage extends StatelessWidget {
       case 'معدة':
         return actor.can('operations', 'view') ? const EquipmentSearchScreen() : null;
       case 'دورة':
+        if (!actor.can('reports', 'view')) return null;
         return actor.role == 'donor_manager'
             ? const OperationsManagementScreen(initialTab: 0)
             : const ReportsCenterScreen();
