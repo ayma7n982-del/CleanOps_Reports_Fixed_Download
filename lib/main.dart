@@ -772,7 +772,26 @@ class CardSection extends StatelessWidget{
       child:Column(
         crossAxisAlignment:CrossAxisAlignment.start,
         children:[
-          Row(children:[icon,const SizedBox(width:10),AppText(title,style:const TextStyle(fontSize:18,fontWeight:FontWeight.w900,color:cleanOpsText))]),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              SizedBox(width: 40, child: Center(child: icon)),
+              const SizedBox(width: 10),
+              Expanded(
+                child: AppText(
+                  title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    height: 1.3,
+                    fontWeight: FontWeight.w900,
+                    color: cleanOpsText,
+                  ),
+                ),
+              ),
+            ],
+          ),
           const Divider(height:24,color:cleanOpsBorder),
           child,
         ],
@@ -1291,20 +1310,55 @@ class SettingsPage extends StatelessWidget{
         ),
         const SizedBox(height:14),
         CardSection(
-          title:'التحكم الديناميكي Zero-Hardcoding',
+          title:'التحكم الديناميكي',
           icon:const FeatureIcon('settings'),
           child:Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children:[
+              const AppText(
+                'Zero-Hardcoding • إعدادات التشغيل',
+                style: TextStyle(fontSize: 11, color: cleanOpsMuted),
+              ),
+              const SizedBox(height: 8),
               _switch(context,'التسجيل الصوتي',config.voiceEnabled,user.role=='donor_manager','voice'),
               _switch(context,'فحص PPE',config.ppeEnabled,user.role=='donor_manager','ppe'),
               _switch(context,'صور الشوارع',config.streetPhotosEnabled,user.role=='donor_manager','streetPhotos'),
               _switch(context,'الكارة البديلة',config.alternativeCartEnabled,user.role=='donor_manager','alternativeCart'),
               if(user.role=='donor_manager')
-                ListTile(
-                  title:const AppText('تجميد المرحلة',style:TextStyle(fontWeight:FontWeight.w800)),
-                  subtitle:AppText(config.stageFrozen?'المرحلة مجمّدة — التعديلات التشغيلية مقفلة':'يمكن تجميد المرحلة بعد الاعتماد'),
-                  trailing:FilledButton.tonalIcon(onPressed:config.stageFrozen?null:()=>config.freezeStage(),icon:const Icon(Icons.lock_outline),label:const AppText('تجميد')),
-                ),
+                LayoutBuilder(builder: (context, box) => Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 9, horizontal: 4),
+                  child: Flex(
+                    direction: box.maxWidth < 340 ? Axis.vertical : Axis.horizontal,
+                    crossAxisAlignment: box.maxWidth < 340
+                        ? CrossAxisAlignment.start : CrossAxisAlignment.center,
+                    children: [
+                      Flexible(
+                        flex: 3,
+                        fit: box.maxWidth < 340 ? FlexFit.loose : FlexFit.tight,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const AppText('تجميد المرحلة',
+                                style: TextStyle(fontWeight: FontWeight.w800)),
+                            AppText(config.stageFrozen
+                                ? 'المرحلة مجمّدة — التعديلات التشغيلية مقفلة'
+                                : 'يمكن تجميد المرحلة بعد الاعتماد',
+                                maxLines: 3,
+                                style: const TextStyle(
+                                    fontSize: 11, color: cleanOpsMuted)),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 8, height: 8),
+                      FilledButton.tonalIcon(
+                        onPressed: config.stageFrozen
+                            ? null : () => config.freezeStage(),
+                        icon: const Icon(Icons.lock_outline, size: 17),
+                        label: const AppText('تجميد'),
+                      ),
+                    ],
+                  ),
+                )),
             ],
           ),
         ),
