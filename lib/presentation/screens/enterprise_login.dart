@@ -477,8 +477,7 @@ class _AnimatedLogo extends StatelessWidget {
             'assets/brand/cleanops_logo_new.png',
             fit: BoxFit.contain,
             filterQuality: FilterQuality.high,
-            errorBuilder: (_, __, ___) => const Icon(
-              Icons.eco_rounded, color: aiBlue, size: 70),
+            errorBuilder: (_, __, ___) => const FittedBox(fit: BoxFit.scaleDown, child: Text('CleanOps', style: TextStyle(color: aiBlue, fontWeight: FontWeight.w900))),
           ),
         ),
         PositionedDirectional(
