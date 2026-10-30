@@ -318,6 +318,7 @@ class _MessagesCenterScreenState extends State<MessagesCenterScreen> {
                                   decoration: const InputDecoration(labelText: 'الفترة', isDense: true),
                                   items: const [
                                     DropdownMenuItem(value: 'all', child: Text('كل التواريخ')),
+                                    DropdownMenuItem(value: 'today', child: Text('اليوم')),
                                     DropdownMenuItem(value: 'week', child: Text('آخر 7 أيام')),
                                     DropdownMenuItem(value: 'month', child: Text('آخر 30 يومًا')),
                                   ],
