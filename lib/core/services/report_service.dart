@@ -137,11 +137,18 @@ class ReportService {
     final tripsByMunicipality = <String,int>{}, attendanceByMunicipality = <String,int>{}, absenceByGroup = <String,int>{}, containersByMunicipality = <String,int>{}, containersByGroup = <String,int>{};
     final groups = <String>{}, municipalities = <String>{}, workers = <String>{}, supervisors = <String>{};
 
-    if (Firebase.apps.isNotEmpty) {
+    // Firestore permits user-list queries only to management, and restricts
+    // municipality coordinators to workforce profiles under their own UID.
+    if (Firebase.apps.isNotEmpty &&
+        const ['municipality_coordinator','jsc_coordinator','donor_manager']
+            .contains(user?.role)) {
       try {
-        Query<Map<String, dynamic>> usersQuery = FirebaseFirestore.instance.collection('users').limit(1000);
+        Query<Map<String, dynamic>> usersQuery = FirebaseFirestore.instance
+            .collection('users').limit(1000);
         if (user?.role == 'municipality_coordinator') {
-          usersQuery = FirebaseFirestore.instance.collection('users').where('municipalityCoordinatorId', isEqualTo: user!.id).limit(1000);
+          usersQuery = FirebaseFirestore.instance.collection('users')
+              .where('municipalityCoordinatorId', isEqualTo: user!.id)
+              .limit(1000);
         }
         final userSnap = await usersQuery.get();
         for (final d in userSnap.docs) {
@@ -205,7 +212,17 @@ class ReportService {
 
     if (Firebase.apps.isNotEmpty) {
       try {
-        final snap = await FirebaseFirestore.instance.collection('containers').get();
+        Query<Map<String, dynamic>> containersQuery =
+            FirebaseFirestore.instance.collection('containers');
+        if (user?.role == 'worker' || user?.role == 'group_supervisor') {
+          final groupId = (user?.groupId ?? '').trim();
+          if (groupId.isEmpty) throw StateError('لا توجد مجموعة مرتبطة بالحساب.');
+          containersQuery = containersQuery.where('groupId', isEqualTo: groupId);
+        } else if (user?.role == 'municipality_coordinator') {
+          containersQuery = containersQuery.where('municipalityId',
+              isEqualTo: user!.id);
+        }
+        final snap = await containersQuery.get();
         for (final d in snap.docs) {
           final m={'id':d.id,...d.data()};
           final mun='${m['municipalityName'] ?? m['municipalityId'] ?? 'غير محددة'}'; final grp='${m['groupName'] ?? m['groupId'] ?? 'غير محددة'}';
