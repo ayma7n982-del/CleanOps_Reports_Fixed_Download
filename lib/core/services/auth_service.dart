@@ -58,9 +58,17 @@ class AuthService extends ChangeNotifier {
             await _loadUser(firebaseUser!.uid);
             offlineSession = false;
           } catch (e) {
-            debugPrint('Remote profile restore failed; fallback to local cache: $e');
-            currentUser ??= localStore.cachedUser();
-            offlineSession = currentUser != null;
+            debugPrint('Remote profile restore failed: $e');
+            // Never restore a cached session when the server explicitly revoked access.
+            // Offline fallback is reserved for connectivity failures, not inactive accounts.
+            if (e is StateError) {
+              currentUser = null;
+              offlineSession = false;
+              await FirebaseAuth.instance.signOut();
+            } else {
+              currentUser ??= localStore.cachedUser();
+              offlineSession = currentUser != null;
+            }
           }
         }
       }
@@ -79,7 +87,7 @@ class AuthService extends ChangeNotifier {
         .timeout(const Duration(seconds: 4));
     if (snap.exists && snap.data() != null) {
       final profile = AppUser.fromJson({...snap.data()!, 'id': uid});
-      if (!profile.isActive) {
+      if (!profile.isActive || snap.data()!['status'] == 'deleted') {
         throw StateError('هذا الحساب غير نشط أو مجمد حاليًا.');
       }
       currentUser = profile;
