@@ -23,7 +23,11 @@ void main() {
     expect(ordered[1]['id'], 'iso');
     expect(ordered.last['id'], anyOf('seconds', 'milliseconds'));
     expect(OperationalActivity.label(items[1]), 'بدون تاريخ');
-    expect(OperationalActivity.asDate(Timestamp.fromDate(late)), late);
+    expect(
+      OperationalActivity.asDate(Timestamp.fromDate(late))!
+          .isAtSameMomentAs(late),
+      isTrue,
+    );
   });
 
   test('daily count respects the local calendar and ignores undated rows', () {
