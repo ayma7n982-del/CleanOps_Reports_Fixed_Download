@@ -2,7 +2,7 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     function signedIn() { return request.auth != null; }
-    function activeSignedIn() { return signedIn() && userDoc().isActive != false; }
+    function activeSignedIn() { return signedIn() && userDoc().isActive != false && userDoc().get('status', '') != 'deleted'; }
     function userDoc() {
       return signedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid))
         ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data : {};
@@ -345,6 +345,8 @@ service cloud.firestore {
             'deletionRequestId','updatedAt','updatedBy'
           ])
           && (uid != request.auth.uid || request.resource.data.isActive != false)
+          && resource.data.get('status', '') != 'deleted'
+          && request.resource.data.get('status', '') != 'deleted'
         )
         || (
           isL2()
@@ -404,6 +406,8 @@ service cloud.firestore {
           isL2()
           && workforceManagedByL2()
           && requestedWorkforceManagedByL2()
+          && resource.data.get('status', '') != 'deleted'
+          && request.resource.data.get('status', '') != 'deleted'
           && request.resource.data.role == resource.data.role
           && request.resource.data.username == resource.data.username
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
