@@ -588,7 +588,7 @@ class AppDrawer extends StatelessWidget {
               padding: EdgeInsets.only(top: 14, bottom: 8),
               child: Center(
                 child: Text(
-                  'ECO-UI R2 • 2026.10.29',
+                  'ECO-UI R3 • 2026.10.30',
                   textDirection: ui.TextDirection.ltr,
                   style: TextStyle(
                     color: cleanOpsMuted,
