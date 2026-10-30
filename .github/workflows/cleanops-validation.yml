@@ -29,6 +29,8 @@ jobs:
         run: flutter config --jdk-dir="$JAVA_HOME"
       - name: Flutter dependencies
         run: flutter pub get
+      - name: Generate Android launcher icon from CleanOps brand
+        run: dart run flutter_launcher_icons
       - name: Verify offline cart redirect queue and cache reconciliation
         run: flutter test test/offline_queue_test.dart
       - name: Setup Gradle 8.14
