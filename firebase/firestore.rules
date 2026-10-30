@@ -193,7 +193,7 @@ service cloud.firestore {
               && userDoc().groupId is string
               && userDoc().groupId.size() > 0)
         ))
-        || (isL2() && (
+        || (actorRole == 'municipality_coordinator' && (
           (request.resource.data.targetGroupId == '__JSC__'
               && request.resource.data.type in ['info','warning','emergency'])
           || managedDirectTarget()
@@ -202,7 +202,7 @@ service cloud.firestore {
               && get(/databases/$(database)/documents/operations/$(request.resource.data.targetGroupId)).data._entity == 'group'
               && get(/databases/$(database)/documents/operations/$(request.resource.data.targetGroupId)).data.municipalityCoordinatorId == request.auth.uid)
         ))
-        || (isL3OrL4() && (
+        || (actorRole in ['jsc_coordinator','donor_manager'] && (
           request.resource.data.targetGroupId == '__ALL_MUNICIPALITIES__'
           || seniorDirectTarget()
         ))
