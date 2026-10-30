@@ -155,7 +155,7 @@ class _MessagesCenterScreenState extends State<MessagesCenterScreen> {
                             label: const AppText('رسالة جديدة'),
                             onPressed: () => _openComposer(user, messaging),
                           ),
-                        if (messaging.canSend('info'))
+                        if (const ['donor_manager','jsc_coordinator','municipality_coordinator'].contains(user.role))
                           OutlinedButton.icon(
                             icon: const Icon(Icons.person_outline_rounded),
                             label: const AppText('رسالة مباشرة'),
@@ -583,7 +583,7 @@ class _MessagesCenterScreenState extends State<MessagesCenterScreen> {
                           await messaging.retryFailedMessage(message.messageId);
                         } catch (e) {
                           if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: AppText('$e')));
+                            SnackBar(content: AppText(MessagingFeedback.describe(e))));
                         }
                       },
                     ),
@@ -802,7 +802,7 @@ class _MessagesCenterScreenState extends State<MessagesCenterScreen> {
                     if (mounted) ScaffoldMessenger.of(this.context).showSnackBar(SnackBar(
                       content: AppText(scheduledAt == null ? 'أُضيفت الرسالة لقائمة الانتظار، وتنتظر تأكيد الخادم.' : 'تم تسجيل موعد الإرسال لدى خادم Firebase.')));
                   } catch (e) {
-                    if (mounted) ScaffoldMessenger.of(this.context).showSnackBar(SnackBar(content: AppText('تعذر إرسال الرسالة: $e')));
+                    if (mounted) ScaffoldMessenger.of(this.context).showSnackBar(SnackBar(content: AppText(MessagingFeedback.describe(e))));
                   } finally {
                     if (context.mounted) setSheetState(() => sending = false);
                   }
@@ -859,7 +859,7 @@ class _MessagesCenterScreenState extends State<MessagesCenterScreen> {
                         const SnackBar(content: AppText('أُدرج الرد في قائمة الإرسال؛ تحقق من حالة الخادم.')));
                     } catch (e) {
                       if (mounted) ScaffoldMessenger.of(this.context).showSnackBar(
-                        SnackBar(content: AppText('تعذر الرد: $e')));
+                        SnackBar(content: AppText(MessagingFeedback.describe(e))));
                     } finally {
                       if (sheetContext.mounted) setSheetState(() => busy = false);
                     }
@@ -919,7 +919,7 @@ class _MessagesCenterScreenState extends State<MessagesCenterScreen> {
                                       await messaging.cancelScheduledMessage(item.id);
                                     } catch (e) {
                                       if (sheetContext.mounted) ScaffoldMessenger.of(sheetContext)
-                                          .showSnackBar(SnackBar(content: AppText('$e')));
+                                          .showSnackBar(SnackBar(content: AppText(MessagingFeedback.describe(e))));
                                     }
                                   },
                                 )
@@ -954,7 +954,7 @@ class _MessagesCenterScreenState extends State<MessagesCenterScreen> {
         const SnackBar(content: AppText('تم حفظ الصور المرفقة على Firebase.')));
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: AppText('تعذر رفع الصور: $e')));
+        SnackBar(content: AppText(MessagingFeedback.describe(e))));
     }
   }
 
@@ -1048,7 +1048,7 @@ class _MessagesCenterScreenState extends State<MessagesCenterScreen> {
                               : 'حالة طلب SMS: $status')));
                       } catch (e) {
                         if (mounted) ScaffoldMessenger.of(this.context).showSnackBar(
-                          SnackBar(content: AppText('تعذر إرسال SMS: $e')));
+                          SnackBar(content: AppText(MessagingFeedback.describe(e))));
                       } finally {
                         if (sheetContext.mounted) setSheetState(() => busy = false);
                       }
