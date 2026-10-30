@@ -5,8 +5,8 @@
          screen before Flutter starts. -->
     <style name="LaunchTheme" parent="@android:style/Theme.Light.NoTitleBar">
         <item name="android:windowSplashScreenBackground">#E8F7EF</item>
-        <item name="android:windowSplashScreenAnimatedIcon">@drawable/cleanops_splash_logo</item>
-        <item name="android:windowSplashScreenIconBackgroundColor">#FFFFFF</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/cleanops_splash_clear</item>
+        <item name="android:windowSplashScreenIconBackgroundColor">#E8F7EF</item>
         <item name="android:windowBackground">@drawable/launch_background</item>
         <item name="android:statusBarColor">#E8F7EF</item>
         <item name="android:navigationBarColor">#E8F7EF</item>
