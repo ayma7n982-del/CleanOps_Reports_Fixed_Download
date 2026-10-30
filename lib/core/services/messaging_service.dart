@@ -267,7 +267,6 @@ class MessagingService extends ChangeNotifier {
   Future<void> sendContainerAlert(dynamic container, String event) async {
     final user = _user;
     if (user == null) return;
-    final municipalityId = '${container.municipalityId ?? ''}';
     final location = '${container.locationName ?? ''}';
     final groupId = '${container.groupId ?? ''}';
     final status = '${container.status ?? ''}';
@@ -298,15 +297,21 @@ class MessagingService extends ChangeNotifier {
       default:
         text = 'تحديث حالة الحاوية: $location • $status • $issue';
     }
-    // Container alerts are delivered to the municipality coordinator and JSC.
-    final municipalityTarget = (user.municipalityCoordinatorId ?? '').isNotEmpty
-        ? user.municipalityCoordinatorId! : municipalityId;
-    if (municipalityTarget.isNotEmpty && (user.role == 'group_supervisor' || user.role == 'worker')) {
-      await _send(content: text, type: type, targetUserId: municipalityTarget);
-      // Field workers escalate only genuine emergency-class alerts. Other
-      // operational updates go to their municipality coordinator first.
+    // A municipality ID is not a Firebase user UID. Never treat a container's
+    // municipalityId as a message recipient: it may route to the wrong account.
+    final coordinatorId = (user.municipalityCoordinatorId ?? '').trim();
+    if (user.role == 'group_supervisor' || user.role == 'worker') {
+      if (coordinatorId.isNotEmpty) {
+        await _send(content: text, type: type, targetUserId: coordinatorId);
+      }
+      // Field emergencies reach the council even when a user profile is
+      // missing its municipality coordinator linkage.
       if (user.role == 'group_supervisor' || type == 'emergency') {
         await _send(content: text, type: type, targetGroupId: '__JSC__');
+      }
+      if (coordinatorId.isEmpty) {
+        lastError = 'تعذر إيصال تنبيه الحاوية لمنسق البلدية: حساب المرسل غير مرتبط بمنسق.';
+        notifyListeners();
       }
     } else if (user.role == 'municipality_coordinator') {
       await _send(content: text, type: type, targetGroupId: '__JSC__');
