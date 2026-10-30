@@ -126,6 +126,13 @@ test('message receipt can be acknowledged but never forged, downgraded or delete
   await assertSucceeds(setDoc(own, {
     userId:'worker-a', status:'read', updatedAt:serverTimestamp(),
   }));
+  await assertSucceeds(setDoc(own, {
+    userId:'worker-a', status:'read', updatedAt:serverTimestamp(),
+  }, {merge: true}));
+  await assertSucceeds(updateDoc(own, {
+    status:'acknowledged', updatedAt:serverTimestamp(),
+  }));
+  // Network retries and duplicate taps must not throw permission-denied.
   await assertSucceeds(updateDoc(own, {
     status:'acknowledged', updatedAt:serverTimestamp(),
   }));
