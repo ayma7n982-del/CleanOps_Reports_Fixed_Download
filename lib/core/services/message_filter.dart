@@ -42,7 +42,11 @@ class MessageFilter {
     if (type != 'all' && message.type != type) return false;
     final destination = message.targetGroupId ??
         (message.targetUserId == null ? '' : '__USER__:${message.targetUserId}');
-    if (target != 'all' && destination != target) return false;
+    if (target == '__DIRECT__') {
+      if (!destination.startsWith('__USER__:')) return false;
+    } else if (target != 'all' && destination != target) {
+      return false;
+    }
     final cutoff = now ?? DateTime.now();
     switch (period) {
       case 'today':
