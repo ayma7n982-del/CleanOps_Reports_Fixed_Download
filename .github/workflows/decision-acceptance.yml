@@ -1,0 +1,56 @@
+name: Decision production-read PDF and dense-data acceptance
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/read_decision_pdf_snapshot.mjs'
+      - 'test/decision_acceptance_pdf_test.dart'
+      - '.github/workflows/decision-acceptance.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: decision-pdf-acceptance-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  read-only-production-pdf:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    environment: firebase-production
+    env:
+      TZ: Asia/Hebron
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - name: Validate projection script
+        run: node --check scripts/read_decision_pdf_snapshot.mjs
+      - name: Read minimal production fields without writes or personal names
+        env:
+          FIREBASE_PROJECT_ID: nrc-aid
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: node scripts/read_decision_pdf_snapshot.mjs
+      - name: Generate real-data sanitized PDFs and separate dense synthetic stress PDFs
+        env:
+          DECISION_PRODUCTION_SNAPSHOT: build/decision-acceptance/snapshot.json
+        run: flutter test test/decision_acceptance_pdf_test.dart --timeout 10m
+      - name: Upload review PDFs only, never the source snapshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: Decision-Acceptance-Sanitized-PDF
+          path: build/decision-acceptance/reports/*.pdf
+          retention-days: 1
+          if-no-files-found: error
+      - name: Remove temporary snapshot
+        if: always()
+        run: |
+          if [ -f build/decision-acceptance/snapshot.json ]; then
+            rm build/decision-acceptance/snapshot.json
+          fi
