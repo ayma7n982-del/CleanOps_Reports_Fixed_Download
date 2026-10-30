@@ -70,7 +70,7 @@ void main() {
     expect(xml, contains('android:windowSplashScreenBackground'));
     expect(xml, contains('android:windowSplashScreenAnimatedIcon'));
     expect(xml, contains('@drawable/cleanops_splash_logo'));
-    expect(xml, isNot(contains('#FFFFFF</item>\\n        <item name="android:windowBackground"')));
+    expect(xml, contains('android:windowSplashScreenBackground">#E8F7EF'));
   });
 
   test('older Android launch and Flutter share the same light palette', () {
