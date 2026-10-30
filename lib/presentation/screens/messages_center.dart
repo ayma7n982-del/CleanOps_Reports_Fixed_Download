@@ -1043,10 +1043,28 @@ class _MessagesCenterScreenState extends State<MessagesCenterScreen> {
       }
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: AppText(MessagingFeedback.describe(error))));
-      await Navigator.push(context,
-        MaterialPageRoute(builder: (_) => const SmsProviderSettingsPage()));
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const AppText('تعذّر التحقق من خدمة SMS'),
+          content: AppText(MessagingFeedback.describe(error)),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const AppText('إغلاق'),
+            ),
+            FilledButton.icon(
+              icon: const Icon(Icons.settings_outlined),
+              label: const AppText('فتح الإعدادات'),
+              onPressed: () {
+                Navigator.pop(dialogContext);
+                Navigator.push(context,
+                  MaterialPageRoute(builder: (_) => const SmsProviderSettingsPage()));
+              },
+            ),
+          ],
+        ),
+      );
       return;
     }
     final recipients = await _loadDirectRecipients(user);
