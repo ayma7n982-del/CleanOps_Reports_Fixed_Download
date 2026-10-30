@@ -668,18 +668,39 @@ class _MessagesCenterScreenState extends State<MessagesCenterScreen> {
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
+      useSafeArea: true,
+      showDragHandle: true,
       backgroundColor: cleanOpsSurface,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
       builder: (sheetContext) => StatefulBuilder(builder: (context, setSheetState) {
         final isL1 = user.role == 'group_supervisor';
         final isManagement = user.role == 'municipality_coordinator' || user.role == 'jsc_coordinator' || user.role == 'donor_manager';
         final canChooseGroup = user.role == 'municipality_coordinator' && recipientMode == 'broadcast';
-        return Padding(
-          padding: EdgeInsets.fromLTRB(18, 16, 18, MediaQuery.of(context).viewInsets.bottom + 18),
-          child: ListView(
-            shrinkWrap: true,
-            children: [
-              Row(children: [const Icon(Icons.forum_rounded, color: aiCyan), const SizedBox(width: 10), const Expanded(child: AppText('إرسال رسالة داخلية', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900))), IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.close))]),
+        final keyboard = MediaQuery.viewInsetsOf(context).bottom;
+        final height = MediaQuery.sizeOf(context).height;
+        return AnimatedPadding(
+          duration: const Duration(milliseconds: 140),
+          curve: Curves.easeOut,
+          padding: EdgeInsets.only(bottom: keyboard),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(maxHeight: height * .86),
+            child: ListView(
+              shrinkWrap: true,
+              padding: const EdgeInsetsDirectional.fromSTEB(18, 4, 18, 22),
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+              children: [
+                Row(children: [
+                  const Icon(Icons.forum_rounded, color: aiBlue, size: 25),
+                  const SizedBox(width: 10),
+                  const Expanded(child: AppText('إرسال رسالة داخلية',
+                    maxLines: 2, overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 19, fontWeight: FontWeight.w900))),
+                  IconButton(
+                    tooltip: 'إغلاق',
+                    onPressed: () => Navigator.pop(context),
+                    icon: const Icon(Icons.close_rounded),
+                  ),
+                ]),
               const SizedBox(height: 14),
               if (isManagement && directRecipients.isNotEmpty) ...[
                 Wrap(spacing: 8, runSpacing: 8, children: [
@@ -695,18 +716,43 @@ class _MessagesCenterScreenState extends State<MessagesCenterScreen> {
                   ),
                 ]),
                 const SizedBox(height: 12),
-                if (recipientMode == 'direct')
-                  DropdownButtonFormField<String>(
-                    value: directRecipients.any((entry) => entry.$1 == selectedRecipient)
-                        ? selectedRecipient : directRecipients.first.$1,
-                    isExpanded: true,
-                    decoration: const InputDecoration(labelText: 'المستلم المسموح'),
-                    items: directRecipients.map((entry) => DropdownMenuItem(
-                      value: entry.$1,
-                      child: Text(entry.$2, overflow: TextOverflow.ellipsis),
-                    )).toList(),
-                    onChanged: (value) => setSheetState(() => selectedRecipient = value),
-                  ),
+                if (recipientMode == 'direct') ...[
+                  const AppText('المستلم المسموح', style: TextStyle(
+                    fontSize: 12, color: cleanOpsMuted, fontWeight: FontWeight.w800)),
+                  const SizedBox(height: 6),
+                  Builder(builder: (context) {
+                    final target = directRecipients.firstWhere(
+                      (entry) => entry.$1 == selectedRecipient,
+                      orElse: () => directRecipients.first,
+                    );
+                    final parts = target.$2.split(' • ');
+                    return Material(
+                      color: const Color(0xFFEAF8F2),
+                      borderRadius: BorderRadius.circular(17),
+                      child: ListTile(
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+                        leading: const CircleAvatar(
+                          backgroundColor: Color(0xFFD4F2E6),
+                          child: Icon(Icons.person_rounded, color: aiBlue),
+                        ),
+                        title: AppText(parts.first, maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontWeight: FontWeight.w900)),
+                        subtitle: AppText(parts.length > 1 ? parts.last : 'مستخدم',
+                          maxLines: 1, overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 11, color: cleanOpsMuted)),
+                        trailing: const Icon(Icons.expand_more_rounded, color: aiBlue),
+                        onTap: () async {
+                          final id = await _chooseDirectRecipient(
+                            context, directRecipients, selectedRecipient);
+                          if (id != null && context.mounted) {
+                            setSheetState(() => selectedRecipient = id);
+                          }
+                        },
+                      ),
+                    );
+                  }),
+                ],
               ],
               DropdownButtonFormField<String>(
                 value: type,
@@ -837,7 +883,8 @@ class _MessagesCenterScreenState extends State<MessagesCenterScreen> {
                 icon: const Icon(Icons.send_rounded),
                 label: AppText(sending ? 'جارٍ الحفظ...' : 'إرسال'),
               ),
-            ],
+              ],
+            ),
           ),
         );
       }),
@@ -1215,6 +1262,95 @@ class _MessagesCenterScreenState extends State<MessagesCenterScreen> {
     }
   }
 
+  /// Search only within the already-authorized recipient list supplied by
+  /// Firestore. This dialog never expands permissions or uses raw routing IDs.
+  Future<String?> _chooseDirectRecipient(
+    BuildContext context,
+    List<(String, String)> recipients,
+    String? current,
+  ) async {
+    var query = '';
+    return showDialog<String>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setPickerState) {
+          final filtered = recipients.where((entry) =>
+            entry.$2.toLowerCase().contains(query.toLowerCase())).toList();
+          return Dialog(
+            insetPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 35),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxWidth: 420,
+                maxHeight: MediaQuery.sizeOf(context).height * .72,
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const AppText('اختر المستلم',
+                      style: TextStyle(fontSize: 19, fontWeight: FontWeight.w900)),
+                    const SizedBox(height: 9),
+                    TextField(
+                      autofocus: true,
+                      decoration: const InputDecoration(
+                        hintText: 'ابحث بالاسم أو الدور',
+                        prefixIcon: Icon(Icons.search_rounded),
+                      ),
+                      onChanged: (value) => setPickerState(() => query = value),
+                    ),
+                    const SizedBox(height: 10),
+                    Expanded(
+                      child: filtered.isEmpty
+                        ? const Center(child: AppText('لا يوجد مستلم مطابق'))
+                        : ListView.separated(
+                            itemCount: filtered.length,
+                            separatorBuilder: (_, __) => const Divider(height: 1),
+                            itemBuilder: (context, i) {
+                              final person = filtered[i];
+                              final parts = person.$2.split(' • ');
+                              return ListTile(
+                                contentPadding: const EdgeInsets.symmetric(
+                                    horizontal: 6, vertical: 3),
+                                leading: const CircleAvatar(
+                                  backgroundColor: Color(0xFFDDF5EB),
+                                  child: Icon(Icons.person_outline_rounded,
+                                      color: aiBlue),
+                                ),
+                                title: AppText(parts.first, maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(fontWeight: FontWeight.w800)),
+                                subtitle: AppText(parts.length > 1
+                                    ? parts.last : 'مستخدم',
+                                    maxLines: 1, overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      color: cleanOpsMuted, fontSize: 11)),
+                                trailing: person.$1 == current
+                                    ? const Icon(Icons.check_circle_rounded,
+                                        color: aiBlue) : null,
+                                onTap: () => Navigator.pop(dialogContext, person.$1),
+                              );
+                            },
+                          ),
+                    ),
+                    Align(
+                      alignment: AlignmentDirectional.centerEnd,
+                      child: TextButton(
+                        onPressed: () => Navigator.pop(dialogContext),
+                        child: const AppText('إلغاء'),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
   Future<List<(String, String)>> _loadDirectRecipients(AppUser user) async {
     if (Firebase.apps.isEmpty) return [];
     if (!const ['municipality_coordinator','jsc_coordinator','donor_manager'].contains(user.role)) return [];
@@ -1233,7 +1369,8 @@ class _MessagesCenterScreenState extends State<MessagesCenterScreen> {
             : const ['municipality_coordinator', 'jsc_coordinator', 'donor_manager'].contains(role);
       }).map((doc) {
         final name = '${doc.data()['name'] ?? doc.id}';
-        return (doc.id, '$name • ${doc.data()['role'] ?? ''}');
+        final role = '${doc.data()['role'] ?? ''}';
+        return (doc.id, '$name • ${roleNames[role] ?? role}');
       }).toList();
     } catch (e) {
       debugPrint('Authorized direct recipients unavailable: $e');
