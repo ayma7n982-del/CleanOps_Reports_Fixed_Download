@@ -14,6 +14,8 @@ import '../../core/services/auth_service.dart';
 import '../../core/services/data_service.dart';
 import '../../core/services/messaging_service.dart';
 import '../../core/services/message_filter.dart';
+import '../../core/services/messaging_feedback.dart';
+import 'enterprise_settings_pages.dart';
 import '../widgets/app_design.dart';
 
 class MessagesCenterScreen extends StatefulWidget {
@@ -79,16 +81,23 @@ class _MessagesCenterScreenState extends State<MessagesCenterScreen> {
               tooltip: 'خيارات المراسلة',
               icon: const Icon(Icons.more_vert_rounded),
               onSelected: (selected) {
-                if (selected == 'scheduled') {
-                  _showScheduledMessages(user, messaging);
-                } else if (selected == 'sms') {
-                  _openExternalSms(user, messaging);
+                switch (selected) {
+                  case 'scheduled':
+                    _showScheduledMessages(user, messaging);
+                  case 'sms':
+                    _openExternalSms(user, messaging);
+                  case 'settings':
+                    _openMessageSettings();
                 }
               },
               itemBuilder: (context) => [
                 const PopupMenuItem<String>(
                   value: 'scheduled',
                   child: AppText('الرسائل المجدولة'),
+                ),
+                const PopupMenuItem<String>(
+                  value: 'settings',
+                  child: AppText('إعدادات الرسائل وSMS'),
                 ),
                 if (const ['municipality_coordinator','jsc_coordinator','donor_manager'].contains(user.role))
                   const PopupMenuItem<String>(
@@ -128,7 +137,61 @@ class _MessagesCenterScreenState extends State<MessagesCenterScreen> {
                       eyebrow: 'SECURE • FIRESTORE MESSAGING',
                       title: 'تواصل تشغيلي مباشر',
                       subtitle: 'رسائل داخلية لحظية تعمل مع التخزين المحلي ولا تعتمد على FCM.',
-                      trailing: IconButton(onPressed: messaging.retryPendingWrites, icon: const Icon(Icons.sync_rounded, color: Colors.white)),
+                      trailing: IconButton(
+                        tooltip: 'تحديث المزامنة',
+                        onPressed: () => _refreshMessages(messaging),
+                        icon: const Icon(Icons.sync_rounded, color: Colors.white),
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    AiSectionCard(
+                      title: 'الاختصارات السريعة',
+                      subtitle: 'جميع الخيارات مرتبطة بوظائف حقيقية حسب الصلاحيات',
+                      feature: 'messages',
+                      child: Wrap(spacing: 8, runSpacing: 8, children: [
+                        if (messaging.canSend('info'))
+                          OutlinedButton.icon(
+                            icon: const Icon(Icons.add_comment_outlined),
+                            label: const AppText('رسالة جديدة'),
+                            onPressed: () => _openComposer(user, messaging),
+                          ),
+                        if (messaging.canSend('info'))
+                          OutlinedButton.icon(
+                            icon: const Icon(Icons.person_outline_rounded),
+                            label: const AppText('رسالة مباشرة'),
+                            onPressed: () => _openComposer(user, messaging, initialMode: 'direct'),
+                          ),
+                        OutlinedButton.icon(
+                          icon: const Icon(Icons.mark_email_unread_outlined),
+                          label: AppText('غير المقروء (${messaging.unreadCount})'),
+                          onPressed: () {
+                            _clearMessageFilters();
+                            setState(() => messageFilter = 'unread');
+                          },
+                        ),
+                        if (messaging.canSend('info'))
+                          OutlinedButton.icon(
+                            icon: const Icon(Icons.event_note_rounded),
+                            label: const AppText('الجدولة'),
+                            onPressed: () => _showScheduledMessages(user, messaging),
+                          ),
+                        if (const ['donor_manager','jsc_coordinator','municipality_coordinator'].contains(user.role))
+                          OutlinedButton.icon(
+                            icon: const Icon(Icons.sms_outlined),
+                            label: const AppText('SMS'),
+                            onPressed: () => _openExternalSms(user, messaging),
+                          ),
+                        OutlinedButton.icon(
+                          icon: const Icon(Icons.settings_outlined),
+                          label: const AppText('الإعدادات'),
+                          onPressed: _openMessageSettings,
+                        ),
+                        OutlinedButton.icon(
+                          icon: const Icon(Icons.sync_rounded),
+                          label: const AppText('تحديث'),
+                          onPressed: () => _refreshMessages(messaging),
+                        ),
+                      ]),
                     ),
                     const SizedBox(height: 14),
                     Card(
@@ -274,13 +337,29 @@ class _MessagesCenterScreenState extends State<MessagesCenterScreen> {
                   ],
                 ),
               ),
-        floatingActionButton: messaging.canSend(type) ? FloatingActionButton.extended(
+        floatingActionButton: messaging.canSend('info') ? FloatingActionButton.extended(
           onPressed: sending ? null : () => _openComposer(user, messaging),
           icon: const Icon(Icons.edit_rounded),
           label: const AppText('رسالة جديدة'),
         ) : null,
       ),
     );
+  }
+
+  void _openMessageSettings() {
+    Navigator.push(context,
+      MaterialPageRoute(builder: (_) => const MessagingSettingsPage()));
+  }
+
+  Future<void> _refreshMessages(MessagingService service) async {
+    try {
+      await service.retryPendingWrites();
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: AppText('تم طلب تحديث المزامنة. راجع حالة كل رسالة لمعرفة النتيجة.')));
+    } catch (error) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: AppText(MessagingFeedback.describe(error))));
+    }
   }
 
   String _targetDisplayName(String target) {
@@ -522,12 +601,12 @@ class _MessagesCenterScreenState extends State<MessagesCenterScreen> {
     );
   }
 
-  Future<void> _openComposer(AppUser user, MessagingService messaging) async {
+  Future<void> _openComposer(AppUser user, MessagingService messaging, {String initialMode = 'broadcast'}) async {
     composer.clear();
     type = user.role == 'group_supervisor' ? 'emergency' : 'info';
     selectedGroup = null;
     supervisorBroadcast = false;
-    recipientMode = 'broadcast';
+    recipientMode = initialMode;
     selectedRecipient = null;
     scheduledAt = null;
     final data = context.read<DataService>();
@@ -536,6 +615,11 @@ class _MessagesCenterScreenState extends State<MessagesCenterScreen> {
     final directRecipients = await _loadDirectRecipients(user);
     if (!mounted) return;
     if (directRecipients.isNotEmpty) selectedRecipient = directRecipients.first.$1;
+    if (initialMode == 'direct' && directRecipients.isEmpty) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: AppText('لا يوجد مستلمون مباشرون متاحون لهذا الحساب. تحقق من الصلاحيات والاتصال.')));
+      return;
+    }
     final groups = <String>{};
     for (final item in data.operations) {
       if ('${item['_entity'] ?? ''}' == 'group' && item['isDeleted'] != true &&
