@@ -1,0 +1,84 @@
+name: Eco visual release validation
+
+# Run once when this workflow is introduced, or manually for a chosen SHA.
+# Do not cancel a verified visual build when unrelated main commits land.
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/eco-visual-validation.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: eco-visual-${{ github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  visual-and-apk:
+    name: Full Flutter visual checks and branded Android APK
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Free Android runner space
+        shell: bash
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost || true
+          sudo rm -rf /usr/local/lib/android/sdk/system-images /usr/local/lib/android/sdk/emulator || true
+          docker system prune -af || true
+          sudo apt-get clean || true
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.8'
+          channel: stable
+          cache: true
+      - name: Select Java 17
+        run: flutter config --jdk-dir="$JAVA_HOME"
+      - name: Install dependencies
+        run: flutter pub get
+      - name: Set up Gradle 8.14
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.14'
+      - name: Restore Android Gradle wrapper when missing
+        working-directory: android
+        run: |
+          if [ ! -f gradlew ] || [ ! -f gradle/wrapper/gradle-wrapper.jar ]; then
+            wrapper_dir="$(mktemp -d)"
+            touch "$wrapper_dir/build.gradle"
+            gradle -p "$wrapper_dir" wrapper --gradle-version 8.14
+            cp "$wrapper_dir/gradlew" ./gradlew
+            mkdir -p gradle/wrapper
+            cp "$wrapper_dir/gradle/wrapper/gradle-wrapper.jar" gradle/wrapper/
+            cp "$wrapper_dir/gradle/wrapper/gradle-wrapper.properties" gradle/wrapper/
+          fi
+          chmod +x gradlew
+      - name: Flutter analysis
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
+      - name: Complete Flutter test suite including all visual contracts
+        run: flutter test
+      - name: Build and verify installable debug APK
+        env:
+          GRADLE_OPTS: -Dorg.gradle.daemon=false -Dorg.gradle.parallel=false -Dorg.gradle.caching=false -Dkotlin.incremental=false
+        run: |
+          flutter build apk --debug
+          test -s build/app/outputs/flutter-apk/app-debug.apk
+          ls -lh build/app/outputs/flutter-apk/app-debug.apk
+      - name: Upload tested branded debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: CleanOps-Eco-Visual-Verified-APK
+          path: build/app/outputs/flutter-apk/app-debug.apk
+          retention-days: 14
+          if-no-files-found: error
+      - name: Show APK output on failure
+        if: failure()
+        run: |
+          find build android/app/build -type f -name '*.apk' -print 2>/dev/null || true
