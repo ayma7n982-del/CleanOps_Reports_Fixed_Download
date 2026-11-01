@@ -4,7 +4,7 @@ import 'package:solid_waste_operations/presentation/widgets/assistant_hero_banne
 import 'package:solid_waste_operations/presentation/widgets/assistant_shortcut_grid.dart';
 
 void main() {
-  testWidgets('original illustrated hero remains readable at narrow widths', (tester) async {
+  testWidgets('approved assistant identity remains readable at narrow widths', (tester) async {
     await tester.binding.setSurfaceSize(const Size(320, 670));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(const MaterialApp(
@@ -22,6 +22,8 @@ void main() {
     ));
     await tester.pumpAndSettle();
     expect(find.byType(AssistantHeroBanner), findsOneWidget);
+    final brand = tester.widget<Image>(find.byType(Image).first);
+    expect((brand.image as AssetImage).assetName, 'assets/brand/cleanops_icon_new.png');
     expect(find.text('مساعدك الذكي لإدارة عمليات النظافة'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });

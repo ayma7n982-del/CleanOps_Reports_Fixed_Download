@@ -60,6 +60,10 @@ void main() {
       progress: 0,
     );
     expect(find.text('CleanOps'), findsOneWidget);
+    final brand = tester.widget<Image>(find.byType(Image).first);
+    expect((brand.image as AssetImage).assetName, 'assets/brand/cleanops_icon_new.png');
+    final fade = tester.widgetList<Opacity>(find.byType(Opacity));
+    expect(fade.every((widget) => widget.opacity > 0), isTrue);
     expect(tester.takeException(), isNull);
   });
 
@@ -72,7 +76,7 @@ void main() {
     expect(xml, contains('@mipmap/ic_launcher'));
     expect(xml, isNot(contains('@drawable/cleanops_splash_logo')));
     final pubspec = File('pubspec.yaml').readAsStringSync();
-    expect(pubspec, contains('adaptive_icon_foreground: assets/brand/cleanops_logo_new.png'));
+    expect(pubspec, contains('adaptive_icon_foreground: assets/brand/cleanops_icon_new.png'));
     expect(xml, contains('android:windowSplashScreenBackground">#E8F7EF'));
   });
 
@@ -83,8 +87,8 @@ void main() {
     expect(xml, contains('#D9F0E6'));
     expect(xml, isNot(contains('cleanops_splash_logo')));
     expect(xml, contains('@mipmap/ic_launcher'));
-    expect(File('assets/brand/cleanops_logo_new.png').existsSync(), isTrue);
+    expect(File('assets/brand/cleanops_icon_new.png').existsSync(), isTrue);
     expect(File('lib/presentation/widgets/eco_boot_splash.dart').readAsStringSync(),
-        contains('assets/brand/cleanops_logo_new.png'));
+        contains('assets/brand/cleanops_icon_new.png'));
   });
 }

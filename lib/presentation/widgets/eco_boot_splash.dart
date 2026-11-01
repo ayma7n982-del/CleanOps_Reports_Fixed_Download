@@ -15,7 +15,8 @@ class EcoBootSplash extends StatelessWidget {
     final compact = height < 660;
     final logoSize = (width * .33).clamp(104.0, 150.0);
     final logoBoxSize = logoSize + 35;
-    final fade = Curves.easeOutCubic.transform(t);
+    // Keep branding visible even on the very first frame (progress == 0).
+    final fade = .85 + .15 * Curves.easeOutCubic.transform(t);
     final scale = .90 + .10 * Curves.easeOutBack.transform(t);
 
     return DecoratedBox(
@@ -98,7 +99,7 @@ class EcoBootSplash extends StatelessWidget {
                                   ],
                                 ),
                                 child: Image.asset(
-                                  'assets/brand/cleanops_logo_new.png',
+                                  'assets/brand/cleanops_icon_new.png',
                                   fit: BoxFit.contain,
                                   filterQuality: FilterQuality.high,
                                   errorBuilder: (_, __, ___) => const FittedBox(fit: BoxFit.scaleDown, child: Text('CleanOps', style: TextStyle(fontWeight: FontWeight.w900, color: Color(0xFF087F6B)))),

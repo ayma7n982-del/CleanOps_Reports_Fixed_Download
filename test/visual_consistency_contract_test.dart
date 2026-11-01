@@ -73,8 +73,8 @@ void main() {
     expect(v31, contains('@mipmap/ic_launcher'));
     expect(v31, isNot(contains('@drawable/cleanops_splash_logo')));
     expect(source('lib/presentation/widgets/eco_boot_splash.dart'),
-        contains('assets/brand/cleanops_logo_new.png'));
-    expect(source('lib/main.dart'), contains('assets/brand/cleanops_logo_new.png'));
+        contains('assets/brand/cleanops_icon_new.png'));
+    expect(source('lib/main.dart'), contains('assets/brand/cleanops_icon_new.png'));
   });
 
   test('all 27 registered screens remain present and readable by the audit',

@@ -99,9 +99,9 @@ void main() {
       final code = File(file).readAsStringSync();
       expect(code, isNot(contains("Image.asset('assets/app_icon.png'")),
           reason: file);
-      expect(code, isNot(contains("'assets/brand/cleanops_icon_new.png'")),
+      expect(code, isNot(contains("'assets/brand/cleanops_logo_new.png'")),
           reason: file);
-      expect(code, contains("'assets/brand/cleanops_logo_new.png'"),
+      expect(code, contains("'assets/brand/cleanops_icon_new.png'"),
           reason: file);
     }
   });

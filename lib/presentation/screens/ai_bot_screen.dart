@@ -1,6 +1,6 @@
-import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/localization.dart';
@@ -17,6 +17,7 @@ import 'enterprise_operations_hub.dart';
 import '../widgets/app_design.dart';
 import '../widgets/assistant_shortcut_grid.dart';
 import '../widgets/assistant_hero_banner.dart';
+import '../widgets/assistant_snapshot_card.dart';
 import 'messages_center.dart';
 import 'live_operations_map.dart';
 import 'operations_management.dart';
@@ -51,10 +52,7 @@ class _LinkedOperationalRecord {
   });
 }
 
-class _AIBotScreenState extends State<AIBotScreen> with TickerProviderStateMixin {
-  late final AnimationController orbitController;
-  late final AnimationController glowController;
-  late final AnimationController entranceController;
+class _AIBotScreenState extends State<AIBotScreen> {
   final TextEditingController input = TextEditingController();
   final ScrollController chatScroll = ScrollController();
   final List<_ChatMessage> messages = [];
@@ -65,17 +63,11 @@ class _AIBotScreenState extends State<AIBotScreen> with TickerProviderStateMixin
   @override
   void initState() {
     super.initState();
-    orbitController = AnimationController(vsync: this, duration: const Duration(seconds: 9))..repeat();
-    glowController = AnimationController(vsync: this, duration: const Duration(milliseconds: 1800))..repeat(reverse: true);
-    entranceController = AnimationController(vsync: this, duration: const Duration(milliseconds: 420))..forward();
-    messages.add(const _ChatMessage('أنا CleanOps AI. أستطيع تحليل مؤشرات التشغيل الحقيقية من Firestore للمستوى 3 و4. اطرح سؤالك وسأوضح مصدر الأرقام بدل اختلاقها.', fromUser: false));
+    messages.add(const _ChatMessage('أهلًا بك في مساعد CleanOps. اسألني عن ملخص التشغيل أو التنبيهات أو التقارير، وسأوضح لك مصدر المعلومات.', fromUser: false));
   }
 
   @override
   void dispose() {
-    orbitController.dispose();
-    glowController.dispose();
-    entranceController.dispose();
     input.dispose();
     chatScroll.dispose();
     super.dispose();
@@ -357,15 +349,15 @@ class _AIBotScreenState extends State<AIBotScreen> with TickerProviderStateMixin
                         const Icon(Icons.info_outline_rounded, color: Colors.orange),
                         const SizedBox(width: 10),
                         Expanded(child: AppText(
-                          !settings.aiEnabled
-                              ? 'المساعد المحلي يعمل دون API. الذكاء الخارجي اختياري.'
-                              : 'المساعد المحلي جاهز. لا تحتاج إلى مفتاح API.',
+                          'يمكنك سؤال المساعد عن بيانات التشغيل المتاحة لك.',
                           style: const TextStyle(color: cleanOpsText, fontSize: 12),
                         )),
                       ]),
                     ),
                   );
                 }),
+                _ChatPanel(messages: messages, loading: loading, input: input, controller: chatScroll, onSend: _send),
+                const SizedBox(height: 12),
                 AssistantShortcutGrid(
                   title: 'اسأل المساعد',
                   subtitle: 'اختصر وقتك بتحليلات فورية من بيانات التشغيل.',
@@ -435,24 +427,23 @@ class _AIBotScreenState extends State<AIBotScreen> with TickerProviderStateMixin
                   ),
                 ],
                 const SizedBox(height: 15),
-                FutureBuilder<Map<String, dynamic>>(
-                  future: context.read<OperationsAdminService>().liveOperationalSnapshot(user!),
-                  builder: (context, snap) {
-                    if (!snap.hasData) return const SizedBox.shrink();
-                    final x = snap.data!;
-                    return AiGlassCard(padding: const EdgeInsets.all(12), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      const Row(children: [AiFeatureIcon('dashboard', size: 16), SizedBox(width: 8), AppText('بيانات تشغيلية حقيقية', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w900)), Spacer(), AppText('Firestore', style: TextStyle(fontSize: 9, color: aiGreen))]),
-                      const SizedBox(height: 10),
-                      Wrap(spacing: 8, runSpacing: 8, children: [_LiveChip('العمال', '${x['workers']}'), _LiveChip('المجموعات', '${x['groups']}'), _LiveChip('الترحيلات', '${x['trips']}'), _LiveChip('الطوارئ', '${x['emergencies']}'), _LiveChip('المكبات الحرجة', '${x['criticalDumpsites']}')]),
-
-                    ]));
-                  },
+                AssistantSnapshotCard(
+                  key: ValueKey('${user!.id}:${user.role}:${user.scope}:${user.groupId}'),
+                  load: () => context.read<OperationsAdminService>()
+                      .liveOperationalSnapshot(user),
                 ),
                 if (user.can('dumpsite', 'view'))
                   StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                    stream: FirebaseFirestore.instance.collection('dumpsites')
+                    stream: Firebase.apps.isEmpty ? null : FirebaseFirestore.instance.collection('dumpsites')
                         .where('isActive', isEqualTo: true).limit(500).snapshots(),
                     builder: (context, snapshot) {
+                      if (snapshot.hasError || Firebase.apps.isEmpty) {
+                        return const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 10),
+                          child: AppText('تنبيهات المكبات غير متاحة حاليًا. تحقق من الاتصال.',
+                              style: TextStyle(color: cleanOpsMuted)),
+                        );
+                      }
                       if (!snapshot.hasData) return const SizedBox.shrink();
                       final critical = snapshot.data!.docs.where((doc) {
                         final data = doc.data();
@@ -489,7 +480,7 @@ class _AIBotScreenState extends State<AIBotScreen> with TickerProviderStateMixin
                     },
                   ),
                 const SizedBox(height: 10),
-                _ChatPanel(messages: messages, loading: loading, input: input, controller: chatScroll, onSend: _send),
+
                 if (linkedRecords.isNotEmpty) ...[
                   const SizedBox(height: 10),
                   AiGlassCard(
@@ -644,103 +635,9 @@ class _AccessNotice extends StatelessWidget {
   @override Widget build(BuildContext context) => const AiGlassCard(padding: EdgeInsets.all(16), child: Row(children: [Icon(Icons.lock_outline_rounded, color: Colors.orange), SizedBox(width: 10), Expanded(child: AppText('CleanOps AI التحليلي متاح للمستوى 3 والمستوى 4 فقط، حفاظًا على بيانات الإدارة.', style: TextStyle(color: cleanOpsMuted, fontSize: 14, height: 1.55)))]));
 }
 
-class _LiveChip extends StatelessWidget {
-  final String title, value;
-  const _LiveChip(this.title, this.value);
-  @override Widget build(BuildContext context) => Container(padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7), decoration: BoxDecoration(color: aiCyan.withOpacity(.07), borderRadius: BorderRadius.circular(12), border: Border.all(color: aiCyan.withOpacity(.16))), child: Row(mainAxisSize: MainAxisSize.min, children: [AppText(title, style: const TextStyle(fontSize: 11, color: cleanOpsMuted)), const SizedBox(width: 6), AppText(value, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: aiCyan))]));
-}
-
 class _LanguagePill extends StatelessWidget {
   final VoidCallback onTap;
   final bool isArabic;
   const _LanguagePill({required this.onTap, required this.isArabic});
   @override Widget build(BuildContext context) => Material(color: aiBlue.withOpacity(.08), borderRadius: BorderRadius.circular(22), child: InkWell(onTap: onTap, borderRadius: BorderRadius.circular(22), child: Padding(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8), child: Row(mainAxisSize: MainAxisSize.min, children: [const Icon(Icons.language_rounded, color: Color(0xFF6FE8FF), size: 17), const SizedBox(width: 5), AppText(isArabic ? 'English' : 'العربية', style: const TextStyle(color: cleanOpsText, fontSize: 13, fontWeight: FontWeight.w800))]))));
-}
-
-class _BotCoreAnimation extends StatelessWidget {
-  final AnimationController orbitController;
-  final AnimationController glowController;
-  final AnimationController entranceController;
-  final double width;
-  const _BotCoreAnimation({required this.orbitController, required this.glowController, required this.entranceController, required this.width});
-
-  @override
-  Widget build(BuildContext context) {
-    final size = math.min(width * .55, 250.0);
-    return AnimatedBuilder(
-      animation: Listenable.merge([orbitController, glowController, entranceController]),
-      builder: (context, child) {
-        final t = orbitController.value * math.pi * 2;
-        final glow = 0.72 + (math.sin(glowController.value * math.pi * 2) + 1) * .14;
-        final entrance = Curves.easeOutBack.transform(entranceController.value);
-        final rings = <Widget>[
-          for (final factor in [0.82, 0.68, 0.54])
-            Container(
-              width: size * factor,
-              height: size * factor,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(color: const Color(0xFF18D7FF).withOpacity(.10 * glow), width: 1.2),
-              ),
-            ),
-        ];
-        return Opacity(
-          opacity: entranceController.value.clamp(0.0, 1.0),
-          child: Transform.scale(
-            scale: .82 + .18 * entrance,
-            child: SizedBox(
-              width: size,
-              height: size,
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  Container(
-                    width: size * .72,
-                    height: size * .72,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(color: const Color(0xFF18D7FF).withOpacity(.20 * glow), blurRadius: 70, spreadRadius: 18),
-                        BoxShadow(color: const Color(0xFF00E676).withOpacity(.12 * glow), blurRadius: 45, spreadRadius: 6),
-                      ],
-                    ),
-                  ),
-                  ...rings,
-                  Transform.rotate(
-                    angle: t,
-                    child: Container(
-                      width: size * .76,
-                      height: size * .76,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        border: Border.all(color: const Color(0xFF18D7FF).withOpacity(.48), width: 2),
-                      ),
-                    ),
-                  ),
-                  Container(
-                    width: size * .48,
-                    height: size * .48,
-                    padding: const EdgeInsets.all(7),
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: const Color(0xFFEAF6F0),
-                      border: Border.all(color: const Color(0xFF18D7FF).withOpacity(.82), width: 2),
-                      boxShadow: [BoxShadow(color: const Color(0xFF18D7FF).withOpacity(.34 * glow), blurRadius: 32, spreadRadius: 4)],
-                    ),
-                    child: ClipOval(
-                      child: Image.asset(
-                        'assets/brand/cleanops_icon_new.png',
-                        fit: BoxFit.contain,
-                        errorBuilder: (_, __, ___) => const Icon(Icons.eco_rounded, color: aiCyan, size: 70),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        );
-      },
-    );
-  }
 }
