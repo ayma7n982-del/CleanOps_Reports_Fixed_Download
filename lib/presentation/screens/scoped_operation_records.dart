@@ -4,7 +4,6 @@ import 'package:provider/provider.dart';
 import '../../core/services/auth_service.dart';
 import '../../core/services/data_service.dart';
 import '../../core/services/operational_insights.dart';
-import '../widgets/app_design.dart';
 import '../widgets/app_navigation_bar.dart';
 
 /// Read-only task records from the existing synchronized operation cache.

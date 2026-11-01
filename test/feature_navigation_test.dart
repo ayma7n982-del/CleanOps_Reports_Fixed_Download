@@ -54,6 +54,9 @@ void main() {
     expect(FeatureRoutePolicy.resolve(user, 'attendance'), FeatureDestination.attendanceReport);
     expect(appFeaturePage(user, 'leave'), isA<AttendanceReportsHomeScreen>());
     expect(appFeaturePage(user, 'trips'), isNull);
+    expect(appFeaturePage(actor('group_supervisor', policies: const {
+      'leave': FeaturePolicy(create: false),
+    }), 'leave'), isA<AttendanceReportsHomeScreen>());
     expect(appFeaturePage(actor('worker'), 'workers'), isNull);
     expect(appFeaturePage(actor('worker'), 'cycle'), isNull);
     expect(appFeaturePage(user, 'unknown-task'), isNull);

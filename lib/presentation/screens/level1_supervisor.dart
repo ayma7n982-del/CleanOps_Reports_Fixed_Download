@@ -562,8 +562,8 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
     final action = widget.initialAction;
     if (action != null) {
       final permitted = user.role == 'group_supervisor' &&
-          user.can(action, 'view') &&
-          user.can(action == 'leave' ? 'attendance' : action, 'create');
+          user.can(action, 'view') && user.can(action, 'create') &&
+          (action != 'leave' || user.can('attendance', 'create'));
       final taskBody = !permitted
           ? const Center(child: AppText('هذه المهمة غير متاحة ضمن صلاحيات حسابك.'))
           : switch (action) {

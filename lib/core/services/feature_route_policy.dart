@@ -13,7 +13,8 @@ class FeatureRoutePolicy {
   static FeatureDestination? resolve(AppUser user, String feature) {
     if (!user.can(feature, 'view')) return null;
     final fieldEntry = user.role == 'group_supervisor' &&
-        user.can(feature == 'leave' ? 'attendance' : feature, 'create');
+        user.can(feature, 'create') &&
+        (feature != 'leave' || user.can('attendance', 'create'));
     return switch (feature) {
       'attendance' => fieldEntry ? FeatureDestination.attendanceEntry : FeatureDestination.attendanceReport,
       'leave' => fieldEntry ? FeatureDestination.leaveEntry : FeatureDestination.leaveReport,

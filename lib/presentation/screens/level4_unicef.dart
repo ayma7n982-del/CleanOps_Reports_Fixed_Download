@@ -33,8 +33,6 @@ class Level4UnicefScreen extends StatelessWidget {
           const ActionDecisionHubEntry(),
           AiHero(user: user, eyebrow: 'مدير اليونسيف', title: 'لوحة المنظومة', subtitle: 'رؤية مختصرة للحاويات والمكبات والبحث التشغيلي.'),
           const SizedBox(height: 10),
-          // Prominent temporary simulation shortcut: visible near the top of the dashboard.
-
           const SizedBox(height: 12),
           const OperationsOverviewStrip(),
           const SizedBox(height: 12),

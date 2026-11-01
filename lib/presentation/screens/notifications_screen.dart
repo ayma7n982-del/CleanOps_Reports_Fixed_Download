@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../core/services/data_service.dart';
 import '../widgets/app_navigation_bar.dart';
-import '../widgets/app_design.dart';
 
 class NotificationsPage extends StatelessWidget {
   const NotificationsPage({super.key});
