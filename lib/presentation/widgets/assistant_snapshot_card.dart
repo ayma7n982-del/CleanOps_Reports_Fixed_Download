@@ -50,7 +50,7 @@ class _AssistantSnapshotCardState extends State<AssistantSnapshotCard> {
                     style: TextStyle(color: cleanOpsMuted),
                   ),
                   TextButton.icon(
-                    onPressed: () => setState(() => _snapshot = _load()),
+                    onPressed: () => setState(() { _snapshot = _load(); }),
                     icon: const Icon(Icons.refresh_rounded),
                     label: const AppText('إعادة المحاولة'),
                   ),
