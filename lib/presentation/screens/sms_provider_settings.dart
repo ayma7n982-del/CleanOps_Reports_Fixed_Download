@@ -230,7 +230,7 @@ class _SmsProviderSettingsPageState extends State<SmsProviderSettingsPage> {
             const AiSectionCard(
               title: 'إعدادات محمية',
               feature: 'settings',
-              child: AppText('إعداد مفاتيح SMS متاح لمدير النظام (L4) فقط. يمكنك إرسال الرسائل بعد تفعيل الخدمة.'),
+              child: AppText('إعداد خدمة الرسائل الخارجية متاح لمدير اليونسيف فقط. يمكنك إرسال الرسائل بعد تفعيل الخدمة.'),
             ),
           const SizedBox(height: 12),
           const AiSectionCard(

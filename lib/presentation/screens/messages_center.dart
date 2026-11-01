@@ -141,7 +141,7 @@ class _MessagesCenterScreenState extends State<MessagesCenterScreen> {
                       user: user,
                       eyebrow: 'SECURE • FIRESTORE MESSAGING',
                       title: 'تواصل تشغيلي مباشر',
-                      subtitle: 'رسائل داخلية لحظية تعمل مع التخزين المحلي ولا تعتمد على FCM.',
+                      subtitle: 'المراسلات ضمن نطاق عملك، مع حفظ الرسائل على الجهاز عند انقطاع الاتصال.',
                       trailing: IconButton(
                         tooltip: 'تحديث المزامنة',
                         onPressed: () => _refreshMessages(messaging),
@@ -416,7 +416,7 @@ class _MessagesCenterScreenState extends State<MessagesCenterScreen> {
         dense: true,
         leading: Icon(error == null ? Icons.cloud_done_rounded : Icons.cloud_off_rounded, color: error == null ? aiGreen : red),
         title: AppText(error == null ? 'المراسلات الداخلية وحالة إرسال الرسائل' : 'تعذر إكمال عملية مراسلة. راجع التفاصيل أدناه.'),
-        subtitle: error == null ? const AppText('لا توجد خدمة FCM مطلوبة للتراسل الداخلي.') : AppText(error),
+        subtitle: error == null ? const AppText('تتزامن الرسائل تلقائيًا عند توفر الاتصال.') : AppText(error),
       ),
     );
   }

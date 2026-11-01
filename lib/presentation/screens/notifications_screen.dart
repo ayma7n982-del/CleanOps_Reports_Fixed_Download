@@ -1,3 +1,4 @@
+import '../../core/localization.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../core/services/data_service.dart';

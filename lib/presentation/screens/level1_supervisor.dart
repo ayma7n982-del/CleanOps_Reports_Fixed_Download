@@ -680,7 +680,7 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
           children: [
             SizedBox(width: 160, child: AiStatTile(title: 'النقلات', value: '$trips', subtitle: 'كارات أساسية', feature: 'trips')),
             SizedBox(width: 160, child: AiStatTile(title: 'البديلة', value: '$alternativeTrips', subtitle: 'كارات بديلة', feature: 'operations')),
-            SizedBox(width: 160, child: AiStatTile(title: 'الحالة', value: emergencyLock ? 'LOCK' : 'READY', subtitle: emergencyLock ? 'بروتوكول طوارئ' : 'تشغيل طبيعي', feature: emergencyLock ? 'emergency' : 'attendance')),
+            SizedBox(width: 160, child: AiStatTile(title: 'الحالة', value: emergencyLock ? 'متوقف' : 'جاهز', subtitle: emergencyLock ? 'بروتوكول طوارئ' : 'تشغيل طبيعي', feature: emergencyLock ? 'emergency' : 'attendance')),
           ],
         ),
         const SizedBox(height: 14),

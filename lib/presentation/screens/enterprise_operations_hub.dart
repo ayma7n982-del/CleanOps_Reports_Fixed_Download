@@ -1415,7 +1415,7 @@ class SecurityCenterPage extends StatelessWidget {
         const AiSectionCard(title: 'سياسة الأمان', feature: 'permissions', child: Column(children: [
           ListTile(leading: Icon(Icons.password_rounded, color: aiGreen), title: AppText('كلمات المرور'), subtitle: AppText('تُحمى عبر خدمة تسجيل الدخول ولا تظهر في السجلات.')),
           ListTile(leading: Icon(Icons.cloud_off_rounded, color: aiCyan), title: AppText('غير متصل'), subtitle: AppText('لا يتم تخزين كلمة المرور في التخزين المحلي.')),
-          ListTile(leading: Icon(Icons.notifications_off_rounded, color: aiCyan), title: AppText('FCM'), subtitle: AppText('غير مستخدم في منظومة الرسائل الحالية.')),
+
         ])),
       ]),
     );
