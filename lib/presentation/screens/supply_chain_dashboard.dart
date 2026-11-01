@@ -1,3 +1,4 @@
+import '../widgets/app_navigation_bar.dart';
 import 'package:flutter/material.dart';
 import '../../core/services/decision_hub_service.dart';
 import '../../core/services/decision_pdf_export.dart';
@@ -32,7 +33,7 @@ class _SupplyChainDashboardState extends State<SupplyChainDashboard> {
       final d = SupplyChainAnalytics.from(data, days: days, groupId: selected);
       final quality = s.complete ? 'بيانات مكتملة من الخادم' : 'بيانات جزئية أو محلية؛ المقارنات غير مؤكدة';
       return Scaffold(backgroundColor: cleanOpsBg,
-        appBar: AppBar(title: const Text('تحليل سلسلة الإمداد')),
+        appBar: AppBar(bottom: const AppNavigationBar(), title: const Text('تحليل سلسلة الإمداد')),
         body: ListView(padding: const EdgeInsets.all(16), children: [
           Container(padding: const EdgeInsets.all(22),
             decoration: BoxDecoration(borderRadius: BorderRadius.circular(24),

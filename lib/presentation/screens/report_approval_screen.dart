@@ -1,3 +1,4 @@
+import '../widgets/app_navigation_bar.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../core/models/core_models.dart';
@@ -28,7 +29,7 @@ class ReportApprovalScreen extends StatelessWidget {
     }).toList()
       ..sort((a,b) => '${b['createdAt'] ?? ''}'.compareTo('${a['createdAt'] ?? ''}'));
     return Scaffold(
-      appBar: AppBar(title: const AppText('دورة اعتماد التقارير')),
+      appBar: AppBar(bottom: const AppNavigationBar(), title: const AppText('دورة اعتماد التقارير')),
       body: reports.isEmpty
         ? const Center(child: AppText('لا توجد تقارير في دورة الاعتماد حتى الآن.'))
         : ListView(padding: const EdgeInsets.all(12), children: [

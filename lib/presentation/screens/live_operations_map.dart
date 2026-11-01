@@ -1,3 +1,4 @@
+import '../widgets/app_navigation_bar.dart';
 import 'dart:math' as math;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
@@ -25,7 +26,7 @@ class LiveOperationsMapScreen extends StatelessWidget {
     }
     return Scaffold(
       backgroundColor: cleanOpsBg,
-      appBar: AppBar(title: const AppText('خريطة العمليات الحية')),
+      appBar: AppBar(bottom: const AppNavigationBar(), title: const AppText('خريطة العمليات الحية')),
       body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
         stream: FirebaseFirestore.instance.collection('dumpsites').where('isActive', isEqualTo: true).snapshots(),
         builder: (context, dumpsitesSnap) {

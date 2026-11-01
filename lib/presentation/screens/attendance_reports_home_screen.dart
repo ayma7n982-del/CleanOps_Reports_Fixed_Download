@@ -1,3 +1,4 @@
+import '../widgets/app_navigation_bar.dart';
 import 'dart:ui' as ui;
 import 'dart:typed_data';
 import 'dart:convert';
@@ -20,7 +21,8 @@ import '../widgets/app_design.dart';
 import 'monthly_attendance_report_screen.dart';
 
 class AttendanceReportsHomeScreen extends StatefulWidget {
-  const AttendanceReportsHomeScreen({super.key});
+  final bool leavesOnly;
+  const AttendanceReportsHomeScreen({super.key, this.leavesOnly = false});
   @override
   State<AttendanceReportsHomeScreen> createState() => _AttendanceReportsHomeScreenState();
 }
@@ -84,13 +86,14 @@ class _AttendanceReportsHomeScreenState extends State<AttendanceReportsHomeScree
       if (id.isEmpty || recordedIds.contains(id)) continue;
       records.add({'workerId': id, 'workerName': person['name'] ?? person['username'] ?? id, 'workerRole': person['workerRole'] ?? person['role'] ?? 'worker', 'groupId': person['groupId'] ?? '', 'groupName': person['groupName'] ?? person['groupId'] ?? '', 'status': 'no_entry', 'ppeComplete': false, 'createdAt': selectedDate.toIso8601String(), 'isRosterOnly': true});
     }
+    if (widget.leavesOnly) records.removeWhere((record) => !const ['leave', 'on_leave', 'إجازة', 'permission', 'إذن خاص'].contains(record['status']));
     records.sort((a,b) => '${a['workerName'] ?? ''}'.compareTo('${b['workerName'] ?? ''}'));
     final present = records.where((e) => e['status'] == 'present' || e['status'] == 'حضور').length;
     final absent = records.where((e) => ['absent','غياب','excused_absence','unexcused_absence'].contains(e['status'])).length;
     final late = records.where((e) => ['late', 'متأخر'].contains(e['status'])).length;
     final leave = records.where((e) => ['leave', 'on_leave', 'إجازة'].contains(e['status'])).length;
     return Directionality(textDirection: arabic ? ui.TextDirection.rtl : ui.TextDirection.ltr, child: Scaffold(
-      appBar: AppBar(title: const AppText('تقارير الحضور'), actions: [IconButton(tooltip: 'التقرير الشهري التقويمي', onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const MonthlyAttendanceReportScreen())), icon: const Icon(Icons.calendar_month))]),
+      appBar: AppBar(bottom: const AppNavigationBar(), title: AppText(widget.leavesOnly ? 'سجل الإجازات والأذونات' : 'تقارير الحضور'), actions: [IconButton(tooltip: 'التقرير الشهري التقويمي', onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const MonthlyAttendanceReportScreen())), icon: const Icon(Icons.calendar_month))]),
       body: ListView(padding: const EdgeInsets.all(14), children: [
         Card(child: Padding(padding: const EdgeInsets.all(12), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           const AppText('تقرير الحضور والغياب التفصيلي / Detailed Attendance Report', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: Color(0xFF07589B))),

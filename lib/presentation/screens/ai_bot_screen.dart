@@ -1,3 +1,5 @@
+import '../feature_navigation.dart';
+import '../widgets/app_navigation_bar.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -25,7 +27,8 @@ import 'reports_center.dart';
 import '../../core/constants/app_constants.dart';
 
 class AIBotScreen extends StatefulWidget {
-  const AIBotScreen({super.key});
+  final bool embedded;
+  const AIBotScreen({super.key, this.embedded = false});
   @override State<AIBotScreen> createState() => _AIBotScreenState();
 }
 
@@ -85,7 +88,7 @@ class _AIBotScreenState extends State<AIBotScreen> {
     final user = context.read<AuthService>().currentUser;
     if (question.isEmpty || loading || user == null) return;
     if (user.role != 'donor_manager' && user.role != 'jsc_coordinator') {
-      setState(() => messages.add(const _ChatMessage('المساعد الذكي متاح للمستوى 3 والمستوى 4 فقط.', fromUser: false)));
+      setState(() => messages.add(const _ChatMessage('المساعد الذكي متاح لمنسق مجلس الخدمات ومدير اليونسيف فقط.', fromUser: false)));
       return;
     }
     input.clear();
@@ -314,6 +317,7 @@ class _AIBotScreenState extends State<AIBotScreen> {
           );
     return Scaffold(
       backgroundColor: const Color(0xFFF3F8F5),
+      appBar: widget.embedded ? null : AppBar(bottom: const AppNavigationBar(), title: const AppText('المساعد الذكي')),
       body: DecoratedBox(
         decoration: const BoxDecoration(gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Color(0xFFF7FBF8), Color(0xFFEAF6F0), Color(0xFFDDF3EC)])),
         child: SafeArea(
@@ -402,7 +406,7 @@ class _AIBotScreenState extends State<AIBotScreen> {
                     if (shortcuts.contains('operations'))
                       AssistantShortcutAction(icon: Icons.hub_rounded, title: 'مركز التشغيل', description: 'مراقبة العمليات لحظيًا', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const EnterpriseOperationsHubPage()))),
                     if (shortcuts.contains('trips'))
-                      AssistantShortcutAction(icon: Icons.route_rounded, title: 'سجل النقلات', description: 'عرض سجل كل النقلات', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const TripsLogPage()))),
+                      AssistantShortcutAction(icon: Icons.route_rounded, title: 'سجل النقلات', description: 'عرض سجل كل النقلات', onTap: () => openAppFeature(context, 'trips')),
                     if (shortcuts.contains('workers'))
                       AssistantShortcutAction(icon: Icons.groups_rounded, title: 'المجموعات والعمال', description: 'إدارة الفرق والأفراد', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const GroupsCommandCenterPage()))),
                     if (shortcuts.contains('alerts'))
@@ -552,7 +556,7 @@ class _AssistantRecordPage extends StatelessWidget {
     if (user == null) return const Scaffold(body: Center(child: AppText('انتهت جلسة المستخدم.')));
     final ref = FirebaseFirestore.instance.collection(record.collection).doc(record.id);
     return Scaffold(
-      appBar: AppBar(title: AppText(record.title)),
+      appBar: AppBar(bottom: const AppNavigationBar(), title: AppText(record.title)),
       body: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
         stream: ref.snapshots(),
         builder: (context, snapshot) {
@@ -632,7 +636,7 @@ class _TypingBubble extends StatelessWidget {
 
 class _AccessNotice extends StatelessWidget {
   const _AccessNotice();
-  @override Widget build(BuildContext context) => const AiGlassCard(padding: EdgeInsets.all(16), child: Row(children: [Icon(Icons.lock_outline_rounded, color: Colors.orange), SizedBox(width: 10), Expanded(child: AppText('CleanOps AI التحليلي متاح للمستوى 3 والمستوى 4 فقط، حفاظًا على بيانات الإدارة.', style: TextStyle(color: cleanOpsMuted, fontSize: 14, height: 1.55)))]));
+  @override Widget build(BuildContext context) => const AiGlassCard(padding: EdgeInsets.all(16), child: Row(children: [Icon(Icons.lock_outline_rounded, color: Colors.orange), SizedBox(width: 10), Expanded(child: AppText('CleanOps AI التحليلي متاح لمنسق مجلس الخدمات ومدير اليونسيف فقط، حفاظًا على بيانات الإدارة.', style: TextStyle(color: cleanOpsMuted, fontSize: 14, height: 1.55)))]));
 }
 
 class _LanguagePill extends StatelessWidget {

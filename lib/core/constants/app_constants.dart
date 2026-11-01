@@ -25,17 +25,17 @@ const roles = [
 ];
 
 const roleNames = {
-  'donor_manager': 'مدير المنظومة',
+  'donor_manager': 'مدير اليونسيف',
   'jsc_coordinator': 'منسق مجلس الخدمات',
   'municipality_coordinator': 'منسق البلدية',
-  'group_supervisor': 'مشرف المجموعة',
+  'group_supervisor': 'مشرف ميداني',
   'worker': 'عامل ميداني'
 };
 
 const allFeatures = {
   'attendance': 'الحضور والغياب',
   'leave': 'الإجازات والأذونات',
-  'trips': 'النقلات والكارو',
+  'trips': 'النقلات',
   'streets': 'توثيق الشوارع',
   'emergency': 'الطوارئ',
   'notifications': 'الإشعارات',

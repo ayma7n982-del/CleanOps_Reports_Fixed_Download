@@ -17,7 +17,7 @@ class AIService {
       throw StateError('هذا الحساب غير نشط أو لا يملك صلاحية عرض العمليات.');
     }
     if (user.role != 'donor_manager' && user.role != 'jsc_coordinator') {
-      throw StateError('المساعد الذكي متاح للمستوى 3 والمستوى 4 فقط.');
+      throw StateError('المساعد الذكي متاح لمنسق مجلس الخدمات ومدير اليونسيف فقط.');
     }
     final localAnswer = await _answerLocally(user, question);
     if (localAnswer != null) return localAnswer;
@@ -141,8 +141,8 @@ class AIService {
       lines.add('تنبيه دقة: وصلت إحدى القراءات إلى حد السجلات؛ الأعداد تخص العينة المقروءة وليست بالضرورة إجمالي النظام.');
     }
     lines.add(data['source'] == 'Firestore server data'
-        ? 'المصدر: Firebase / Firestore (اتصال بالخادم).'
-        : 'المصدر: نسخة Firestore المخزنة على الجهاز؛ قد تكون قديمة أو غير مكتملة.');
+        ? 'المصدر: سجلات التشغيل المحدثة من الخدمة.'
+        : 'المصدر: السجلات المحفوظة على الجهاز؛ قد تكون قديمة أو غير مكتملة.');
     return lines.join('\n');
   }
 

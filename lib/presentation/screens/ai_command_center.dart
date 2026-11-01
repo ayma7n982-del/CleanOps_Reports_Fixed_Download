@@ -1,3 +1,5 @@
+import '../feature_navigation.dart';
+import '../../core/services/feature_route_policy.dart';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -61,6 +63,8 @@ class _AICommandCenterState extends State<AICommandCenter> {
                 padding: padding,
                 children: [
                   _Hero(user: user, online: data.online, queue: data.queue.length),
+                  const SizedBox(height: 14),
+                  _QuickActions(user: user),
                   const SizedBox(height: 10),
                   _FocusToggle(value: focusMode, onChanged: (v) => setState(() => focusMode = v)),
                   const SizedBox(height: 14),
@@ -102,9 +106,8 @@ class _AICommandCenterState extends State<AICommandCenter> {
                     const _CycleCard(),
                   ],
                   const SizedBox(height: 14),
-                  const _AIUserState(),
+                  if (user.role == 'donor_manager' || user.role == 'municipality_coordinator') const _AIUserState(),
                   const SizedBox(height: 14),
-                  _QuickActions(user: user),
                   const SizedBox(height: 14),
                   _RiskPanel(data: data),
                   const SizedBox(height: 14),
@@ -164,7 +167,7 @@ class _FocusHeader extends StatelessWidget {
             const SizedBox(width: 10),
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                const AppText('FOCUS MODE', style: TextStyle(color: aiCyan, fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 1.1)),
+                const AppText('وضع التركيز', style: TextStyle(color: aiCyan, fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 1.1)),
                 AppText('وضع التركيز — ${user.name}', style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w900), overflow: TextOverflow.ellipsis),
                 const AppText('المؤشرات التشغيلية الحرجة فقط', style: TextStyle(color: Colors.white70, fontSize: 10)),
               ]),
@@ -297,7 +300,7 @@ class _AIUserState extends StatelessWidget {
         final data = snap.data ?? const <String, dynamic>{};
         final roles = Map<String, dynamic>.from(data['roles'] as Map? ?? const {});
         return _Panel(
-          title: 'تحديث AI المباشر',
+          title: 'المستخدمون حسب الدور',
           feature: 'operations',
           child: Wrap(
             spacing: 9,
@@ -305,9 +308,9 @@ class _AIUserState extends StatelessWidget {
             children: [
               _AIChip('المستخدمون', '${data['totalUsers'] ?? 0}', const Color(0xFF18D7FF)),
               _AIChip('النشطون', '${data['activeUsers'] ?? 0}', const Color(0xFF00E676)),
-              _AIChip('L2', '${roles['municipality_coordinator'] ?? 0}', const Color(0xFF1464A5)),
-              _AIChip('L3', '${roles['jsc_coordinator'] ?? 0}', const Color(0xFF7C3AED)),
-              _AIChip('L4', '${roles['donor_manager'] ?? 0}', const Color(0xFFF59E0B)),
+              _AIChip('منسق البلدية', '${roles['municipality_coordinator'] ?? 0}', const Color(0xFF1464A5)),
+              _AIChip('منسق مجلس الخدمات', '${roles['jsc_coordinator'] ?? 0}', const Color(0xFF7C3AED)),
+              _AIChip('مدير اليونسيف', '${roles['donor_manager'] ?? 0}', const Color(0xFFF59E0B)),
             ],
           ),
         );
@@ -358,7 +361,7 @@ class _Hero extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const AppText('AI OPERATIONS COMMAND CENTER', style: TextStyle(color: Color(0xFF18D7FF), fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 1.1)),
+                const AppText('إدارة عمليات النظافة', style: TextStyle(color: Color(0xFF18D7FF), fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 1.1)),
                 const SizedBox(height: 4),
                 AppText('مرحبًا، ${user.name}', style: TextStyle(color: Colors.white, fontSize: title, fontWeight: FontWeight.w900), overflow: TextOverflow.ellipsis),
                 AppText(roleNames[user.role] ?? '', style: const TextStyle(color: Color(0xFF00E676), fontSize: 11, fontWeight: FontWeight.w800)),
@@ -518,8 +521,8 @@ class _OperationsPulse extends StatelessWidget {
     feature: 'operations',
     child: Column(
       children: [
-        _RowValue(label: 'حالة الاتصال', value: online ? 'متصل' : 'Offline', color: online ? const Color(0xFF00A86B) : const Color(0xFFF59E0B)),
-        const _RowValue(label: 'وضع الأمان', value: 'RBAC 2.0', color: Color(0xFF7C3AED)),
+        _RowValue(label: 'حالة الاتصال', value: online ? 'متصل' : 'غير متصل', color: online ? const Color(0xFF00A86B) : const Color(0xFFF59E0B)),
+
       ],
     ),
   );
@@ -622,6 +625,18 @@ class _QuickActions extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final actions = <_Quick>[];
+    if (user.role == 'group_supervisor' || user.role == 'worker') {
+      for (final feature in ['attendance', 'trips', 'containers', 'emergency']) {
+        if (FeatureRoutePolicy.resolve(user, feature) == null) continue;
+        actions.add(_Quick(feature: feature,
+          title: FeatureRoutePolicy.label(user, feature).isEmpty
+              ? allFeatures[feature]! : FeatureRoutePolicy.label(user, feature),
+          subtitle: '', onTap: () => openAppFeature(context, feature)));
+      }
+      return _Panel(title: 'مهامك الميدانية', feature: 'operations',
+          child: EcoShortcutGrid(cards: actions));
+    }
+
 
     // Every shortcut below points to an existing, real module in the application.
     actions.add(_Quick(
@@ -641,12 +656,12 @@ class _QuickActions extends StatelessWidget {
       ));
     }
 
-    if (user.can('trips', 'view')) {
+    if (user.role != 'group_supervisor' && user.role != 'worker' && user.can('trips', 'view')) {
       actions.add(_Quick(
         feature: 'trips',
-        title: 'سجل الترحيلات',
+        title: 'سجل النقلات',
         subtitle: 'سجلات النقل الفعلية',
-        onTap: () => _push(context, const TripsLogPage()),
+        onTap: () => openAppFeature(context, 'trips'),
       ));
     }
 
@@ -676,7 +691,7 @@ class _QuickActions extends StatelessWidget {
     actions.add(_Quick(
       feature: 'sync',
       title: 'المزامنة',
-      subtitle: 'Online / Offline والطوابير',
+      subtitle: 'السجلات وحالة المزامنة',
       onTap: () => _push(context, const SyncCenterPage()),
     ));
 
@@ -729,8 +744,9 @@ class _QuickActions extends StatelessWidget {
       ));
     }
 
+    actions.removeWhere((action) => !user.can(action.feature, 'view') || (action.feature == 'ai' && user.role != 'donor_manager' && user.role != 'jsc_coordinator'));
     return _Panel(
-      title: 'اختصارات تشغيلية ذكية',
+      title: 'مهامك',
       feature: 'operations',
       child: EcoShortcutGrid(cards: actions),
     );

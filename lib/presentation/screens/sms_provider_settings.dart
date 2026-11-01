@@ -1,3 +1,4 @@
+import '../widgets/app_navigation_bar.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -118,7 +119,7 @@ class _SmsProviderSettingsPageState extends State<SmsProviderSettingsPage> {
     final canView = canConfigure ||
         const ['jsc_coordinator', 'municipality_coordinator'].contains(user.role);
     return Scaffold(
-      appBar: AppBar(
+      appBar: AppBar(bottom: const AppNavigationBar(),
         title: const AppText('إعدادات SMS'),
         actions: [
           IconButton(
@@ -133,7 +134,7 @@ class _SmsProviderSettingsPageState extends State<SmsProviderSettingsPage> {
         children: [
           AiHero(
             user: user,
-            eyebrow: 'SECURE SMS • CLEANOPS',
+            eyebrow: 'الرسائل الخارجية',
             title: 'ربط مزوّد الرسائل الخارجية',
             subtitle: 'إعدادات Twilio تحفظ بأمان على الخادم، ولا تُخزن المفاتيح في التطبيق.',
           ),

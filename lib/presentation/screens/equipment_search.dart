@@ -1,3 +1,4 @@
+import '../widgets/app_navigation_bar.dart';
 import 'package:provider/provider.dart';
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -70,7 +71,7 @@ class _EquipmentSearchScreenState extends State<EquipmentSearchScreen> {
     return Directionality(
       textDirection: context.watch<LocaleController>().isArabic ? TextDirection.rtl : TextDirection.ltr,
       child: Scaffold(
-        appBar: AppBar(title: const AppText('بحث المعدات'), actions: [IconButton(onPressed: loading ? null : _load, icon: const Icon(Icons.refresh_rounded))]),
+        appBar: AppBar(bottom: const AppNavigationBar(), title: const AppText('بحث المعدات'), actions: [IconButton(onPressed: loading ? null : _load, icon: const Icon(Icons.refresh_rounded))]),
         body: ListView(padding: const EdgeInsets.fromLTRB(14, 14, 14, 120), children: [
           AiSectionCard(
             title: 'مركز بحث المعدات', subtitle: 'ابحث بالاسم أو النوع أو الموديل أو اللوحة أو البلدية أو المجموعة.', feature: 'operations',

@@ -1,3 +1,4 @@
+import '../widgets/app_navigation_bar.dart';
 import 'dart:convert';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -63,10 +64,10 @@ class _ReportBrandingSettingsScreenState extends State<ReportBrandingSettingsScr
   Widget build(BuildContext context) {
     final user = context.watch<AuthService>().currentUser;
     if (user == null || (user.role != 'donor_manager' && user.role != 'jsc_coordinator')) {
-      return Scaffold(appBar: AppBar(title: const AppText('هوية التقارير والدورة')), body: const Center(child: AppText('لا تملك صلاحية تعديل هوية التقارير.')));
+      return Scaffold(appBar: AppBar(bottom: const AppNavigationBar(), title: const AppText('هوية التقارير والدورة')), body: const Center(child: AppText('لا تملك صلاحية تعديل هوية التقارير.')));
     }
     return Scaffold(
-    appBar: AppBar(title: const AppText('هوية التقارير والدورة')),
+    appBar: AppBar(bottom: const AppNavigationBar(), title: const AppText('هوية التقارير والدورة')),
     body: _busy ? const Center(child: CircularProgressIndicator()) : ListView(padding: const EdgeInsets.all(16), children: [
       const AppText('تظهر هذه البيانات في ترويسة التقرير. اسم المشروع مرتبط بالدورة المختارة عند التصدير، وهذه القيمة هي الاسم الافتراضي.', style: TextStyle(height: 1.5)),
       const SizedBox(height: 12),

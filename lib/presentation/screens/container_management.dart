@@ -1,3 +1,4 @@
+import '../widgets/app_navigation_bar.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:geolocator/geolocator.dart';
@@ -20,7 +21,7 @@ class ContainerManagementScreen extends StatelessWidget {
     return Directionality(
       textDirection: context.watch<LocaleController>().isArabic ? TextDirection.rtl : TextDirection.ltr,
       child: Scaffold(
-        appBar: AppBar(
+        appBar: AppBar(bottom: const AppNavigationBar(),
           title: AppText(user.role == 'group_supervisor' ? 'حاويات مجموعتي' : 'إدارة الحاويات'),
           actions: [
             if (user.role == 'jsc_coordinator' || user.role == 'group_supervisor') IconButton(onPressed: () => _openEditor(context), icon: const Icon(Icons.add_box_rounded)),

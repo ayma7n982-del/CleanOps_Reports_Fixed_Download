@@ -1,3 +1,4 @@
+import '../widgets/app_navigation_bar.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -117,7 +118,7 @@ class _WorkEntryFormScreenState extends State<WorkEntryFormScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const AppText('تسجيل تقرير العمل اليومي')),
+    appBar: AppBar(bottom: const AppNavigationBar(), title: const AppText('تسجيل تقرير العمل اليومي')),
     body: ListView(padding: const EdgeInsets.all(16), children: [
       const AppText('أدخل بيانات العمل الفعلية التي يسجلها المشرف. يبدأ التقرير كمسودة ولا يعتبر معتمدًا حتى يمر بدورة المراجعة.', style: TextStyle(height: 1.45)),
       const SizedBox(height: 12),

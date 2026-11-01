@@ -1,3 +1,4 @@
+import '../widgets/app_navigation_bar.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../core/localization.dart';
@@ -18,7 +19,7 @@ class _ApiSettingsPageState extends State<ApiSettingsPage> {
   @override void dispose(){base.dispose();version.dispose();timeout.dispose();key.dispose();aiKey.dispose();aiModel.dispose();super.dispose();}
   @override Widget build(BuildContext context){
     final c=context.watch<ConfigService>();
-    return Scaffold(appBar:AppBar(title:const AppText('إعدادات API'),actions:const [Padding(padding:EdgeInsetsDirectional.only(end:14),child:AiFeatureIcon('sync',size:16))]),body:ListView(padding:const EdgeInsets.fromLTRB(16,16,16,120),children:[
+    return Scaffold(appBar:AppBar(bottom: const AppNavigationBar(), title:const AppText('إعدادات API'),actions:const [Padding(padding:EdgeInsetsDirectional.only(end:14),child:AiFeatureIcon('sync',size:16))]),body:ListView(padding:const EdgeInsets.fromLTRB(16,16,16,120),children:[
       const AiSectionCard(title:'اتصال الـ API',subtitle:'إعدادات التكامل الخارجي محفوظة محليًا، والمفتاح في Secure Storage.',feature:'sync',child:_ApiStatus()),
       const SizedBox(height:12),
       AiSectionCard(title:'النقطة الأساسية',feature:'settings',child:Column(children:[
@@ -31,7 +32,7 @@ class _ApiSettingsPageState extends State<ApiSettingsPage> {
       ])),
       const SizedBox(height:12),
       AiSectionCard(title:'CleanOps AI — OpenAI',subtitle:'الخدمة اختيارية. لا تعمل إلا بعد تفعيلها وإضافة مفتاح API من الإعدادات.',feature:'ai',child:Column(children:[
-        SwitchListTile(contentPadding:EdgeInsets.zero,value:c.aiEnabled,onChanged:(v)=>setState(()=>c.aiEnabled=v),title:const AppText('تفعيل المساعد الذكي'),subtitle:const AppText('للمستوى 3 والمستوى 4 فقط.'),secondary:const AiFeatureIcon('ai',size:17)),
+        SwitchListTile(contentPadding:EdgeInsets.zero,value:c.aiEnabled,onChanged:(v)=>setState(()=>c.aiEnabled=v),title:const AppText('تفعيل المساعد الذكي'),subtitle:const AppText('لمنسق مجلس الخدمات ومدير اليونسيف فقط.'),secondary:const AiFeatureIcon('ai',size:17)),
         const SizedBox(height:8),
         TextField(controller:aiKey,textDirection:TextDirection.ltr,obscureText:true,decoration:InputDecoration(labelText:'OpenAI API Key',hintText:c.maskedAiApiKey.isEmpty?'اختياري — أدخل المفتاح هنا':'اتركه فارغًا للإبقاء على المفتاح الحالي')),
         const SizedBox(height:8),
@@ -57,7 +58,7 @@ class MessagingSettingsPage extends StatelessWidget {
     final canAccessSms = user != null && const [
       'donor_manager', 'jsc_coordinator', 'municipality_coordinator'
     ].contains(user.role);
-    return Scaffold(appBar:AppBar(title:const AppText('إعدادات الرسائل'),actions:const [Padding(padding:EdgeInsetsDirectional.only(end:14),child:AiFeatureIcon('messages',size:16))]),body:ListView(padding:const EdgeInsets.fromLTRB(16,16,16,120),children:[
+    return Scaffold(appBar:AppBar(bottom: const AppNavigationBar(), title:const AppText('إعدادات الرسائل'),actions:const [Padding(padding:EdgeInsetsDirectional.only(end:14),child:AiFeatureIcon('messages',size:16))]),body:ListView(padding:const EdgeInsets.fromLTRB(16,16,16,120),children:[
       AiSectionCard(title:'وضع الرسائل',subtitle:'محلي + Online مع مزامنة تلقائية عند توفر الشبكة',feature:'messages',child:Column(children:[
         SwitchListTile(value:c.localMessagingEnabled,onChanged:(v)=>_save(context,c,local:v),title:const AppText('الرسائل المحلية'),subtitle:const AppText('حفظ Inbox وOutbox وDrafts محليًا للعمل دون إنترنت.')),
         SwitchListTile(value:c.onlineMessagingEnabled,onChanged:(v)=>_save(context,c,online:v),title:const AppText('الرسائل Online'),subtitle:const AppText('مزامنة Firestore عند توفر الاتصال.')),
@@ -81,8 +82,8 @@ class MessagingSettingsPage extends StatelessWidget {
         ),
       ),
       const SizedBox(height:12),
-      const AiSectionCard(title:'التشغيل Offline / Online',feature:'sync',child:Column(children:[ListTile(leading:Icon(Icons.offline_bolt_rounded,color:aiGreen),title:AppText('Offline'),subtitle:AppText('يمكن قراءة الرسائل المحفوظة وإنشاء رسالة جديدة حسب الصلاحيات.')),
-      ListTile(leading:Icon(Icons.cloud_sync_rounded,color:aiCyan),title:AppText('Online'),subtitle:AppText('Firestore يستقبل الرسائل ويعيد مزامنة الطابور بعد عودة الاتصال.'))])),
+      const AiSectionCard(title:'التشغيل Offline / Online',feature:'sync',child:Column(children:[ListTile(leading:Icon(Icons.offline_bolt_rounded,color:aiGreen),title:AppText('غير متصل'),subtitle:AppText('يمكن قراءة الرسائل المحفوظة وإنشاء رسالة جديدة حسب الصلاحيات.')),
+      ListTile(leading:Icon(Icons.cloud_sync_rounded,color:aiCyan),title:AppText('متصل'),subtitle:AppText('Firestore يستقبل الرسائل ويعيد مزامنة الطابور بعد عودة الاتصال.'))])),
     ]));
   }
   Future<void> _save(BuildContext context,ConfigService c,{bool? local,bool? online,bool? auto,bool? read,bool? save,int? retention}) async {await c.updateMessagingSettings(localEnabled:local??c.localMessagingEnabled,onlineEnabled:online??c.onlineMessagingEnabled,autoSync:auto??c.autoMessageSync,readReceipts:read??c.readReceiptsEnabled,saveSentLocally:save??c.saveSentMessagesLocally,retentionDays:retention??c.messageRetentionDays);final u=context.read<AuthService>().currentUser;await context.read<MessagingService>().attachUser(u);}

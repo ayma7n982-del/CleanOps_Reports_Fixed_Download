@@ -1,3 +1,4 @@
+import '../widgets/app_navigation_bar.dart';
 import 'package:flutter/material.dart';
 import '../../core/services/simulation_seeder_service.dart';
 import '../widgets/app_design.dart';
@@ -19,7 +20,7 @@ class _SimulationPreviewScreenState extends State<SimulationPreviewScreen> {
     final workers = SimulationSeederService.workers;
     final trips = SimulationSeederService.trips;
     return Scaffold(
-      appBar: AppBar(
+      appBar: AppBar(bottom: const AppNavigationBar(),
         title: const AppText('معاينة المحاكاة — الدورة 11'),
         actions: [
           IconButton(
@@ -90,7 +91,7 @@ class _SimulationPreviewScreenState extends State<SimulationPreviewScreen> {
                   ListTile(leading: const Icon(Icons.monitor_weight_rounded), title: const Text('إجمالي الحمولة'), trailing: Text('${counts['volumeTons'] ?? 0} طن')),
                 ])),
                 const SizedBox(height: 12),
-                const Text('هذه البيانات محفوظة في ذاكرة التطبيق فقط، ولا تظهر في شاشات التشغيل الحقيقية أو Firestore. تختفي عند إغلاق التطبيق.', style: TextStyle(fontSize: 12), textAlign: TextAlign.center),
+                const Text('هذه بيانات تدريبية مؤقتة؛ لا تظهر في التقارير أو سجلات العمل الفعلية وتختفي عند إغلاق التطبيق.', style: TextStyle(fontSize: 12), textAlign: TextAlign.center),
               ],
             ),
     );

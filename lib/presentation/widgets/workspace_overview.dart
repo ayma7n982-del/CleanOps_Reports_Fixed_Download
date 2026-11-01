@@ -1,3 +1,4 @@
+import 'app_navigation_bar.dart';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -162,7 +163,7 @@ class _WorkspaceOverviewState extends State<WorkspaceOverview> {
       if (user.can('operations', 'view') || user.can('reports', 'view'))
       AiSectionCard(title:'البحث والأوامر',feature:'dashboard',
         child:FilledButton.tonalIcon(icon:const Icon(Icons.search),
-          label:const Text('البحث الذكي في السجلات والعمليات'),
+          label:const Text('البحث في النظام'),
           onPressed:()=>Navigator.push(context,MaterialPageRoute(
             builder:(_)=>const GlobalSearchPage())))),
       const SizedBox(height:12),
@@ -201,7 +202,7 @@ class _WorkspaceOverviewState extends State<WorkspaceOverview> {
           title:const Text('عرض المواقع على خريطة جوية'),
           subtitle:Text(user.role=='group_supervisor' ||
             user.role=='municipality_coordinator'
-            ? 'حاويات نطاقك فقط، دون توسيع صلاحيات Firebase'
+            ? 'حاويات نطاق عملك فقط'
             : 'الخريطة الحية وفق صلاحياتك'),
           trailing:const Icon(Icons.chevron_left),
           onTap:()=>openMap(user,scoped))),
@@ -253,7 +254,7 @@ class _ScopedContainersMap extends StatelessWidget {
     final valid=containers.where((c)=>c.latitude>=-90 && c.latitude<=90 &&
       c.longitude>=-180 && c.longitude<=180 &&
       (c.latitude!=0 || c.longitude!=0)).toList();
-    return Scaffold(appBar:AppBar(title:const Text('خريطة حاويات نطاقي')),
+    return Scaffold(appBar:AppBar(bottom: const AppNavigationBar(), title:const Text('خريطة حاويات نطاقي')),
       body:valid.isEmpty
         ? const Center(child:Text('لا توجد حاويات بإحداثيات متاحة ضمن نطاقك'))
         : FlutterMap(options:MapOptions(
@@ -298,7 +299,7 @@ class _FieldAlertsPage extends StatelessWidget {
     }).toList();
     final sorted = OperationalActivity.ordered(items);
     return Scaffold(
-      appBar: AppBar(title: const Text('بلاغات SOS لمجموعتي')),
+      appBar: AppBar(bottom: const AppNavigationBar(), title: const Text('بلاغات SOS لمجموعتي')),
       body: sorted.isEmpty
           ? const Center(child: Text('لا توجد بلاغات مفتوحة ضمن بيانات مجموعتك.'))
           : ListView.separated(

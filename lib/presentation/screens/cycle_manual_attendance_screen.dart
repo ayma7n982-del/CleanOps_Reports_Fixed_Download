@@ -1,3 +1,4 @@
+import '../widgets/app_navigation_bar.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../core/services/data_service.dart';
@@ -94,7 +95,7 @@ class _CycleManualAttendanceScreenState extends State<CycleManualAttendanceScree
       if (id.isNotEmpty && raw.length >= 10) existingByKey['$id|${raw.substring(0, 10)}'] = '${row['status'] ?? ''}';
     }
     return Scaffold(
-      appBar: AppBar(title: const Text('الإدخال اليدوي لدورة الحضور')),
+      appBar: AppBar(bottom: const AppNavigationBar(), title: const Text('الإدخال اليدوي لدورة الحضور')),
       body: Directionality(textDirection: TextDirection.rtl, child: Column(children: [
         Padding(padding: const EdgeInsets.all(12), child: Wrap(spacing: 8, runSpacing: 8, children: [
           OutlinedButton.icon(onPressed: () => _pick(true), icon: const Icon(Icons.event), label: Text('بداية الدورة: ${_date(start)}')),

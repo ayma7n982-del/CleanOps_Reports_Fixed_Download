@@ -1,3 +1,5 @@
+import '../feature_navigation.dart';
+import '../widgets/app_navigation_bar.dart';
 import 'action_decision_hub.dart';
 import 'dart:async';
 import 'dart:convert';
@@ -50,34 +52,34 @@ class EnterpriseOperationsHubPage extends StatelessWidget {
           const ['donor_manager', 'jsc_coordinator', 'municipality_coordinator'].contains(user.role))
         CreativeShortcut(title: 'بحث المعدات', subtitle: 'بحث سريع بالاسم والنوع والموقع', feature: 'operations', onTap: () => _push(context, const EquipmentSearchScreen())),
       if (user.can('operations', 'view') || user.can('reports', 'view'))
-        CreativeShortcut(title: 'البحث الشامل', subtitle: 'بحث ذكي يفهم الاختلافات والأخطاء', feature: 'reports', onTap: () => _push(context, const GlobalSearchPage())),
+        CreativeShortcut(title: 'البحث في النظام', subtitle: 'بحث ذكي يفهم الاختلافات والأخطاء', feature: 'reports', onTap: () => _push(context, const GlobalSearchPage())),
       if (user.can('emergency', 'view'))
         CreativeShortcut(title: 'التنبيهات والبلاغات', subtitle: 'البلاغات والحالات الحرجة', feature: 'emergency', onTap: () => _push(context, const AlertsCenterPage())),
       if (user.can('workers', 'view')) CreativeShortcut(title: 'المجموعات والعمال', subtitle: 'الحالة والتوزيع والأفراد', feature: 'workers', onTap: () => _push(context, const GroupsCommandCenterPage())),
-      if (user.can('trips', 'view')) CreativeShortcut(title: 'سجل الترحيلات', subtitle: 'جميع النقلات الموثقة', feature: 'trips', onTap: () => _push(context, const TripsLogPage())),
+      if (user.can('trips', 'view')) CreativeShortcut(title: 'سجل النقلات', subtitle: 'جميع النقلات الموثقة', feature: 'trips', onTap: () => openAppFeature(context, 'trips')),
       if (user.can('reports', 'view')) CreativeShortcut(title: 'التقارير', subtitle: 'الغياب والحاويات والعمل والدورات', feature: 'reports', onTap: () => _push(context, const ReportsCenterScreen())),
       if (user.can('sync', 'view'))
-        CreativeShortcut(title: 'المزامنة', subtitle: 'Online / Offline والطوابير', feature: 'sync', onTap: () => _push(context, const SyncCenterPage())),
+        CreativeShortcut(title: 'المزامنة', subtitle: 'السجلات وحالة المزامنة', feature: 'sync', onTap: () => _push(context, const SyncCenterPage())),
       if (user.can('permissions', 'view'))
         CreativeShortcut(title: 'الأمان', subtitle: 'الحساب والجلسة والصلاحيات', feature: 'permissions', onTap: () => _push(context, const SecurityCenterPage())),
     ];
     return Scaffold(
-      appBar: AppBar(
+      appBar: AppBar(bottom: const AppNavigationBar(),
         title: const AppText('مركز الإدارة والتشغيل'),
-        actions: [IconButton(tooltip: tr('البحث الذكي'), onPressed: () => _push(context, const GlobalSearchPage()), icon: const Icon(Icons.search_rounded))],
+        actions: [IconButton(tooltip: tr('البحث في النظام'), onPressed: () => _push(context, const GlobalSearchPage()), icon: const Icon(Icons.search_rounded))],
       ),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
         children: [
         const ActionDecisionHubEntry(),
-        AiHero(user: user, eyebrow: 'CLEANOPS OPERATIONS HUB', title: 'مركز الإدارة والتشغيل', subtitle: 'مركز بسيط للوصول إلى أهم الأصول والبحث والتنبيهات.'),
+        AiHero(user: user, eyebrow: 'إدارة التشغيل', title: 'مركز الإدارة والتشغيل', subtitle: 'مركز بسيط للوصول إلى أهم الأصول والبحث والتنبيهات.'),
         const SizedBox(height: 14),
         FutureBuilder<Map<String, dynamic>>(
           future: context.read<OperationsAdminService>().liveOperationalSnapshot(user),
           builder: (context, snap) {
             if (!snap.hasData) return const _LoadingCard();
             final x = snap.data!;
-            return AiSectionCard(title: 'لقطة تشغيلية حقيقية', subtitle: 'تُقرأ من Firestore ولا تستخدم أرقامًا تجريبية', feature: 'dashboard', trailing: AppText(_time(x['checkedAt']), style: const TextStyle(color: cleanOpsMuted, fontSize: 10)), child: Wrap(spacing: 10, runSpacing: 10, children: [
+            return AiSectionCard(title: 'لقطة تشغيلية حقيقية', subtitle: 'بيانات التشغيل المتاحة لحسابك', feature: 'dashboard', trailing: AppText(_time(x['checkedAt']), style: const TextStyle(color: cleanOpsMuted, fontSize: 10)), child: Wrap(spacing: 10, runSpacing: 10, children: [
               if (user.can('workers', 'view')) _HubMetric('العمال النشطون', '${x['workers']}', 'workers'),
               if (user.can('operations', 'view')) _HubMetric('المجموعات', '${x['groups']}', 'operations'),
               if (user.can('emergency', 'view')) _HubMetric('الطوارئ', '${x['emergencies']}', 'emergency'),
@@ -96,7 +98,7 @@ class EnterpriseOperationsHubPage extends StatelessWidget {
 }
 
 class _HubMetric extends StatelessWidget { final String title,value,feature; const _HubMetric(this.title,this.value,this.feature); @override Widget build(BuildContext c)=>Container(width: MediaQuery.sizeOf(c).width < 500 ? 105 : 130,padding: const EdgeInsets.all(10),decoration: BoxDecoration(color: aiDark2.withOpacity(.65),borderRadius: BorderRadius.circular(14),border: Border.all(color: aiCyan.withOpacity(.16))),child: Row(children:[AiFeatureIcon(feature,size:13),const SizedBox(width:7),Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[AppText(value,style:const TextStyle(fontSize:18,fontWeight:FontWeight.w900)),AppText(title,style:const TextStyle(fontSize:9,color:cleanOpsMuted),overflow:TextOverflow.ellipsis)]))])); }
-class _LoadingCard extends StatelessWidget { const _LoadingCard(); @override Widget build(BuildContext c)=>const AiSectionCard(title:'جاري قراءة البيانات',subtitle:'من Firestore',feature:'sync',child:Center(child:Padding(padding:EdgeInsets.all(16),child:CircularProgressIndicator()))); }
+class _LoadingCard extends StatelessWidget { const _LoadingCard(); @override Widget build(BuildContext c)=>const AiSectionCard(title:'جاري قراءة البيانات',subtitle:'من سجلات التشغيل',feature:'sync',child:Center(child:Padding(padding:EdgeInsets.all(16),child:CircularProgressIndicator()))); }
 
 class AlertsCenterPage extends StatelessWidget {
   const AlertsCenterPage({super.key});
@@ -185,13 +187,13 @@ class AlertsCenterPage extends StatelessWidget {
 
 class TripsLogPage extends StatelessWidget {
   const TripsLogPage({super.key});
-  @override Widget build(BuildContext context) => _OpsStreamPage(title:'سجل الترحيلات',feature:'trips',query:FirebaseFirestore.instance.collection('operations').where('_entity',isEqualTo:'trip').limit(300),empty:'لا توجد ترحيلات مسجلة.',builder:(docs)=>Column(children:docs.map((d)=>_OperationTile(d)).toList()));
+  @override Widget build(BuildContext context) => _OpsStreamPage(title:'سجل النقلات',feature:'trips',query:FirebaseFirestore.instance.collection('operations').where('_entity',isEqualTo:'trip').limit(300),empty:'لا توجد ترحيلات مسجلة.',builder:(docs)=>Column(children:docs.map((d)=>_OperationTile(d)).toList()));
 }
 
 class _OpsStreamPage extends StatelessWidget {
   final String title,feature,empty; final Query<Map<String,dynamic>> query; final Widget Function(List<QueryDocumentSnapshot<Map<String,dynamic>>>) builder;
   const _OpsStreamPage({required this.title,required this.feature,required this.query,required this.empty,required this.builder});
-  @override Widget build(BuildContext context)=>Scaffold(appBar:AppBar(title:AppText(title)),body:StreamBuilder<QuerySnapshot<Map<String,dynamic>>>(stream:query.snapshots(),builder:(c,s){if(s.hasError)return Center(child:Padding(padding:const EdgeInsets.all(20),child:AppText('تعذر تحميل البيانات: ${s.error}')));if(!s.hasData)return const Center(child:CircularProgressIndicator());final docs=s.data!.docs.toList()..sort((a,b)=>'${b.data()['createdAt']??b.data()['timestamp']??''}'.compareTo('${a.data()['createdAt']??a.data()['timestamp']??''}'));if(docs.isEmpty)return Center(child:AppText(empty));return ListView(padding:const EdgeInsets.fromLTRB(16,16,16,120),children:[AiSectionCard(title:title,feature:feature,subtitle:s.data!.metadata.isFromCache ? 'بيانات محلية مخزنة (قد تكون قديمة)' : 'بيانات Firestore بحسب الصلاحيات',child:builder(docs))]);}));
+  @override Widget build(BuildContext context)=>Scaffold(appBar:AppBar(bottom: const AppNavigationBar(), title:AppText(title)),body:StreamBuilder<QuerySnapshot<Map<String,dynamic>>>(stream:query.snapshots(),builder:(c,s){if(s.hasError)return Center(child:Padding(padding:const EdgeInsets.all(20),child:AppText('تعذر تحميل البيانات: ${s.error}')));if(!s.hasData)return const Center(child:CircularProgressIndicator());final docs=s.data!.docs.toList()..sort((a,b)=>'${b.data()['createdAt']??b.data()['timestamp']??''}'.compareTo('${a.data()['createdAt']??a.data()['timestamp']??''}'));if(docs.isEmpty)return Center(child:AppText(empty));return ListView(padding:const EdgeInsets.fromLTRB(16,16,16,120),children:[AiSectionCard(title:title,feature:feature,subtitle:s.data!.metadata.isFromCache ? 'بيانات محلية مخزنة (قد تكون قديمة)' : 'بيانات التشغيل ضمن صلاحياتك',child:builder(docs))]);}));
 }
 class _OperationTile extends StatelessWidget {
   final QueryDocumentSnapshot<Map<String, dynamic>> doc;
@@ -306,7 +308,7 @@ class SyncCenterPage extends StatelessWidget {
     final m = context.watch<MessagingService>();
     final c = context.watch<ConfigService>();
     return Scaffold(
-      appBar: AppBar(title: const AppText('مركز المزامنة')),
+      appBar: AppBar(bottom: const AppNavigationBar(), title: const AppText('مركز المزامنة')),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
         children: [
@@ -322,7 +324,7 @@ class SyncCenterPage extends StatelessWidget {
                         : Icons.cloud_off_rounded,
                 color: d.online ? aiGreen : Colors.orange,
               ),
-              title: AppText(d.online ? 'Online' : 'Offline'),
+              title: AppText(d.online ? 'متصل' : 'غير متصل'),
               subtitle: AppText(d.automaticSyncStatus),
               trailing: d.queue.isEmpty
                   ? const Icon(Icons.check_circle_outline_rounded, color: aiGreen)
@@ -361,7 +363,7 @@ class SyncCenterPage extends StatelessWidget {
 }
 
 class SystemHealthPage extends StatefulWidget { const SystemHealthPage({super.key}); @override State<SystemHealthPage> createState()=>_SystemHealthPageState(); }
-class _SystemHealthPageState extends State<SystemHealthPage>{Map<String,String> state={};bool busy=false;Future<void> check()async{setState(()=>busy=true);final next=<String,String>{};next['Firebase']=Firebase.apps.isNotEmpty?'جاهز':'غير مهيأ';next['Authentication']=FirebaseAuth.instance.currentUser != null?'جلسة نشطة':'لا توجد جلسة';try{await FirebaseFirestore.instance.collection('config').doc('global').get(const GetOptions(source:Source.server)).timeout(const Duration(seconds:5));next['Firestore']='متصل';}catch(e){next['Firestore']='غير متاح';}final c=context.read<ConfigService>();next['API']=c.apiEnabled?(c.apiBaseUrl.isEmpty?'مفعّل بلا عنوان':'مفعّل'):'غير مفعّل';next['Local Store']='جاهز';setState(()=>state=next..['Checked At']=DateTime.now().toIso8601String());setState(()=>busy=false);} @override void initState(){super.initState();unawaited(check());} @override Widget build(BuildContext context)=>Scaffold(appBar:AppBar(title:const AppText('صحة النظام')),body:ListView(padding:const EdgeInsets.fromLTRB(16,16,16,120),children:[AiSectionCard(title:'System Health',subtitle:'فحص فعلي للخدمات المتاحة',feature:'operations',trailing:IconButton(onPressed:busy?null:check,icon:const Icon(Icons.refresh_rounded)),child:Column(children:state.entries.map((e)=>ListTile(dense:true,leading:Icon(e.key=='Checked At'?Icons.schedule_rounded:Icons.circle,color:e.key=='Checked At'?cleanOpsMuted:(e.value.contains('غير')||e.value.contains('لا ')?Colors.orange:aiGreen),size:15),title:AppText(e.key,style:const TextStyle(fontSize:11)),trailing:AppText(e.value,style:const TextStyle(fontSize:10,color:cleanOpsText)))).toList()))]));}
+class _SystemHealthPageState extends State<SystemHealthPage>{Map<String,String> state={};bool busy=false;Future<void> check()async{setState(()=>busy=true);final next=<String,String>{};next['خدمة الحساب']=Firebase.apps.isNotEmpty?'جاهز':'غير مهيأ';next['جلسة الدخول']=FirebaseAuth.instance.currentUser != null?'جلسة نشطة':'لا توجد جلسة';try{await FirebaseFirestore.instance.collection('config').doc('global').get(const GetOptions(source:Source.server)).timeout(const Duration(seconds:5));next['حفظ البيانات']='متصل';}catch(e){next['حفظ البيانات']='غير متاح';}final c=context.read<ConfigService>();next['API']=c.apiEnabled?(c.apiBaseUrl.isEmpty?'مفعّل بلا عنوان':'مفعّل'):'غير مفعّل';next['بيانات الجهاز']='جاهز';setState(()=>state=next..['آخر فحص']=DateTime.now().toIso8601String());setState(()=>busy=false);} @override void initState(){super.initState();unawaited(check());} @override Widget build(BuildContext context)=>Scaffold(appBar:AppBar(bottom: const AppNavigationBar(), title:const AppText('صحة النظام')),body:ListView(padding:const EdgeInsets.fromLTRB(16,16,16,120),children:[AiSectionCard(title:'فحص الاتصال والخدمات',subtitle:'فحص فعلي للخدمات المتاحة',feature:'operations',trailing:IconButton(onPressed:busy?null:check,icon:const Icon(Icons.refresh_rounded)),child:Column(children:state.entries.map((e)=>ListTile(dense:true,leading:Icon(e.key=='آخر فحص'?Icons.schedule_rounded:Icons.circle,color:e.key=='آخر فحص'?cleanOpsMuted:(e.value.contains('غير')||e.value.contains('لا ')?Colors.orange:aiGreen),size:15),title:AppText(e.key,style:const TextStyle(fontSize:11)),trailing:AppText(e.value,style:const TextStyle(fontSize:10,color:cleanOpsText)))).toList()))]));}
 
 
 class GlobalSearchPage extends StatefulWidget {
@@ -503,7 +505,7 @@ class _GlobalSearchPageState extends State<GlobalSearchPage> {
   Future<void> _loadRemoteSources() async {
     if (remoteLoading || !mounted) return;
     if (Firebase.apps.isEmpty) {
-      setState(() => remoteWarning = 'البحث يعمل على البيانات المحلية؛ Firebase غير مهيأ.');
+      setState(() => remoteWarning = 'تعذر الاتصال بالخدمة؛ تُعرض البيانات المحفوظة على الجهاز.');
       return;
     }
     final canFetchServer = _dataService.online &&
@@ -623,8 +625,8 @@ class _GlobalSearchPageState extends State<GlobalSearchPage> {
         ? results
         : results.where((r) => r.category == categoryFilter).toList();
     return Scaffold(
-      appBar: AppBar(
-        title: const AppText('البحث الشامل'),
+      appBar: AppBar(bottom: const AppNavigationBar(),
+        title: const AppText('البحث في النظام'),
         actions: [
           IconButton(
             tooltip: 'تحديث نتائج البحث',
@@ -738,7 +740,7 @@ class _GlobalSearchPageState extends State<GlobalSearchPage> {
                     title: AppText(result.title, maxLines: 2, overflow: TextOverflow.ellipsis,
                         style: const TextStyle(fontWeight: FontWeight.w800)),
                     subtitle: AppText(
-                      result.category + ' • ' + result.id,
+                      result.category,
                       maxLines: 1, overflow: TextOverflow.ellipsis,
                       style: const TextStyle(color: cleanOpsMuted, fontSize: 11),
                     ),
@@ -844,7 +846,7 @@ class _SearchRecordPage extends StatelessWidget {
         ? FirebaseFirestore.instance.collection(source).doc(record.id).snapshots()
         : null;
     return Scaffold(
-      appBar: AppBar(title: AppText(record.title, maxLines: 1, overflow: TextOverflow.ellipsis)),
+      appBar: AppBar(bottom: const AppNavigationBar(), title: AppText(record.title, maxLines: 1, overflow: TextOverflow.ellipsis)),
       body: stream == null
           ? _recordBody(context, record.data, fromCache: true)
           : StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
@@ -874,7 +876,7 @@ class _SearchRecordPage extends StatelessWidget {
       children: [
         AiSectionCard(
           title: record.title,
-          subtitle: record.category + ' • سجل ' + record.id,
+          subtitle: record.category,
           feature: 'operations',
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -897,7 +899,7 @@ class _SearchRecordPage extends StatelessWidget {
                         SizedBox(width: 105, child: AppText(field.value,
                             style: const TextStyle(color: cleanOpsMuted, fontSize: 12))),
                         const SizedBox(width: 8),
-                        Expanded(child: AppText('${data[field.key]}',
+                        Expanded(child: AppText(field.key == 'role' ? (roleNames['${data[field.key]}'] ?? 'غير محدد') : '${data[field.key]}',
                             style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12))),
                       ],
                     ),
@@ -961,7 +963,7 @@ class GroupsCommandCenterPage extends StatelessWidget {
     final userQuery = FirebaseFirestore.instance.collection('users').limit(1500);
 
     return Scaffold(
-      appBar: AppBar(
+      appBar: AppBar(bottom: const AppNavigationBar(),
         title: const AppText('مركز المجموعات'),
         actions: [
           if (canManage) IconButton(tooltip: 'استيراد مجموعات', icon: const Icon(Icons.file_upload_outlined), onPressed: () => _importGroups(context, u.id, u.role, u.scope)),
@@ -1352,7 +1354,7 @@ class ExecutiveReportPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final u = context.watch<AuthService>().currentUser!;
     return Scaffold(
-      appBar: AppBar(title: const AppText('التقرير التنفيذي')),
+      appBar: AppBar(bottom: const AppNavigationBar(), title: const AppText('التقرير التنفيذي')),
       body: FutureBuilder<Map<String, dynamic>>(
         future: context.read<OperationsAdminService>().liveOperationalSnapshot(u),
         builder: (context, snap) {
@@ -1361,7 +1363,7 @@ class ExecutiveReportPage extends StatelessWidget {
           return ListView(
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
             children: [
-              AiHero(user: u, eyebrow: 'EXECUTIVE REPORT', title: 'ملخص تنفيذي', subtitle: 'الأرقام الحالية مأخوذة من Firestore وقت إنشاء التقرير.'),
+              AiHero(user: u, eyebrow: 'ملخص التشغيل', title: 'ملخص تنفيذي', subtitle: 'الأرقام بحسب السجلات المتاحة وقت إنشاء التقرير.'),
               const SizedBox(height: 12),
               AiSectionCard(
                 title: 'المؤشرات التشغيلية', feature: 'reports',
@@ -1391,13 +1393,13 @@ class SecurityCenterPage extends StatelessWidget {
     final user = context.watch<AuthService>().currentUser!;
     final auth = context.read<AuthService>();
     return Scaffold(
-      appBar: AppBar(title: const AppText('مركز الأمان')),
+      appBar: AppBar(bottom: const AppNavigationBar(), title: const AppText('مركز الأمان')),
       body: ListView(padding: const EdgeInsets.fromLTRB(16, 16, 16, 120), children: [
         AiSectionCard(title: 'الحساب الحالي', feature: 'permissions', child: Column(children: [
           _kv('اسم المستخدم', user.username),
           _kv('الدور', roleNames[user.role] ?? user.role),
           _kv('الحالة', user.isActive ? 'نشط' : 'غير نشط'),
-          _kv('كلمة المرور', 'لا تُحفظ داخل Firestore أو LocalStore'),
+          _kv('كلمة المرور', 'لا تُعرض ولا تُحفظ ضمن السجلات التشغيلية'),
         ])),
         const SizedBox(height: 12),
         AiSectionCard(title: 'إعادة كلمة المرور', feature: 'users', subtitle: 'يُرسل رابط إعادة التعيين إلى البريد المرتبط بالحساب', child: FilledButton.icon(
@@ -1411,8 +1413,8 @@ class SecurityCenterPage extends StatelessWidget {
         )),
         const SizedBox(height: 12),
         const AiSectionCard(title: 'سياسة الأمان', feature: 'permissions', child: Column(children: [
-          ListTile(leading: Icon(Icons.password_rounded, color: aiGreen), title: AppText('كلمات المرور'), subtitle: AppText('تُدار عبر Firebase Authentication ولا تُكتب في Firestore.')),
-          ListTile(leading: Icon(Icons.cloud_off_rounded, color: aiCyan), title: AppText('Offline'), subtitle: AppText('لا يتم تخزين كلمة المرور في التخزين المحلي.')),
+          ListTile(leading: Icon(Icons.password_rounded, color: aiGreen), title: AppText('كلمات المرور'), subtitle: AppText('تُحمى عبر خدمة تسجيل الدخول ولا تظهر في السجلات.')),
+          ListTile(leading: Icon(Icons.cloud_off_rounded, color: aiCyan), title: AppText('غير متصل'), subtitle: AppText('لا يتم تخزين كلمة المرور في التخزين المحلي.')),
           ListTile(leading: Icon(Icons.notifications_off_rounded, color: aiCyan), title: AppText('FCM'), subtitle: AppText('غير مستخدم في منظومة الرسائل الحالية.')),
         ])),
       ]),
@@ -1453,9 +1455,9 @@ class _FilesCenterPageState extends State<FilesCenterPage> {
   }
   @override void initState() { super.initState(); unawaited(load()); }
   @override Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const AppText('مركز الملفات'), actions: [IconButton(onPressed: busy ? null : load, icon: const Icon(Icons.refresh_rounded))]),
+    appBar: AppBar(bottom: const AppNavigationBar(), title: const AppText('مركز الملفات'), actions: [IconButton(onPressed: busy ? null : load, icon: const Icon(Icons.refresh_rounded))]),
     body: ListView(padding: const EdgeInsets.fromLTRB(16, 16, 16, 120), children: [
-      AiSectionCard(title: 'الملفات المرفوعة', subtitle: 'تُقرأ من Firebase Storage • الصور والتسجيلات الميدانية', feature: 'reports', child: busy
+      AiSectionCard(title: 'الملفات المرفوعة', subtitle: 'الصور والتسجيلات الميدانية المحفوظة', feature: 'reports', child: busy
         ? const Center(child: Padding(padding: EdgeInsets.all(20), child: CircularProgressIndicator()))
         : error != null
           ? AppText('تعذر تحميل الملفات: $error')
@@ -1479,7 +1481,7 @@ class AuditLogPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final stream = FirebaseFirestore.instance.collection('audit').orderBy('timestamp', descending: true).limit(200).snapshots();
     return Scaffold(
-      appBar: AppBar(title: const AppText('سجل التدقيق')),
+      appBar: AppBar(bottom: const AppNavigationBar(), title: const AppText('سجل التدقيق')),
       body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
         stream: stream,
         builder: (context, snap) {
@@ -1491,7 +1493,7 @@ class AuditLogPage extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
             children: [
               AiSectionCard(
-                title: 'سجل التدقيق', subtitle: 'قراءة فقط • Level 4', feature: 'permissions',
+                title: 'سجل التدقيق', subtitle: 'للاطلاع فقط • مدير اليونسيف', feature: 'permissions',
                 child: Column(children: docs.map((d) {
                   final x = d.data();
                   return ListTile(

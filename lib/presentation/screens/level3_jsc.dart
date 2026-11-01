@@ -1,3 +1,4 @@
+import '../widgets/app_navigation_bar.dart';
 import 'action_decision_hub.dart';
 import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -570,13 +571,9 @@ class _Level3JscState extends State<Level3JscScreen> with SingleTickerProviderSt
       textDirection: context.watch<LocaleController>().isArabic ? TextDirection.rtl : TextDirection.ltr,
       child: Scaffold(
         appBar: AppBar(
-          title: const AppText('المستوى 3 — منسق مجلس الخدمات'),
-          actions: [
-            IconButton(onPressed: _loadOperationsState, icon: const Icon(Icons.refresh)),
-            IconButton(tooltip: tr('البحث الذكي'), onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const GlobalSearchPage())), icon: const Icon(Icons.search_rounded)),
-            IconButton(onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ReportsCenterScreen())), icon: const Icon(Icons.analytics_outlined)),
-          ],
-          bottom: TabBar(controller: _tabController, isScrollable: true, tabs: [Tab(text: tr('لوحة القيادة')), Tab(text: tr('الإدارة')), Tab(text: tr('التقارير والرسائل'))]),
+          title: const AppText('منسق مجلس الخدمات'),
+          actions: [IconButton(tooltip: 'تحديث البيانات', onPressed: _loadOperationsState, icon: const Icon(Icons.refresh))],
+          bottom: PreferredSize(preferredSize: const Size.fromHeight(112), child: Column(mainAxisSize: MainAxisSize.min, children: [const AppNavigationBar(), TabBar(controller: _tabController, isScrollable: true, tabs: [Tab(text: tr('لوحة القيادة')), Tab(text: tr('الإدارة')), Tab(text: tr('التقارير والرسائل'))])])),
         ),
         body: IndexedStack(index: tab, children: [_dashboardBody(), _managementBody(), _reportsBody()]),
         ),
@@ -592,7 +589,7 @@ class _Level3JscState extends State<Level3JscScreen> with SingleTickerProviderSt
                   const ActionDecisionHubEntry(),
                   AiHero(
                     user: context.read<AuthService>().currentUser!,
-                    eyebrow: 'LEVEL 3 • JSC CONTROL',
+                    eyebrow: 'منسق مجلس الخدمات',
                     title: 'مركز القيادة والتنسيق',
                     subtitle: 'السعة، الآليات والطوارئ في لوحة واحدة مع إشارات تشغيل ذكية.',
                   ),
@@ -643,7 +640,7 @@ class _Level3JscState extends State<Level3JscScreen> with SingleTickerProviderSt
                     children: [
                       SizedBox(width: 165, child: AiStatTile(title: 'سعة المكب', value: '${(_capacityPercent * 100).round()}%', subtitle: redLight ? 'تنبيه مرتفع' : 'ضمن النطاق', feature: 'dumpsite')),
                       SizedBox(width: 165, child: AiStatTile(title: 'الطوارئ', value: '${emergencies.length}', subtitle: 'بلاغات مرصودة', feature: 'emergency')),
-                      const SizedBox(width: 165, child: AiStatTile(title: 'الدور', value: 'L3', subtitle: 'منسق JSC', feature: 'permissions')),
+                      const SizedBox(width: 165, child: AiStatTile(title: 'الدور', value: 'منسق مجلس الخدمات', subtitle: 'الدور الوظيفي', feature: 'permissions')),
                     ],
                   ),
                   const SizedBox(height: 14),

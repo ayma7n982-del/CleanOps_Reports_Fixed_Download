@@ -1,3 +1,4 @@
+import '../widgets/app_navigation_bar.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../core/services/auth_service.dart';
@@ -75,14 +76,14 @@ class _ActionDecisionHubScreenState extends State<ActionDecisionHubScreen> {
   Widget build(BuildContext context) {
     final service = _service;
     if (service == null) return const Directionality(textDirection: TextDirection.rtl,
-      child: Scaffold(body: Center(child: Text('هذه اللوحة متاحة للإدارة L2–L4 فقط.'))));
+      child: Scaffold(body: Center(child: Text('هذه اللوحة متاحة لمدير اليونسيف ومنسق مجلس الخدمات ومنسق البلدية فقط.'))));
     return Directionality(textDirection: TextDirection.rtl,
       child: DefaultTabController(length: 3, child: AnimatedBuilder(
         animation: service,
         builder: (context, _) {
           final data = service.analytics;
           return Scaffold(
-            appBar: AppBar(title: const Text('لوحة الإجراءات والقرارات الذكية')),
+            appBar: AppBar(bottom: const AppNavigationBar(), title: const Text('لوحة الإجراءات والقرارات الذكية')),
             body: SafeArea(child: NestedScrollView(
               headerSliverBuilder: (context, inner) => [
                 SliverToBoxAdapter(child: Padding(padding: const EdgeInsets.all(16),

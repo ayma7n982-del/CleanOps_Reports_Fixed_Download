@@ -42,7 +42,7 @@ class SimulationSeederService {
     for (var groupNo = 1; groupNo <= 5; groupNo++) {
       final groupId = 'demo_cycle11_group_$groupNo';
       _groups.add(<String, dynamic>{'id': groupId, 'name': 'المجموعة $groupNo', 'municipalityId': municipalityId, 'isSimulation': true});
-      _workers.add(<String, dynamic>{'id': '${groupId}_supervisor', 'name': 'مشرف المجموعة $groupNo', 'role': 'field_supervisor', 'groupId': groupId, 'isSimulation': true});
+      _workers.add(<String, dynamic>{'id': '${groupId}_supervisor', 'name': 'مشرف ميداني $groupNo', 'role': 'field_supervisor', 'groupId': groupId, 'isSimulation': true});
       for (var i = 1; i <= 7; i++) {
         _workers.add(<String, dynamic>{'id': '${groupId}_worker_$i', 'name': 'عامل جمع $i - المجموعة $groupNo', 'role': 'primary_collection_worker', 'groupId': groupId, 'isSimulation': true});
       }

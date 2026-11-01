@@ -1,3 +1,4 @@
+import '../widgets/app_navigation_bar.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -59,7 +60,7 @@ class _UserManagementSettingsPageState extends State<UserManagementSettingsPage>
       if (!mounted) return;
       await showDialog(context: context, builder: (_) => AlertDialog(
         title: const AppText('تم إنشاء المستخدم'),
-        content: AppText('اسم المستخدم: ${result['username']}\nكلمة المرور: ${result['temporaryPassword']}\n\nالحساب جاهز للدخول الآن، وتم تحديث القائمة تلقائيًا. لم يتم حفظ كلمة المرور داخل Firestore.'),
+        content: AppText('اسم المستخدم: ${result['username']}\nكلمة المرور: ${result['temporaryPassword']}\n\nالحساب جاهز للدخول الآن، وتم تحديث القائمة تلقائيًا.'),
         actions: [TextButton(onPressed: () => Navigator.pop(context), child: const AppText('إغلاق'))],
       ));
       for (final c in [name, username, email, phone, password, employeeId, jobTitle, group, notes, municipality]) { c.clear(); }
@@ -79,7 +80,7 @@ class _UserManagementSettingsPageState extends State<UserManagementSettingsPage>
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const AppText('تأكيد حذف المستخدم'),
-        content: AppText('هل تريد تعطيل المستخدم "$name" وإخفاءه من النظام؟ سيبقى حسابه محفوظًا في Firebase للأرشفة، لكنه لن يُحسب ضمن المستخدمين النشطين.'),
+        content: AppText('هل تريد تعطيل المستخدم "$name" وإخفاءه من النظام؟ سيبقى حسابه محفوظًا للأرشفة، لكنه لن يُحسب ضمن المستخدمين النشطين.'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const AppText('إلغاء')),
           TextButton(onPressed: () => Navigator.pop(dialogContext, true), child: const AppText('حذف', style: TextStyle(color: Colors.red))),
@@ -114,15 +115,15 @@ class _UserManagementSettingsPageState extends State<UserManagementSettingsPage>
     return Directionality(
       textDirection: context.watch<LocaleController>().isArabic ? TextDirection.rtl : TextDirection.ltr,
       child: Scaffold(
-        appBar: AppBar(title: const AppText('إدارة المستخدمين'), actions: const [Padding(padding: EdgeInsetsDirectional.only(end: 14), child: AiFeatureIcon('users', size: 16))]),
+        appBar: AppBar(bottom: const AppNavigationBar(), title: const AppText('إدارة المستخدمين'), actions: const [Padding(padding: EdgeInsetsDirectional.only(end: 14), child: AiFeatureIcon('users', size: 16))]),
         body: ListView(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
           children: [
-            AiHero(user: actor, eyebrow: 'USER MANAGEMENT', title: 'إنشاء حساب تشغيلي كامل', subtitle: 'الحساب يُنشأ في Firebase Authentication ويُسجّل ملفه التشغيلي في Firestore. كلمة المرور لا تُحفظ في ملف المستخدم.'),
+            AiHero(user: actor, eyebrow: 'إدارة المستخدمين', title: 'إنشاء حساب تشغيلي كامل', subtitle: 'أنشئ حسابًا وحدد دوره ونطاق عمله. تُحمى بيانات تسجيل الدخول تلقائيًا.'),
             const SizedBox(height: 14),
             AiSectionCard(
               title: 'بيانات الحساب', feature: 'users', child: Column(children: [
-                DropdownButtonFormField<String>(value: roles.contains(role) ? role : roles.first, items: roles.map((r) => DropdownMenuItem(value: r, child: AppText(roleNames[r] ?? r))).toList(), onChanged: busy ? null : (v) => setState(() => role = v ?? role), decoration: InputDecoration(labelText: tr('الدور / المستوى'))),
+                DropdownButtonFormField<String>(value: roles.contains(role) ? role : roles.first, items: roles.map((r) => DropdownMenuItem(value: r, child: AppText(roleNames[r] ?? r))).toList(), onChanged: busy ? null : (v) => setState(() => role = v ?? role), decoration: InputDecoration(labelText: tr('الدور الوظيفي'))),
                 const SizedBox(height: 10),
                 TextField(controller: name, decoration: InputDecoration(labelText: tr('الاسم الكامل'))),
                 const SizedBox(height: 10),
@@ -165,7 +166,7 @@ class _UserManagementSettingsPageState extends State<UserManagementSettingsPage>
                                   return DropdownMenuItem(value: d.id, child: Text('${x['name'] ?? x['groupName'] ?? d.id}'));
                                 }).toList(),
                                 onChanged: busy ? null : (v) => setState(() => group.text = v ?? ''),
-                                decoration: InputDecoration(labelText: tr('المجموعة / مشرف المجموعة')),
+                                decoration: InputDecoration(labelText: tr('المجموعة / مشرف ميداني')),
                               ),
                               const SizedBox(height: 7),
                               TextField(controller: group, textDirection: TextDirection.ltr, decoration: InputDecoration(labelText: tr('معرّف المجموعة (بديل عند عدم وجود القائمة)'))),

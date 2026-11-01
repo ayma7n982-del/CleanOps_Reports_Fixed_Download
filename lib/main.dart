@@ -1,3 +1,7 @@
+import 'presentation/widgets/app_navigation_bar.dart';
+import 'presentation/screens/notifications_screen.dart';
+import 'presentation/feature_navigation.dart';
+import 'core/services/feature_route_policy.dart';
 import 'core/localization.dart';
 import 'dart:async';
 import 'dart:ui' as ui;
@@ -149,7 +153,7 @@ class _SetupWizardState extends State<SetupWizardPage>{
     final progress=(step+1)/titles.length;
     return Scaffold(
       backgroundColor:cleanOpsBg,
-      appBar:AppBar(title:const AppText('معالج إعداد المنظومة'),centerTitle:true),
+      appBar:AppBar(bottom: const AppNavigationBar(), title:const AppText('معالج إعداد المنظومة'),centerTitle:true),
       body:ListView(
         padding:EdgeInsets.fromLTRB(width<500?14:24,14,width<500?14:24,22),
         children:[
@@ -165,7 +169,7 @@ class _SetupWizardState extends State<SetupWizardPage>{
               Container(width:62,height:62,decoration:BoxDecoration(shape:BoxShape.circle,gradient:const LinearGradient(colors:[aiBlue,aiGreen]),boxShadow:[BoxShadow(color:aiCyan.withOpacity(.28),blurRadius:22)]),child:Icon(icons[step],color:Colors.white,size:28)),
               const SizedBox(width:14),
               Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-                const AppText('CLEANOPS SETUP',style:TextStyle(color:aiCyan,fontSize:9,fontWeight:FontWeight.w900,letterSpacing:1.2)),
+                const AppText('إعداد التطبيق',style:TextStyle(color:aiCyan,fontSize:9,fontWeight:FontWeight.w900,letterSpacing:1.2)),
                 const SizedBox(height:4),
                 AppText(titles[step],style:const TextStyle(color:Colors.white,fontSize:21,fontWeight:FontWeight.w900)),
                 const SizedBox(height:3),
@@ -248,121 +252,28 @@ class _AppShellState extends State<AppShell>{
   }
 
   List<Widget> _pages(AppUser u){
-    return [const AICommandCenter(),const OperationsPage(),const AIBotScreen(),const ReportsPage(),const SettingsPage()];
+    return [const AICommandCenter(),const OperationsPage(),const AIBotScreen(embedded: true),const ReportsPage(),const SettingsPage()];
   }
   @override Widget build(BuildContext context){
     final auth=context.watch<AuthService>();
-    final data=context.watch<DataService>();
     final user=auth.currentUser;
     _syncMessagingBinding(user);
     if(user==null) return const EnterpriseLoginScreen();
     final pages=_pages(user);
-    final titles=['مركز القيادة','العمليات','المساعد الذكي','التقارير','الإعدادات'];
-    final compactToolbar = MediaQuery.sizeOf(context).width < 430;
-    final messaging = context.watch<MessagingService>();
-    final hasUnread = messaging.unreadCount > 0 || data.notifications.any((n) => !n.read);
+    final titles=['الرئيسية','العمل الميداني','المساعد الذكي','التقارير','الإعدادات'];
     return Directionality(
       textDirection:context.watch<LocaleController>().isArabic ? ui.TextDirection.rtl : ui.TextDirection.ltr,
       child:Scaffold(
         backgroundColor:cleanOpsBg,
         appBar:AppBar(
           title:AppText(titles[index]),
-          actions: compactToolbar
-              ? [
-                  IconButton(
-                    tooltip: tr('البحث الذكي'),
-                    onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const GlobalSearchPage())),
-                    icon: const Icon(Icons.search_rounded),
-                  ),
-                  PopupMenuButton<String>(
-                    tooltip: 'الرسائل والإشعارات وحالة الاتصال',
-                    icon: Badge(
-                      isLabelVisible: hasUnread || data.queue.isNotEmpty,
-                      child: const Icon(Icons.more_vert_rounded),
-                    ),
-                    onSelected: (value) {
-                      if (value == 'messages') {
-                        Navigator.push(context, MaterialPageRoute(builder: (_) => const MessagesCenterScreen()));
-                      } else if (value == 'notifications') {
-                        showNotifications(context);
-                      }
-                    },
-                    itemBuilder: (context) => [
-                      PopupMenuItem<String>(
-                        value: 'messages',
-                        child: Row(children: [
-                          const Icon(Icons.forum_outlined, color: aiBlue),
-                          const SizedBox(width: 10),
-                          Expanded(child: AppText('الرسائل', overflow: TextOverflow.ellipsis)),
-                          if (messaging.unreadCount > 0) Text('${messaging.unreadCount}', style: const TextStyle(color: aiBlue, fontWeight: FontWeight.bold)),
-                        ]),
-                      ),
-                      PopupMenuItem<String>(
-                        value: 'notifications',
-                        child: Row(children: [
-                          const Icon(Icons.notifications_none_rounded, color: aiBlue),
-                          const SizedBox(width: 10),
-                          const Expanded(child: AppText('الإشعارات')),
-                          if (data.notifications.any((n) => !n.read))
-                            const Icon(Icons.circle, color: Color(0xFFDC4545), size: 9),
-                        ]),
-                      ),
-                      PopupMenuItem<String>(
-                        enabled: false,
-                        child: Row(children: [
-                          Icon(data.online ? Icons.cloud_done_outlined : Icons.cloud_off_outlined, color: aiBlue),
-                          const SizedBox(width: 10),
-                          Expanded(child: AppText(data.automaticSyncStatus, maxLines: 2, overflow: TextOverflow.ellipsis)),
-                        ]),
-                      ),
-                    ],
-                  ),
-                ]
-              : [
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 4),
-                    child: Center(
-                      child: Tooltip(
-                        message: data.automaticSyncStatus,
-                        child: Badge(
-                          isLabelVisible: data.queue.isNotEmpty,
-                          label: AppText('${data.queue.length}'),
-                          child: Icon(data.syncing
-                              ? Icons.sync_rounded
-                              : data.online ? Icons.cloud_done_outlined : Icons.cloud_off_outlined),
-                        ),
-                      ),
-                    ),
-                  ),
-                  IconButton(
-                    tooltip: tr('البحث الذكي'),
-                    onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const GlobalSearchPage())),
-                    icon: const Icon(Icons.search_rounded),
-                  ),
-                  Badge(
-                    isLabelVisible: messaging.unreadCount > 0,
-                    label: Text('${messaging.unreadCount}'),
-                    child: IconButton(
-                      tooltip: 'الرسائل',
-                      onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const MessagesCenterScreen())),
-                      icon: const Icon(Icons.forum_outlined),
-                    ),
-                  ),
-                  IconButton(
-                    tooltip: 'الإشعارات',
-                    onPressed: () => showNotifications(context),
-                    icon: Badge(
-                      isLabelVisible: data.notifications.any((n) => !n.read),
-                      child: const Icon(Icons.notifications_none),
-                    ),
-                  ),
-                ],
+          bottom: AppNavigationBar(onHome: () => setState(() => index = 0)),
         ),
         drawer:AppDrawer(user:user,onNavigate:(i){setState(()=>index=i);Navigator.pop(context);}),
         body:pages[index],
         bottomNavigationBar: _CleanOpsNavigationDock(
           selectedIndex: index,
-          canQuickAction: user.can('attendance', 'create'),
+          canQuickAction: ['attendance', 'trips', 'containers', 'emergency'].any((feature) => user.can(feature, 'create') || user.can(feature, 'edit')),
           onDestinationSelected: (next) => setState(() => index = next),
           onQuickAction: () => quickAction(context),
         ),
@@ -390,7 +301,7 @@ class _CleanOpsNavigationDock extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final destinations = <(IconData, String)>[
-      (Icons.space_dashboard_rounded, tr('مركز القيادة')),
+      (Icons.space_dashboard_rounded, tr('الرئيسية')),
       (Icons.hub_rounded, tr('العمليات')),
       (Icons.auto_awesome_rounded, tr('المساعد الذكي')),
       (Icons.insights_rounded, tr('التقارير')),
@@ -398,7 +309,7 @@ class _CleanOpsNavigationDock extends StatelessWidget {
     ];
     final isArabic = context.watch<LocaleController>().isArabic;
     final compactLabels = isArabic
-        ? const ['القيادة', 'العمليات', 'المساعد', 'التقارير', 'الإعدادات']
+        ? const ['الرئيسية', 'المهام', 'المساعد', 'التقارير', 'الإعدادات']
         : destinations.map((item) => item.$2).toList();
     return Material(
       color: Colors.white,
@@ -588,7 +499,7 @@ class AppDrawer extends StatelessWidget {
               padding: EdgeInsets.only(top: 14, bottom: 8),
               child: Center(
                 child: Text(
-                  'ECO-UI R3 • 2026.10.30',
+                  'CleanOps',
                   textDirection: ui.TextDirection.ltr,
                   style: TextStyle(
                     color: cleanOpsMuted,
@@ -684,7 +595,7 @@ class HeaderCard extends StatelessWidget{
                 children:[
                   Icon(online?Icons.cloud_done:Icons.cloud_off,color:online?Colors.greenAccent:Colors.orangeAccent,size:17),
                   const SizedBox(width:6),
-                  AppText(online?'متصل بالسحابة':'وضع Offline',style:const TextStyle(color:Colors.white70,fontSize:11)),
+                  AppText(online?'متصل بالسحابة':'العمل دون اتصال',style:const TextStyle(color:Colors.white70,fontSize:11)),
                   if(queue>0)...[const SizedBox(width:14),AppText('$queue بانتظار المزامنة',style:const TextStyle(color:Colors.white70,fontSize:11))],
                 ],
               ),
@@ -842,13 +753,13 @@ class _OperationsState extends State<OperationsPage> {
   @override Widget build(BuildContext context) {
     final user = context.watch<AuthService>().currentUser!;
     final data = context.watch<DataService>();
-    const features = ['attendance', 'leave', 'trips', 'streets', 'emergency'];
+    const features = ['attendance', 'leave', 'trips', 'streets', 'emergency', 'containers'];
     final query = search.trim().toLowerCase();
     final cards = features.where((feature) {
       if (!user.can(feature, 'view')) return false;
-      final title = I18n.tr(allFeatures[feature]!, context.read<LocaleController>().locale.languageCode);
+      final title = I18n.tr(FeatureRoutePolicy.label(user, feature).isEmpty ? allFeatures[feature]! : FeatureRoutePolicy.label(user, feature), context.read<LocaleController>().locale.languageCode);
       return title.toLowerCase().contains(query);
-    }).map((feature) => ActionCard(feature: feature, title: allFeatures[feature]!, onTap: () => openFeature(context, feature))).toList();
+    }).map((feature) => ActionCard(feature: feature, title: FeatureRoutePolicy.label(user, feature).isEmpty ? allFeatures[feature]! : FeatureRoutePolicy.label(user, feature), onTap: () => openFeature(context, feature))).toList();
 
     return ListView(
       padding: const EdgeInsets.all(16),
@@ -867,7 +778,7 @@ class _OperationsState extends State<OperationsPage> {
             children: [
               ListTile(
                 leading: Icon(data.online ? Icons.cloud_done : Icons.cloud_off, color: data.online ? green : orange),
-                title: AppText(data.online ? 'متصل' : 'Offline'),
+                title: AppText(data.online ? 'متصل' : 'غير متصل'),
                 subtitle: AppText('آخر مزامنة: ${data.lastSync}'),
                 trailing: FilledButton.tonalIcon(
                   onPressed: data.queue.isEmpty ? null : data.sync,
@@ -917,51 +828,11 @@ class ActionCard extends StatelessWidget {
   }
 }
 
-void openFeature(BuildContext context, String feature) {
-  final role = context.read<AuthService>().currentUser?.role;
-  final Widget page = switch(role) {
-    'group_supervisor' || 'worker' => const Level1SupervisorScreen(),
-    'municipality_coordinator' => const Level2MunicipalityScreen(),
-    'jsc_coordinator' => const Level3JscScreen(),
-    'donor_manager' => const Level4UnicefScreen(),
-    _ => const DashboardPage(),
-  };
-  Navigator.push(context, MaterialPageRoute(builder: (_) => page));
-}
+void openFeature(BuildContext context, String feature) => openAppFeature(context, feature);
 
 class ReportsPage extends StatelessWidget {
   const ReportsPage({super.key});
-  @override Widget build(BuildContext context) => const ReportsCenterScreen();
-}
-
-class NotificationsPage extends StatelessWidget {
-  const NotificationsPage({super.key});
-  @override Widget build(BuildContext context) {
-    final d = context.watch<DataService>();
-    return Scaffold(
-      appBar: AppBar(title: const AppText('مركز الإشعارات')),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          CardSection(
-            title: 'الإشعارات',
-            icon: const FeatureIcon('notifications'),
-            child: d.notifications.isEmpty
-                ? const Padding(padding: EdgeInsets.all(20), child: AppText('لا توجد إشعارات'))
-                : Column(
-                    children: d.notifications.map((n) => ListTile(
-                      onTap: () => d.markRead(n.id),
-                      leading: StatusDot(level: n.level),
-                      title: AppText(n.title, style: TextStyle(fontWeight: n.read ? FontWeight.normal : FontWeight.w900)),
-                      subtitle: AppText(n.body),
-                      trailing: AppText(DateFormat('HH:mm').format(DateTime.tryParse(n.createdAt) ?? DateTime.now())),
-                    )).toList(),
-                  ),
-          ),
-        ],
-      ),
-    );
-  }
+  @override Widget build(BuildContext context) => const ReportsCenterScreen(embedded: true);
 }
 
 class ActivityPage extends StatelessWidget {
@@ -973,7 +844,7 @@ class ActivityPage extends StatelessWidget {
     final actor = context.watch<AuthService>().currentUser;
     final canReadAudit = actor?.role == 'donor_manager';
     return Scaffold(
-      appBar: AppBar(title: const AppText('آخر النشاط')),
+      appBar: AppBar(bottom: const AppNavigationBar(), title: const AppText('آخر النشاط')),
       body: canReadAudit
           ? StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
               stream: FirebaseFirestore.instance.collection('audit')
@@ -1057,7 +928,7 @@ class _WorkersState extends State<WorkersPage> {
     final u = context.watch<AuthService>().currentUser!;
     final canManage = u.role == 'municipality_coordinator' && u.can('workers', 'create');
     return Scaffold(
-      appBar: AppBar(title: const AppText('العمال والمجموعات')),
+      appBar: AppBar(bottom: const AppNavigationBar(), title: const AppText('العمال والمجموعات')),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
@@ -1148,7 +1019,7 @@ class _ExcelState extends State<ExcelPage> {
   @override Widget build(BuildContext context) => Directionality(
     textDirection: context.watch<LocaleController>().isArabic ? ui.TextDirection.rtl : ui.TextDirection.ltr,
     child: Scaffold(
-      appBar: AppBar(title: const AppText('استيراد Excel الذكي')),
+      appBar: AppBar(bottom: const AppNavigationBar(), title: const AppText('استيراد Excel الذكي')),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
@@ -1172,7 +1043,7 @@ class _PermissionsState extends State<PermissionsPage> {
     return Directionality(
       textDirection: context.watch<LocaleController>().isArabic ? ui.TextDirection.rtl : ui.TextDirection.ltr,
       child: Scaffold(
-        appBar: AppBar(title: const AppText('إدارة صلاحيات الأدوار')),
+        appBar: AppBar(bottom: const AppNavigationBar(), title: const AppText('إدارة صلاحيات الأدوار')),
         body: ListView(
           padding: const EdgeInsets.all(16),
           children: [
@@ -1248,7 +1119,7 @@ class AuditPage extends StatelessWidget {
   const AuditPage({super.key});
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const AppText('سجل التدقيق')),
+    appBar: AppBar(bottom: const AppNavigationBar(), title: const AppText('سجل التدقيق')),
     body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
       stream: FirebaseFirestore.instance.collection('audit').orderBy('timestamp', descending: true).limit(150).snapshots(),
       builder: (context, snap) {
@@ -1304,7 +1175,7 @@ class SettingsPage extends StatelessWidget{
                 ),
               ),
               ListTile(title:const AppText('مدة الاحتفاظ المحلي'),subtitle:AppText('${config.localImageRetentionDays} يومًا'),trailing:const Icon(Icons.lock_clock_outlined)),
-              ListTile(title:const AppText('حالة الاتصال'),subtitle:AppText(d.online?'متصل':'Offline'),trailing:Icon(d.online?Icons.cloud_done:Icons.cloud_off,color:d.online?green:orange)),
+              ListTile(title:const AppText('حالة الاتصال'),subtitle:AppText(d.online?'متصل':'غير متصل'),trailing:Icon(d.online?Icons.cloud_done:Icons.cloud_off,color:d.online?green:orange)),
             ],
           ),
         ),
@@ -1316,7 +1187,7 @@ class SettingsPage extends StatelessWidget{
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children:[
               const AppText(
-                'Zero-Hardcoding • إعدادات التشغيل',
+                'إعدادات التشغيل',
                 style: TextStyle(fontSize: 11, color: cleanOpsMuted),
               ),
               const SizedBox(height: 8),
@@ -1379,7 +1250,7 @@ class SettingsPage extends StatelessWidget{
               children:[
                 _switch(context,'خريطة العمليات الحية',config.liveOperationsMapEnabled,true,'liveOperationsMap'),
                 _switch(context,'تتبع مواقع العاملين',config.workerLocationTrackingEnabled,true,'workerLocationTracking'),
-                const Padding(padding:EdgeInsets.only(top:4),child:AppText('هذه الإعدادات تظهر فقط للمستوى 4 والمستوى 3. لا يُطلب إذن الموقع ما لم يتم تفعيل تتبع مواقع العاملين.',style:TextStyle(color:cleanOpsMuted,fontSize:10))),
+                const Padding(padding:EdgeInsets.only(top:4),child:AppText('هذه الإعدادات تظهر فقط لمدير اليونسيف ومنسق مجلس الخدمات. لا يُطلب إذن الموقع ما لم يتم تفعيل تتبع مواقع العاملين.',style:TextStyle(color:cleanOpsMuted,fontSize:10))),
               ],
             ),
           ),
@@ -1401,7 +1272,7 @@ class SettingsPage extends StatelessWidget{
           CardSection(title:'تكامل API',icon:const Icon(Icons.api_rounded,color:aiCyan),child:ListTile(title:const AppText('إعدادات API'),subtitle:AppText(config.apiEnabled?'مفعّل • ${config.apiVersion}':'غير مفعّل'),trailing:DirectionalChevron(),onTap:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>const ApiSettingsPage())))),
           const SizedBox(height:12),
         ],
-        CardSection(title:'الرسائل المحلية وOnline',icon:const Icon(Icons.forum_rounded,color:aiCyan),child:ListTile(title:const AppText('إعدادات الرسائل'),subtitle:AppText('${config.localMessagingEnabled?'Local':'Local off'} • ${config.onlineMessagingEnabled?'Online':'Online off'} • Sync ${config.autoMessageSync?'ON':'OFF'}'),trailing:DirectionalChevron(),onTap:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>const MessagingSettingsPage())))),
+        CardSection(title:'الرسائل المحلية وOnline',icon:const Icon(Icons.forum_rounded,color:aiCyan),child:ListTile(title:const AppText('إعدادات الرسائل'),subtitle:AppText('${config.localMessagingEnabled?'Local':'Local off'} • ${config.onlineMessagingEnabled?'متصل':'Online off'} • Sync ${config.autoMessageSync?'ON':'OFF'}'),trailing:DirectionalChevron(),onTap:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>const MessagingSettingsPage())))),
         const SizedBox(height:14),
         if(user.role=='donor_manager'||user.role=='municipality_coordinator')
           CardSection(title:'المستخدمون',icon:const Icon(Icons.manage_accounts_rounded,color:aiGreen),child:ListTile(title:const AppText('إضافة مستخدم جديد'),subtitle:const AppText('الاسم، اسم المستخدم، كلمة المرور، الدور، الجوال والمعلومات التشغيلية'),trailing:DirectionalChevron(),onTap:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>const UserManagementSettingsPage())))),
@@ -1444,30 +1315,17 @@ Future<void> quickAction(BuildContext context) async {
   final user = context.read<AuthService>().currentUser!;
   final d = context.read<DataService>();
   final actions = <CreativeShortcut>[
-    if (user.role == 'group_supervisor' || user.role == 'worker') ...[
-      CreativeShortcut(title: 'الحضور والسلامة', subtitle: 'الحضور + معدات الوقاية', feature: 'attendance', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const Level1SupervisorScreen()))),
-      CreativeShortcut(title: 'تسجيل نقلة', subtitle: 'الترحيل والكمية والصور', feature: 'trips', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const Level1SupervisorScreen()))),
-      CreativeShortcut(title: 'إدخال حالة الحاويات', subtitle: 'تحديث حالة حاويات المجموعة', feature: 'containers', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const Level1SupervisorScreen()))),
-      CreativeShortcut(title: 'SOS والطوارئ', subtitle: 'بلاغ فوري مع GPS', feature: 'emergency', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const Level1SupervisorScreen()))),
-    ],
-    if (user.role == 'municipality_coordinator') ...[
-      CreativeShortcut(title: 'الحاويات', subtitle: 'الحالة والمشكلات', feature: 'containers', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const Level2MunicipalityScreen()))),
-      CreativeShortcut(title: 'المجموعات والعمال', subtitle: 'التوزيع والقوى العاملة', feature: 'workers', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const Level2MunicipalityScreen()))),
-      CreativeShortcut(title: 'المكبات', subtitle: 'السعة والامتلاء والحالة', feature: 'dumpsite', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const OperationsManagementScreen(initialTab: 1)))),
-      CreativeShortcut(title: 'التقارير', subtitle: 'الغياب والعمل والحاويات', feature: 'reports', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ReportsCenterScreen()))),
-    ],
-    if (user.role == 'jsc_coordinator') ...[
-      CreativeShortcut(title: 'الحاويات', subtitle: 'إدارة الحالات والمواقع', feature: 'containers', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ContainerManagementScreen()))),
-      CreativeShortcut(title: 'المكبات', subtitle: 'السعة والحالة', feature: 'dumpsite', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const OperationsManagementScreen(initialTab: 0)))),
-      CreativeShortcut(title: 'التقارير', subtitle: 'تقارير التشغيل والبلديات', feature: 'reports', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ReportsCenterScreen()))),
-      CreativeShortcut(title: 'البحث الذكي', subtitle: 'بحث مرن في بيانات المنظومة', feature: 'operations', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const GlobalSearchPage()))),
-    ],
-    if (user.role == 'donor_manager') ...[
-      CreativeShortcut(title: 'مركز الإدارة', subtitle: 'الأصول والتنبيهات والبحث', feature: 'dashboard', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const EnterpriseOperationsHubPage()))),
-      CreativeShortcut(title: 'التقارير', subtitle: 'كل التقارير والتحليلات', feature: 'reports', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ReportsCenterScreen()))),
-      CreativeShortcut(title: 'إدارة المستخدمين', subtitle: 'الحسابات والصلاحيات', feature: 'users', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const UserManagementSettingsPage()))),
-      CreativeShortcut(title: 'البحث الذكي', subtitle: 'بحث مرن في كامل المنظومة', feature: 'operations', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const GlobalSearchPage()))),
-    ],
+    for (final feature in ['attendance', 'leave', 'trips', 'streets', 'containers', 'emergency', 'reports', 'workers', 'dumpsite'])
+      if (FeatureRoutePolicy.resolve(user, feature) != null)
+        CreativeShortcut(
+          title: FeatureRoutePolicy.label(user, feature).isEmpty
+              ? allFeatures[feature]! : FeatureRoutePolicy.label(user, feature),
+          subtitle: '', feature: feature,
+          onTap: () {
+            Navigator.pop(context);
+            openAppFeature(context, feature);
+          },
+        ),
   ];
   await showModalBottomSheet<void>(
     context: context,
@@ -1483,7 +1341,7 @@ Future<void> quickAction(BuildContext context) async {
             const SizedBox(height: 12),
             const AppText('الإجراءات السريعة', textAlign: TextAlign.center, style: TextStyle(fontSize: 21, fontWeight: FontWeight.w900)),
             const SizedBox(height: 4),
-            const AppText('اختر الإجراء المطلوب — كل اختصار يعمل بنفس تصميم CleanOps', textAlign: TextAlign.center, style: TextStyle(fontSize: 11, color: cleanOpsMuted)),
+            const AppText('اختر المهمة لفتح محتواها مباشرة', textAlign: TextAlign.center, style: TextStyle(fontSize: 11, color: cleanOpsMuted)),
             const SizedBox(height: 14),
             CreativeShortcutGrid(items: actions),
           ]),

@@ -1,3 +1,4 @@
+import '../widgets/app_navigation_bar.dart';
 import 'action_decision_hub.dart';
 import '../../core/constants/app_constants.dart';
 import 'package:flutter/material.dart';
@@ -27,13 +28,13 @@ class Level4UnicefScreen extends StatelessWidget {
     return Directionality(
       textDirection: context.watch<LocaleController>().isArabic ? TextDirection.rtl : TextDirection.ltr,
       child: Scaffold(
-        appBar: AppBar(title: const AppText('مدير المنظومة'), actions: [IconButton(tooltip: tr('البحث الذكي'), onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const GlobalSearchPage())), icon: const Icon(Icons.search_rounded))]),
+        appBar: AppBar(bottom: const AppNavigationBar(), title: const AppText('مدير اليونسيف')),
         body: ListView(padding: const EdgeInsets.fromLTRB(14, 14, 14, 120), children: [
           const ActionDecisionHubEntry(),
-          AiHero(user: user, eyebrow: 'LEVEL 4 • SYSTEM COMMAND', title: 'لوحة المنظومة', subtitle: 'رؤية مختصرة للحاويات والمكبات والبحث التشغيلي.'),
+          AiHero(user: user, eyebrow: 'مدير اليونسيف', title: 'لوحة المنظومة', subtitle: 'رؤية مختصرة للحاويات والمكبات والبحث التشغيلي.'),
           const SizedBox(height: 10),
           // Prominent temporary simulation shortcut: visible near the top of the dashboard.
-          const _SimulationShortcutBanner(),
+
           const SizedBox(height: 12),
           const OperationsOverviewStrip(),
           const SizedBox(height: 12),
@@ -53,7 +54,7 @@ class Level4UnicefScreen extends StatelessWidget {
           ]),
           const SizedBox(height: 14),
           const SizedBox(height: 16),
-          const _TemporarySimulationPanel(),
+          const ExpansionTile(title: AppText('التدريب على بيانات تجريبية'), children: [_TemporarySimulationPanel()]),
         ]),
       ),
     );
@@ -61,70 +62,6 @@ class Level4UnicefScreen extends StatelessWidget {
 }
 
 
-
-class _SimulationShortcutBanner extends StatefulWidget {
-  const _SimulationShortcutBanner();
-  @override
-  State<_SimulationShortcutBanner> createState() => _SimulationShortcutBannerState();
-}
-
-class _SimulationShortcutBannerState extends State<_SimulationShortcutBanner> {
-  bool busy = false;
-
-  Future<void> _run() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const AppText('تشغيل محاكاة الدورة 11'),
-        content: const AppText('سيتم إنشاء بيانات وهمية داخل ذاكرة التطبيق فقط للتجربة. لن يتم الاتصال بـ Firebase أو إنشاء بيانات حقيقية، وستختفي البيانات عند إغلاق التطبيق. هل تريد المتابعة؟'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const AppText('إلغاء')),
-          FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const AppText('تشغيل المحاكاة')),
-        ],
-      ),
-    );
-    if (confirmed != true || !mounted) return;
-    setState(() => busy = true);
-    try {
-      final result = await runCycle11Simulation();
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: AppText('تم إنشاء المحاكاة محليًا: ${result['groups'] ?? 0} مجموعات، ${result['workers'] ?? 0} عاملًا ومشرفًا، ${result['trips'] ?? 0} نقلة. اضغط «عرض المجموعات والعمال».')));
-    } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: AppText('تعذر تشغيل المحاكاة: $e')));
-    } finally {
-      if (mounted) setState(() => busy = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) => TweenAnimationBuilder<double>(
-        tween: Tween(begin: 0.0, end: 1.0),
-        duration: const Duration(milliseconds: 450),
-        curve: Curves.easeOutCubic,
-        builder: (context, value, child) => Opacity(opacity: value, child: Transform.translate(offset: Offset(0, 10 * (1 - value)), child: child)),
-        child: Material(
-          color: const Color(0xFFE9F8F0),
-          borderRadius: BorderRadius.circular(21),
-          child: InkWell(
-            borderRadius: BorderRadius.circular(21),
-            onTap: busy ? null : _run,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
-              child: Row(children: [
-                const EcoPictorialIcon(feature: 'ai', icon: Icons.science_rounded, size: 57),
-                const SizedBox(width: 12),
-                const Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  AppText('تشغيل محاكاة الدورة 11', style: TextStyle(color: cleanOpsText, fontWeight: FontWeight.w900, fontSize: 15)),
-                  SizedBox(height: 4),
-                  AppText('بلدية بني سهيلا • 5 مجموعات • 20 يوم عمل', style: TextStyle(color: cleanOpsMuted, fontSize: 11)),
-                ])),
-                if (busy) const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: aiBlue)) else const Icon(Icons.play_circle_fill_rounded, color: aiBlue, size: 27),
-              ]),
-            ),
-          ),
-        ),
-      );
-}
 
 class _TemporarySimulationPanel extends StatefulWidget {
   const _TemporarySimulationPanel();
@@ -142,7 +79,7 @@ class _TemporarySimulationPanelState extends State<_TemporarySimulationPanel> {
       builder: (dialogContext) => AlertDialog(
         title: const AppText('تشغيل محاكاة الدورة 11'),
         content: const AppText(
-          'سيتم إنشاء عرض تجريبي وهمي داخل ذاكرة التطبيق فقط: بلدية بني سهيلا، 5 مجموعات، 50 عاملًا ومشرفًا، حاويتان و900 نقلة. لن تُكتب أي بيانات إلى Firebase، ولن تظهر هذه البيانات في التقارير أو شاشات التشغيل الحقيقية، وتختفي عند إغلاق التطبيق.',
+          'سيتم إنشاء عرض تجريبي وهمي داخل ذاكرة التطبيق فقط: بلدية بني سهيلا، 5 مجموعات، 50 عاملًا ومشرفًا، حاويتان و900 نقلة. لن تُكتب أي بيانات إلى سجلات العمل الفعلية، ولن تظهر هذه البيانات في التقارير أو شاشات التشغيل الحقيقية، وتختفي عند إغلاق التطبيق.',
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const AppText('إلغاء')),
@@ -171,7 +108,7 @@ class _TemporarySimulationPanelState extends State<_TemporarySimulationPanel> {
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const AppText('حذف بيانات المحاكاة'),
-        content: const AppText('سيتم مسح بيانات العرض التجريبي من ذاكرة التطبيق فقط. لن يتم الاتصال بـ Firebase ولن تُحذف أو تتغير أي بيانات حقيقية.'),
+        content: const AppText('سيتم مسح بيانات العرض التجريبي من ذاكرة التطبيق فقط. لن يتم الاتصال بالخدمة ولن تُحذف أو تتغير أي بيانات حقيقية.'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const AppText('إلغاء')),
           FilledButton(
@@ -203,7 +140,7 @@ class _TemporarySimulationPanelState extends State<_TemporarySimulationPanel> {
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const AppText('إعادة بناء محاكاة الدورة 11'),
-        content: const AppText('سيتم مسح العرض التجريبي المحلي ثم إنشاؤه من جديد. لن يتم الاتصال بـ Firebase أو تعديل أي بيانات تشغيلية.'),
+        content: const AppText('سيتم مسح العرض التجريبي المحلي ثم إنشاؤه من جديد. لن يتم الاتصال بالخدمة أو تعديل أي بيانات تشغيلية.'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const AppText('إلغاء')),
           FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const AppText('إعادة البناء')),
@@ -241,7 +178,7 @@ class _TemporarySimulationPanelState extends State<_TemporarySimulationPanel> {
               ],
             ),
             const SizedBox(height: 6),
-            const AppText('عرض محلي مؤقت • لا يتصل بـ Firebase • يختفي عند إغلاق التطبيق', style: TextStyle(fontSize: 11)),
+            const AppText('عرض محلي مؤقت • لا يغير سجلات العمل • يختفي عند إغلاق التطبيق', style: TextStyle(fontSize: 11)),
             const SizedBox(height: 12),
             Wrap(
               spacing: 8,

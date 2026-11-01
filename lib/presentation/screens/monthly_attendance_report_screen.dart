@@ -1,3 +1,4 @@
+import '../widgets/app_navigation_bar.dart';
 import 'dart:typed_data';
 import 'dart:convert';
 import 'package:flutter/material.dart';
@@ -117,7 +118,7 @@ class _MonthlyAttendanceReportScreenState extends State<MonthlyAttendanceReportS
     return Directionality(
       textDirection: arabic ? TextDirection.rtl : TextDirection.ltr,
       child: Scaffold(
-        appBar: AppBar(title: const AppText('التقرير الشهري للحضور')),
+        appBar: AppBar(bottom: const AppNavigationBar(), title: const AppText('التقرير الشهري للحضور')),
         body: Column(children: [
           Padding(
             padding: const EdgeInsets.all(12),

@@ -1,3 +1,4 @@
+import '../widgets/app_navigation_bar.dart';
 import 'package:flutter/material.dart';
 import 'dart:ui' as ui;
 import 'dart:typed_data';
@@ -78,7 +79,7 @@ class _MessagesCenterScreenState extends State<MessagesCenterScreen> {
     return Directionality(
       textDirection: context.watch<LocaleController>().isArabic ? ui.TextDirection.rtl : ui.TextDirection.ltr,
       child: Scaffold(
-        appBar: AppBar(
+        appBar: AppBar(bottom: const AppNavigationBar(),
           title: const AppText('مركز الرسائل'),
           actions: [
             if (messaging.canSend('info')) PopupMenuButton<String>(
@@ -414,7 +415,7 @@ class _MessagesCenterScreenState extends State<MessagesCenterScreen> {
       child: ListTile(
         dense: true,
         leading: Icon(error == null ? Icons.cloud_done_rounded : Icons.cloud_off_rounded, color: error == null ? aiGreen : red),
-        title: AppText(error == null ? 'المراسلة الداخلية • مزامنة Firestore' : 'تعذر إكمال عملية مراسلة. راجع التفاصيل أدناه.'),
+        title: AppText(error == null ? 'المراسلات الداخلية وحالة إرسال الرسائل' : 'تعذر إكمال عملية مراسلة. راجع التفاصيل أدناه.'),
         subtitle: error == null ? const AppText('لا توجد خدمة FCM مطلوبة للتراسل الداخلي.') : AppText(error),
       ),
     );
@@ -462,7 +463,7 @@ class _MessagesCenterScreenState extends State<MessagesCenterScreen> {
                             .doc(message.messageId).collection('receipts').snapshots(),
                         builder: (context, snapshot) {
                           if (snapshot.hasError) {
-                            return const AppText('إيصالات الاستلام غير متاحة؛ تحقق من نشر قواعد Firebase.',
+                            return const AppText('تعذر عرض إيصالات الاستلام حاليًا. حاول مرة أخرى بعد التحقق من الاتصال.',
                                 style: TextStyle(color: cleanOpsMuted, fontSize: 12));
                           }
                           if (!snapshot.hasData) {
@@ -523,7 +524,7 @@ class _MessagesCenterScreenState extends State<MessagesCenterScreen> {
                       ],
                       const SizedBox(height: 12),
                       if (Firebase.apps.isEmpty)
-                        const AppText('تأكيد الاستلام ينتظر اتصال Firebase.',
+                        const AppText('تأكيد الاستلام ينتظر عودة الاتصال.',
                           style: TextStyle(color: cleanOpsMuted))
                       else
                         StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
@@ -531,7 +532,7 @@ class _MessagesCenterScreenState extends State<MessagesCenterScreen> {
                               .doc(message.messageId).collection('receipts').doc(uid).snapshots(),
                           builder: (context, snapshot) {
                             if (snapshot.hasError) return const AppText(
-                              'تعذر قراءة حالة التأكيد؛ تحقق من قواعد Firebase.');
+                              'تعذر قراءة حالة التأكيد. تحقق من الاتصال ثم حاول مجددًا.');
                             final status = snapshot.data?.data()?['status'];
                             final waiting = snapshot.data?.metadata.hasPendingWrites == true;
                             if (status == 'acknowledged') {

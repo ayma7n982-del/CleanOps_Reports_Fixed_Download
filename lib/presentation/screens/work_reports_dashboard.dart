@@ -1,3 +1,4 @@
+import '../widgets/app_navigation_bar.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
@@ -50,7 +51,7 @@ class _WorkReportsDashboardState extends State<WorkReportsDashboard> {
     final present = todayReports.fold<int>(0, (n,e) => n + ((e['attendance'] as num?)?.toInt() ?? 0));
     final absent = todayReports.fold<int>(0, (n,e) => n + ((e['absence'] as num?)?.toInt() ?? 0));
     return Directionality(textDirection: arabic ? TextDirection.rtl : TextDirection.ltr, child: Scaffold(
-      appBar: AppBar(title: const AppText('لوحة تقارير العمل'), actions: [if (user?.role == 'group_supervisor' || user?.role == 'municipality_coordinator') IconButton(tooltip: 'تسجيل تقرير', onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const WorkEntryFormScreen())), icon: const Icon(Icons.add_circle_outline))]),
+      appBar: AppBar(bottom: const AppNavigationBar(), title: const AppText('لوحة تقارير العمل'), actions: [if (user?.role == 'group_supervisor' || user?.role == 'municipality_coordinator') IconButton(tooltip: 'تسجيل تقرير', onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const WorkEntryFormScreen())), icon: const Icon(Icons.add_circle_outline))]),
       body: ListView(padding: const EdgeInsets.all(14), children: [
         Card(child: Padding(padding: const EdgeInsets.all(12), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           const AppText('الفترة الزمنية', style: TextStyle(fontWeight: FontWeight.w900)),

@@ -1,3 +1,4 @@
+import '../widgets/app_navigation_bar.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -50,9 +51,9 @@ class _OperationsManagementScreenState extends State<OperationsManagementScreen>
         child: Scaffold(
         backgroundColor: cleanOpsBg,
         appBar: AppBar(
-          title: const AppText('مركز عمليات AI'),
+          title: const AppText('إدارة التشغيل'),
           actions: const [Padding(padding: EdgeInsetsDirectional.only(end: 12), child: AiFeatureIcon('operations', size: 16))],
-          bottom: TabBar(isScrollable: true, onTap: (i) => setState(() => tab = i), tabs: labels),
+          bottom: PreferredSize(preferredSize: const Size.fromHeight(112), child: Column(mainAxisSize: MainAxisSize.min, children: [const AppNavigationBar(), TabBar(isScrollable: true, onTap: (i) => setState(() => tab = i), tabs: labels)])),
         ),
         body: IndexedStack(index: safe, children: tabs),
         ),
@@ -126,7 +127,7 @@ class _CyclesTabState extends State<_CyclesTab> {
       children: [
         AiHero(
           user: context.read<AuthService>().currentUser!,
-          eyebrow: 'LEVEL 4 • AI GOVERNANCE',
+          eyebrow: 'إدارة دورات العمل',
           title: 'دورات النظافة',
           subtitle: 'إدارة دورة العمل بمدة يحددها المدير يدويًا من تاريخ البداية إلى تاريخ النهاية دون حد ثابت.',
         ),
@@ -445,7 +446,7 @@ class _DumpsitesTabState extends State<_DumpsitesTab> {
       children: [
         AiHero(
           user: u,
-          eyebrow: 'DUMPSITE INTELLIGENCE',
+          eyebrow: 'إدارة المكبات',
           title: 'إدارة المكبات',
           subtitle: 'إضافة وتعديل المكبات ومتابعة السعة ونسبة الامتلاء وحالة الظهور.',
         ),
@@ -453,7 +454,7 @@ class _DumpsitesTabState extends State<_DumpsitesTab> {
         if (can)
           AiSectionCard(
             title: 'إضافة مكب',
-            subtitle: 'يُحفظ محليًا مع دعم مزامنة Firestore عند توفر الاتصال',
+            subtitle: 'يُحفظ على الجهاز ويتزامن عند توفر الاتصال',
             feature: 'dumpsite',
             child: Form(
               key: _formKey,
@@ -612,7 +613,7 @@ class _WorkforceTabState extends State<_WorkforceTab> {
         name.clear();
         username.clear();
         phone.clear();
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: AppText('تم إنشاء ${role == 'worker' ? 'العامل' : 'مشرف المجموعة'} • ${result['username'] ?? ''}')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: AppText('تم إنشاء ${role == 'worker' ? 'العامل' : 'مشرف ميداني'} • ${result['username'] ?? ''}')));
       }
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
@@ -639,7 +640,7 @@ class _WorkforceTabState extends State<_WorkforceTab> {
           children: [
             AiHero(
               user: u,
-              eyebrow: 'LEVEL 2 • WORKFORCE COMMAND',
+              eyebrow: 'إدارة العمال والمجموعات',
               title: 'إدارة القوى العاملة',
               subtitle: 'إنشاء الحسابات، نقل العمال، التبديل والتجميد — كلها تحت صلاحية منسق البلدية.',
             ),
@@ -758,7 +759,7 @@ class _WorkforceTabState extends State<_WorkforceTab> {
                             await svc.freezeCycleUsers(cycleId, actorId: u.id);
                             if (mounted) ScaffoldMessenger.of(context).showSnackBar(
                               const SnackBar(content: AppText(
-                                'تم تأكيد تجميد حسابات الدورة على Firebase.')));
+                                'تم تأكيد تجميد حسابات الدورة.')));
                           } catch (e) {
                             if (mounted) ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(content: Text('تعذر تأكيد التجميد: $e')));
@@ -871,7 +872,7 @@ class _WorkforceTabState extends State<_WorkforceTab> {
                       phone: phone.text, actorId: actor);
                   if (dialogContext.mounted) Navigator.pop(dialogContext);
                   if (mounted) ScaffoldMessenger.of(this.context).showSnackBar(
-                    const SnackBar(content: AppText('تم حفظ تعديل العامل على Firebase.')));
+                    const SnackBar(content: AppText('تم تأكيد حفظ تعديل العامل.')));
                 } catch (e) {
                   if (dialogContext.mounted) ScaffoldMessenger.of(dialogContext).showSnackBar(
                     SnackBar(content: Text('$e')));
@@ -944,7 +945,7 @@ class _WorkforceTabState extends State<_WorkforceTab> {
                     toCycleId: cycle, actorId: actor);
                   if (dialogContext.mounted) Navigator.pop(dialogContext);
                   if (mounted) ScaffoldMessenger.of(this.context).showSnackBar(const SnackBar(
-                    content: AppText('تم تأكيد نقل العامل على Firebase.')));
+                    content: AppText('تم تأكيد نقل العامل.')));
                 } catch (e) {
                   if (dialogContext.mounted) ScaffoldMessenger.of(dialogContext)
                     .showSnackBar(SnackBar(content: Text('فشل نقل العامل: $e')));
@@ -1010,7 +1011,7 @@ class _WorkforceTabState extends State<_WorkforceTab> {
                   await svc.swapWorkers(firstUserId: first!, secondUserId: second!, actorId: actor);
                   if (dialogContext.mounted) Navigator.pop(dialogContext);
                   if (mounted) ScaffoldMessenger.of(this.context).showSnackBar(const SnackBar(
-                    content: AppText('تم تبديل العاملين على Firebase.')));
+                    content: AppText('تم تأكيد تبديل العاملين.')));
                 } catch (e) {
                   if (dialogContext.mounted) ScaffoldMessenger.of(dialogContext)
                     .showSnackBar(SnackBar(content: Text('فشل تبديل العاملين: $e')));
@@ -1044,7 +1045,7 @@ class _WorkforceTabState extends State<_WorkforceTab> {
     try {
       await svc.deactivateUser(userId, actorId: actor);
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: AppText('أكد خادم Firebase إلغاء التنشيط.')));
+        content: AppText('تم تأكيد إلغاء التنشيط.')));
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('تعذر إلغاء التنشيط: $e')));

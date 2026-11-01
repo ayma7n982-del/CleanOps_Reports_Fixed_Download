@@ -1,3 +1,4 @@
+import '../widgets/app_navigation_bar.dart';
 import '../widgets/decision_directive_banner.dart';
 import '../../core/services/decision_route_policy.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -27,7 +28,8 @@ import 'container_management.dart';
 import 'global_search.dart';
 
 class Level1SupervisorScreen extends StatefulWidget {
-  const Level1SupervisorScreen({super.key});
+  final String? initialAction;
+  const Level1SupervisorScreen({super.key, this.initialAction});
   @override
   State<Level1SupervisorScreen> createState() => _Level1SupervisorState();
 }
@@ -498,7 +500,7 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
       'routingStatus': unicefRecipientId == null || unicefRecipientId.isEmpty ? 'unresolved' : 'targeted',
       'sourceEntity': 'emergency',
       'title': 'بلاغ SOS عاجل',
-      'body': 'بلاغ $id من مشرف المجموعة — الموقع: ${street.text.trim()}',
+      'body': 'بلاغ $id من مشرف ميداني — الموقع: ${street.text.trim()}',
       'sourceId': id,
       'createdAt': DateTime.now().toIso8601String(),
     });
@@ -557,15 +559,38 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
     final config = context.watch<ConfigService>();
     final user = context.watch<AuthService>().currentUser!;
     final online = data.online;
+    final action = widget.initialAction;
+    if (action != null) {
+      final permitted = user.role == 'group_supervisor' &&
+          user.can(action, 'view') &&
+          user.can(action == 'leave' ? 'attendance' : action, 'create');
+      final taskBody = !permitted
+          ? const Center(child: AppText('هذه المهمة غير متاحة ضمن صلاحيات حسابك.'))
+          : switch (action) {
+              'attendance' || 'leave' => _attendance(config),
+              'trips' => _trips(config),
+              'streets' => _streets(config),
+              'emergency' => _emergency(config),
+              _ => const Center(child: AppText('المهمة المطلوبة غير متاحة.')),
+            };
+      return Scaffold(
+        appBar: AppBar(bottom: const AppNavigationBar(), title: AppText(const {
+          'attendance': 'تسجيل الحضور والغياب', 'leave': 'تسجيل الإجازة أو الإذن',
+          'trips': 'تسجيل نقلة', 'streets': 'توثيق الشوارع',
+          'emergency': 'بلاغ طارئ',
+        }[action] ?? 'المهام الميدانية')),
+        body: taskBody,
+      );
+    }
     return Directionality(
       textDirection: context.watch<LocaleController>().isArabic ? TextDirection.rtl : TextDirection.ltr,
       child: Scaffold(
-        appBar: AppBar(
+        appBar: AppBar(bottom: const AppNavigationBar(),
           title: const AppText('المشرف الميداني'),
           actions: [
             if (data.queue.isNotEmpty)
               Padding(padding: const EdgeInsets.symmetric(horizontal: 8), child: Center(child: AppText('${data.queue.length} بانتظار المزامنة', style: const TextStyle(fontSize: 10, color: cleanOpsMuted)))),
-            IconButton(tooltip: tr('البحث الذكي'), onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const GlobalSearchPage())), icon: const Icon(Icons.search_rounded)),
+            IconButton(tooltip: tr('البحث في النظام'), onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const GlobalSearchPage())), icon: const Icon(Icons.search_rounded)),
             Tooltip(
               message: data.automaticSyncStatus,
               child: Icon(
@@ -585,7 +610,7 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
             children: [
               AiHero(
                 user: context.read<AuthService>().currentUser!,
-                eyebrow: 'LEVEL 1 • FIELD MODE',
+                eyebrow: 'مشرف ميداني',
                 title: 'تشغيل ميداني سريع',
                 subtitle: 'أربع مهام فقط. اختر الإجراء المطلوب مباشرة دون قوائم مزدحمة.',
               ),
@@ -623,9 +648,9 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
               const SizedBox(height: 16),
               AiSectionCard(
                 title: 'حالة التشغيل',
-                subtitle: online ? 'متصل — البيانات تتزامن تلقائيًا.' : 'Offline — التحديثات محفوظة محليًا وستتزامن عند عودة الاتصال.',
+                subtitle: online ? 'متصل — البيانات تتزامن تلقائيًا.' : 'التحديثات محفوظة على الجهاز وستتزامن عند عودة الاتصال.',
                 feature: 'sync',
-                child: Row(children: [Icon(online ? Icons.cloud_done_rounded : Icons.cloud_off_rounded, color: online ? aiGreen : orange, size: 28), const SizedBox(width: 10), Expanded(child: AppText(online ? 'متصل بالسحابة' : 'وضع Offline', style: TextStyle(color: online ? aiGreen : orange, fontWeight: FontWeight.w900))), if (data.queue.isNotEmpty) AppText('${data.queue.length}', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900))]),
+                child: Row(children: [Icon(online ? Icons.cloud_done_rounded : Icons.cloud_off_rounded, color: online ? aiGreen : orange, size: 28), const SizedBox(width: 10), Expanded(child: AppText(online ? 'متصل بالسحابة' : 'العمل دون اتصال', style: TextStyle(color: online ? aiGreen : orange, fontWeight: FontWeight.w900))), if (data.queue.isNotEmpty) AppText('${data.queue.length}', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900))]),
               ),
             ],
           ),
@@ -635,7 +660,7 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
   }
 
   void _openAction(BuildContext context, String title, Widget child) {
-    Navigator.push(context, MaterialPageRoute(builder: (_) => Scaffold(appBar: AppBar(title: AppText(title)), body: child)));
+    Navigator.push(context, MaterialPageRoute(builder: (_) => Scaffold(appBar: AppBar(bottom: const AppNavigationBar(), title: AppText(title)), body: child)));
   }
 
   Widget _attendance(ConfigService config) {
@@ -644,9 +669,9 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
       children: [
         AiHero(
           user: context.read<AuthService>().currentUser!,
-          eyebrow: 'LEVEL 1 • FIELD OPERATIONS',
-          title: 'حضور مجموعتي',
-          subtitle: 'حدد حالة كل عامل قبل حفظ كشف الوردية، ثم افحص معدات الوقاية للحاضرين.',
+          eyebrow: 'الحضور والسلامة',
+          title: widget.initialAction == 'leave' ? 'الإجازات والأذونات' : 'حضور مجموعتي',
+          subtitle: widget.initialAction == 'leave' ? 'اختر العامل ثم حدد إجازة أو إذنًا خاصًا من قائمة الحالة، واحفظ كشف الحضور.' : 'حدد حالة كل عامل قبل حفظ كشف الوردية، ثم افحص معدات الوقاية للحاضرين.',
         ),
         const SizedBox(height: 14),
         Wrap(
