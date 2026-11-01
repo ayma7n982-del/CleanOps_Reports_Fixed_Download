@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/constants/app_constants.dart';
+import '../../core/localization.dart';
 import 'app_design.dart';
 
 /// Owns the request so typing/rebuilding the parent cannot restart it.
