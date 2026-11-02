@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:provider/provider.dart';
 import 'package:solid_waste_operations/core/models/core_models.dart';
+import 'package:solid_waste_operations/core/localization.dart';
 import 'package:solid_waste_operations/core/services/auth_service.dart';
 import 'package:solid_waste_operations/core/services/config_service.dart';
 import 'package:solid_waste_operations/core/services/data_service.dart';
@@ -148,6 +149,7 @@ void main() {
         await tester.pumpWidget(
           MultiProvider(
             providers: [
+            ChangeNotifierProvider(create: (_) => LocaleController()),
               ChangeNotifierProvider.value(value: auth),
               ChangeNotifierProvider.value(value: data),
             ],
@@ -182,6 +184,7 @@ void main() {
       await tester.pumpWidget(
         MultiProvider(
           providers: [
+            ChangeNotifierProvider(create: (_) => LocaleController()),
             ChangeNotifierProvider.value(value: auth),
             ChangeNotifierProvider.value(value: data),
           ],
