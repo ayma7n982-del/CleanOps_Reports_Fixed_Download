@@ -133,6 +133,7 @@ void main() {
           350,
           scrollable: find.byType(Scrollable).first,
         );
+        await tester.pumpAndSettle();
         expect(find.text('1'), findsNWidgets(2));
         expect(find.text('تعذر تحميل الدورة'), findsOneWidget);
         expect(tester.takeException(), isNull);
