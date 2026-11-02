@@ -6,6 +6,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import '../models/core_models.dart';
 import 'operational_insights.dart';
+import 'workforce_repository.dart';
 
 /// Human-readable error (Arabic) thrown by direct user provisioning.
 class UserProvisionException implements Exception {
@@ -288,10 +289,12 @@ class OperationsAdminService {
 
     final cleanCycle = cycleId.trim();
     final cleanGroup = groupId.trim();
+    Map<String, dynamic>? selectedGroup;
     if (isWorkforce) {
       if (cleanCycle.isEmpty || cleanGroup.isEmpty) {
         throw const UserProvisionException('حسابات العاملين تحتاج دورة عمل ومجموعة.');
       }
+      selectedGroup = await _requireManagedGroup(cleanGroup, actorAuth.uid);
       final cycle = await _cycles.doc(cleanCycle).get();
       if (!cycle.exists || cycle.data()?['status'] != 'active') {
         throw const UserProvisionException('دورة العمل المختارة غير نشطة.');
@@ -315,7 +318,7 @@ class OperationsAdminService {
       final userRef = _users.doc(newUser.uid);
       final auditRef = firestore.collection('audit').doc();
       await firestore.runTransaction((tx) async {
-        tx.set(userRef, {
+        final profile = <String, dynamic>{
           'id': newUser.uid,
           'username': login,
           'email': loginEmail,
@@ -329,6 +332,7 @@ class OperationsAdminService {
           'jobTitle': jobTitle.trim(),
           'notes': notes.trim(),
           'groupId': isWorkforce ? cleanGroup : null,
+          if (isWorkforce) 'groupName': '${selectedGroup?['name'] ?? cleanGroup}',
           'municipalityCoordinatorId': isWorkforce ? actorAuth.uid : null,
           'cycleId': isWorkforce ? cleanCycle : null,
           'isActive': true,
@@ -337,7 +341,9 @@ class OperationsAdminService {
           'createdByRole': actorRole,
           'createdAt': FieldValue.serverTimestamp(),
           'updatedAt': FieldValue.serverTimestamp(),
-        });
+        };
+        tx.set(userRef, profile);
+        WorkforceRepository(firestore).project(tx, newUser.uid, profile);
         tx.set(auditRef, {
           'actorId': actorAuth.uid,
           'operation': 'PROVISION_USER',
@@ -394,6 +400,21 @@ class OperationsAdminService {
     });
   }
 
+  Future<void> _updateWorkforceProfile(
+    String uid, Map<String, dynamic> changes, {
+    void Function(Map<String, dynamic> profile)? validate,
+  }) async {
+    final ref = _users.doc(uid);
+    await firestore.runTransaction((tx) async {
+      final snapshot = await tx.get(ref);
+      final profile = snapshot.data();
+      if (profile == null) throw StateError('المستخدم غير موجود.');
+      validate?.call(profile);
+      tx.update(ref, changes);
+      WorkforceRepository(firestore).project(tx, uid, {...profile, ...changes});
+    });
+  }
+
   /// Soft-delete on Spark: no Cloud Functions or GitHub during the action.
   /// Keep the Auth account for audit; Security Rules block inactive accounts.
   Future<void> deleteManagedUser(String userId, {required String actorId}) async {
@@ -418,7 +439,7 @@ class OperationsAdminService {
          !const ['worker', 'group_supervisor'].contains(target['role']))) {
       throw const UserProvisionException('لا يمكن حذف مستخدم خارج نطاق البلدية.');
     }
-    await ref.update({
+    await _updateWorkforceProfile(uid, {
       'isActive': false,
       'status': 'deleted',
       'updatedBy': actorId,
@@ -437,7 +458,7 @@ class OperationsAdminService {
     if (!existing.exists || existing.data()?['status'] == 'deleted') {
       throw const UserProvisionException('لا يمكن إعادة تفعيل حساب محذوف إداريًا.');
     }
-    await _users.doc(userId).update({
+    await _updateWorkforceProfile(userId, {
       'isActive': active,
       'status': active ? 'active' : 'deactivated',
       if (!active) 'deactivatedBy': actorId,
@@ -550,20 +571,27 @@ class OperationsAdminService {
     if (targets.isEmpty) {
       throw StateError('لا توجد حسابات نشطة لتجميدها في هذه الدورة.');
     }
-    if (targets.length > 500) {
-      throw StateError('عدد الحسابات يتجاوز حد العملية الواحدة؛ يلزم تنفيذ التجميد على دفعات.');
-    }
-    final batch = firestore.batch();
-    for (final doc in targets) {
-      batch.update(doc.reference, {
-        'isActive': false,
-        'status': 'frozen',
-        'frozenAt': FieldValue.serverTimestamp(),
-        'frozenBy': actorId,
-        'updatedAt': FieldValue.serverTimestamp(),
+    for (var offset = 0; offset < targets.length; offset += 100) {
+      final chunk = targets.skip(offset).take(100).toList();
+      await firestore.runTransaction((tx) async {
+        final latest = <DocumentSnapshot<Map<String, dynamic>>>[];
+        for (final doc in chunk) {
+          latest.add(await tx.get(doc.reference));
+        }
+        for (final doc in latest) {
+          final profile = doc.data();
+          if (profile == null || profile['municipalityCoordinatorId'] != actorId ||
+              profile['cycleId'] != cycleId || profile['isActive'] == false) continue;
+          final changes = <String, dynamic>{
+            'isActive': false, 'status': 'frozen',
+            'frozenAt': FieldValue.serverTimestamp(), 'frozenBy': actorId,
+            'updatedAt': FieldValue.serverTimestamp(),
+          };
+          tx.update(doc.reference, changes);
+          WorkforceRepository(firestore).project(tx, doc.id, {...profile, ...changes});
+        }
       });
     }
-    await batch.commit();
     final remaining = await query.get(const GetOptions(source: Source.server));
     if (remaining.docs.any((doc) => const ['worker', 'group_supervisor']
         .contains(doc.data()['role']))) {
@@ -571,7 +599,7 @@ class OperationsAdminService {
     }
   }
 
-  Future<void> _requireManagedGroup(String groupId, String actorId) async {
+  Future<Map<String, dynamic>> _requireManagedGroup(String groupId, String actorId) async {
     if (groupId.trim().isEmpty) throw StateError('يجب اختيار مجموعة صالحة.');
     final group = await _operations.doc(groupId.trim()).get(const GetOptions(source: Source.server));
     if (!group.exists || group.data()?['_entity'] != 'group' ||
@@ -579,6 +607,7 @@ class OperationsAdminService {
         group.data()?['municipalityCoordinatorId'] != actorId) {
       throw StateError('المجموعة غير موجودة أو لا تتبع بلديتك.');
     }
+    return group.data()!;
   }
 
   void _requireOwnWorker(Map<String, dynamic>? data, String actorId) {
@@ -604,12 +633,12 @@ class OperationsAdminService {
     final ref = _users.doc(userId);
     final before = await ref.get(const GetOptions(source: Source.server));
     _requireOwnWorker(before.data(), actorId);
-    await ref.update({
+    await _updateWorkforceProfile(userId, {
       'name': cleanName,
       'phone': cleanPhone,
       'updatedBy': actorId,
       'updatedAt': FieldValue.serverTimestamp(),
-    });
+    }, validate: (profile) => _requireOwnWorker(profile, actorId));
     final after = await ref.get(const GetOptions(source: Source.server));
     if (after.data()?['name'] != cleanName || after.data()?['phone'] != cleanPhone) {
       throw StateError('تعذر تأكيد تعديل بيانات العامل على Firebase.');
@@ -625,7 +654,7 @@ class OperationsAdminService {
     if (FirebaseAuth.instance.currentUser?.uid != actorId) {
       throw StateError('انتهت الجلسة أو لا تملك صلاحية النقل.');
     }
-    await _requireManagedGroup(toGroupId, actorId);
+    final targetGroup = await _requireManagedGroup(toGroupId, actorId);
     final cycle = await _cycles.doc(toCycleId).get(const GetOptions(source: Source.server));
     if (!cycle.exists || cycle.data()?['status'] != 'active') {
       throw StateError('دورة العمل الجديدة غير نشطة.');
@@ -633,12 +662,13 @@ class OperationsAdminService {
     final ref = _users.doc(userId);
     final snap = await ref.get(const GetOptions(source: Source.server));
     _requireOwnWorker(snap.data(), actorId);
-    await ref.update({
+    await _updateWorkforceProfile(userId, {
       'groupId': toGroupId,
+      'groupName': '${targetGroup['name'] ?? toGroupId}',
       'cycleId': toCycleId,
       'updatedBy': actorId,
       'updatedAt': FieldValue.serverTimestamp(),
-    });
+    }, validate: (profile) => _requireOwnWorker(profile, actorId));
     final confirmed = await ref.get(const GetOptions(source: Source.server));
     if (!confirmed.exists ||
         confirmed.data()?['groupId'] != toGroupId ||
@@ -671,8 +701,15 @@ class OperationsAdminService {
       _requireOwnWorker(b.data(), actorId);
       final ag = a.data()?['groupId'];
       final bg = b.data()?['groupId'];
-      tx.update(aRef, {'groupId': bg, 'updatedBy': actorId, 'updatedAt': FieldValue.serverTimestamp()});
-      tx.update(bRef, {'groupId': ag, 'updatedBy': actorId, 'updatedAt': FieldValue.serverTimestamp()});
+      final aChanges = <String, dynamic>{'groupId': bg, 'groupName': b.data()?['groupName'] ?? bg,
+        'updatedBy': actorId, 'updatedAt': FieldValue.serverTimestamp()};
+      final bChanges = <String, dynamic>{'groupId': ag, 'groupName': a.data()?['groupName'] ?? ag,
+        'updatedBy': actorId, 'updatedAt': FieldValue.serverTimestamp()};
+      tx.update(aRef, aChanges);
+      tx.update(bRef, bChanges);
+      final roster = WorkforceRepository(firestore);
+      roster.project(tx, firstUserId, {...a.data()!, ...aChanges});
+      roster.project(tx, secondUserId, {...b.data()!, ...bChanges});
       return true;
     });
     if (results != true) throw StateError('Worker swap failed.');
@@ -690,7 +727,7 @@ class OperationsAdminService {
         info?['isActive'] == false) {
       throw StateError('الحساب غير نشط أو لا يتبع بلديتك.');
     }
-    await ref.update({
+    await _updateWorkforceProfile(userId, {
       'isActive': false,
       'status': 'deactivated',
       'deactivatedBy': actorId,

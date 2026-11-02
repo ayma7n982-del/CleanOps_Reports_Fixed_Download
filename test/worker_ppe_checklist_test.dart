@@ -85,6 +85,16 @@ void main() {
     expect(WorkerPpeChecklist().isComplete('worker-1'), isFalse);
   });
 
+  test('a transferred worker loses its old draft while remaining workers keep theirs', () {
+    final checks = WorkerPpeChecklist()
+      ..setAll('worker-1', true)
+      ..setAll('worker-2', true);
+    checks.retainWorkers({'worker-2'});
+    expect(checks.isComplete('worker-1'), isFalse);
+    expect(checks.isComplete('worker-2'), isTrue);
+    expect(checks.forWorker('worker-1').values, everyElement(isFalse));
+  });
+
   test('missing worker IDs cannot share an anonymous safety check', () {
     final checks = WorkerPpeChecklist();
     expect(() => checks.forWorker(''), throwsArgumentError);

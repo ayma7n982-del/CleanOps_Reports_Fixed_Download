@@ -43,6 +43,14 @@ class LocalStore {
   Future<void> saveCachedEquipmentCarts(String userId, List<Map<String, dynamic>> carts) =>
       _save('equipment_carts_cache_$userId', carts);
 
+  bool hasWorkerRoster(String uid, String groupId) =>
+      box.containsKey('worker_roster_${uid}_$groupId');
+  List<Map<String, dynamic>> cachedWorkerRoster(String uid, String groupId) =>
+      _list('worker_roster_${uid}_$groupId');
+  Future<void> saveWorkerRoster(String uid, String groupId,
+      List<Map<String, dynamic>> workers) =>
+      _save('worker_roster_${uid}_$groupId', workers);
+
   List<Map<String, dynamic>> cachedContainers() => _list('containers_cache');
   Future<void> saveCachedContainers(List<Map<String, dynamic>> value) => _save('containers_cache', value);
 
