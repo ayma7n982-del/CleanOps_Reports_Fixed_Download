@@ -1,5 +1,6 @@
 import '../feature_navigation.dart';
-import '../../core/services/feature_route_policy.dart';
+import '../widgets/field_shortcuts.dart';
+import '../../core/services/operational_insights.dart';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -54,6 +55,8 @@ class _AICommandCenterState extends State<AICommandCenter> {
                     user: user,
                     onExit: () => setState(() => focusMode = false),
                   ),
+                  const SizedBox(height: 14),
+                  _QuickActions(user: user),
                   const SizedBox(height: 14),
                   _FocusModeKpis(user: user, data: data),
                 ],
@@ -138,7 +141,7 @@ class _FocusToggle extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   AppText('وضع التركيز', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 13)),
-                  AppText('عرض المؤشرات الحرجة فقط وإخفاء القوائم الثانوية', style: TextStyle(color: cleanOpsMuted, fontSize: 10)),
+                  AppText('المهام الأساسية والمؤشرات المهمة مع وصول مباشر لأدواتك', style: TextStyle(color: cleanOpsMuted, fontSize: 10)),
                 ],
               ),
             ),
@@ -169,7 +172,7 @@ class _FocusHeader extends StatelessWidget {
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 const AppText('وضع التركيز', style: TextStyle(color: aiCyan, fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 1.1)),
                 AppText('وضع التركيز — ${user.name}', style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w900), overflow: TextOverflow.ellipsis),
-                const AppText('المؤشرات التشغيلية الحرجة فقط', style: TextStyle(color: Colors.white70, fontSize: 10)),
+                const AppText('المهام الأساسية والمؤشرات المهمة', style: TextStyle(color: Colors.white70, fontSize: 10)),
               ]),
             ),
             IconButton(onPressed: onExit, tooltip: 'إيقاف وضع التركيز', icon: const Icon(Icons.fullscreen_exit_rounded, color: Colors.white)),
@@ -186,13 +189,16 @@ class _FocusModeKpis extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isManagement = user.role == 'municipality_coordinator' || user.role == 'jsc_coordinator' || user.role == 'donor_manager';
-    final localWorkers = data.operations.where((e) => '${e['_entity'] ?? ''}' == 'worker' && e['isDeleted'] != true && e['isActive'] != false).length;
-    final localGroups = data.operations
-        .where((e) => '${e['_entity'] ?? ''}' == 'worker' && e['isDeleted'] != true && e['isActive'] != false)
-        .map((e) => '${e['groupId'] ?? e['groupName'] ?? ''}'.trim())
-        .where((e) => e.isNotEmpty)
-        .toSet()
-        .length;
+    bool inScope(Map<String, dynamic> record) =>
+        OperationalInsights.visibleToUser(record, role: user.role,
+          userId: user.id, scope: user.scope, groupId: user.groupId);
+    final localRoster = data.operations.where((e) =>
+        e['_entity'] == 'worker' && e['isActive'] != false &&
+        !const ['frozen', 'deleted'].contains(e['status']) && inScope(e));
+    final localWorkers = localRoster.length;
+    final localGroups = localRoster
+        .map((e) => '${e['groupId'] ?? ''}'.trim())
+        .where((e) => e.isNotEmpty).toSet().length;
     final criticalAlerts = data.notifications.where((n) => n.level == 'critical' && !n.read).length;
 
     return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
@@ -201,7 +207,8 @@ class _FocusModeKpis extends StatelessWidget {
         var workers = localWorkers;
         var groups = localGroups;
         if (isManagement && workforceSnap.hasData) {
-          final active = workforceSnap.data!.docs.where((d) => d.data()['isActive'] != false);
+          final active = workforceSnap.data!.docs.where((d) =>
+              d.data()['isActive'] != false && inScope(d.data()));
           workers = active.where((d) => '${d.data()['role'] ?? ''}' == 'worker').length;
           groups = active
               .where((d) => '${d.data()['role'] ?? ''}' == 'worker' || '${d.data()['role'] ?? ''}' == 'group_supervisor')
@@ -211,10 +218,20 @@ class _FocusModeKpis extends StatelessWidget {
               .length;
         }
 
-        return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+        return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          AppText(workforceSnap.hasError
+              ? 'تعذر تحديث العمال؛ الأعداد من البيانات المحلية المتاحة.'
+              : 'الأعداد ضمن نطاق حسابك ومن البيانات المتاحة؛ قد تشمل سجلات بانتظار المزامنة.',
+              style: const TextStyle(color: cleanOpsMuted, fontSize: 11)),
+          const SizedBox(height: 8),
+          StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
           stream: context.read<OperationsAdminService>().activeCycles(),
           builder: (context, cycleSnap) {
-            String cycle = 'لا توجد دورة نشطة';
+            String cycle = cycleSnap.hasError
+                ? 'تعذر تحميل الدورة'
+                : !cycleSnap.hasData ? 'جارٍ تحميل الدورة...'
+                : cycleSnap.data!.metadata.isFromCache && cycleSnap.data!.docs.isEmpty
+                    ? 'لا تتوفر دورة في البيانات المحلية' : 'لا توجد دورة نشطة';
             if (cycleSnap.hasData) {
               for (final d in cycleSnap.data!.docs) {
                 final x = d.data();
@@ -241,15 +258,16 @@ class _FocusModeKpis extends StatelessWidget {
                   childAspectRatio: columns == 1 ? 2.1 : 1.28,
                   children: [
                     _FocusKpi(icon: Icons.autorenew_rounded, title: 'الدورة الحالية', value: cycle, color: aiCyan),
-                    _FocusKpi(icon: Icons.groups_rounded, title: 'العمال النشطون', value: '$workers', color: aiGreen),
-                    _FocusKpi(icon: Icons.hub_rounded, title: 'المجموعات النشطة', value: '$groups', color: const Color(0xFF1464A5)),
+                    _FocusKpi(icon: Icons.groups_rounded, title: isManagement ? 'العمال ضمن نطاقك' : 'عمال مجموعتي', value: '$workers', color: aiGreen),
+                    _FocusKpi(icon: Icons.hub_rounded, title: 'المجموعات في البيانات المتاحة', value: '$groups', color: const Color(0xFF1464A5)),
                     _FocusKpi(icon: Icons.warning_amber_rounded, title: 'التنبيهات الحرجة', value: '$criticalAlerts', color: criticalAlerts > 0 ? Colors.redAccent : aiGreen),
                   ],
                 );
               },
             );
           },
-        );
+        ),
+        ]);
       },
     );
   }
@@ -626,15 +644,14 @@ class _QuickActions extends StatelessWidget {
   Widget build(BuildContext context) {
     final actions = <_Quick>[];
     if (user.role == 'group_supervisor' || user.role == 'worker') {
-      for (final feature in ['attendance', 'trips', 'containers', 'emergency']) {
-        if (FeatureRoutePolicy.resolve(user, feature) == null) continue;
-        actions.add(_Quick(feature: feature,
-          title: FeatureRoutePolicy.label(user, feature).isEmpty
-              ? allFeatures[feature]! : FeatureRoutePolicy.label(user, feature),
-          subtitle: '', onTap: () => openAppFeature(context, feature)));
-      }
-      return _Panel(title: 'مهامك الميدانية', feature: 'operations',
-          child: EcoShortcutGrid(cards: actions));
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          FieldTaskShortcuts(user: user),
+          const SizedBox(height: 12),
+          FieldSupportShortcuts(user: user),
+        ],
+      );
     }
 
 

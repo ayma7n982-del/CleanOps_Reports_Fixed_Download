@@ -29,7 +29,7 @@ void main() {
           'EcoShortcutCard(',
       'lib/presentation/screens/reports_center.dart':
           'EcoShortcutCard(',
-      'lib/presentation/screens/level1_supervisor.dart':
+      'lib/presentation/widgets/field_shortcuts.dart':
           'EcoShortcutCard(',
     };
     for (final entry in consumers.entries) {
@@ -51,9 +51,10 @@ void main() {
     expect(assistant, contains("input.text = '"));
 
     final supervisor = source('lib/presentation/screens/level1_supervisor.dart');
-    expect(supervisor, contains("user.can('emergency', 'create')"));
-    expect(supervisor, contains("user.can('attendance','create')"));
-    expect(supervisor, contains('onTap: () => _openAction('));
+    expect(supervisor, contains("!u.can('emergency', 'create')"));
+    expect(supervisor, contains('FeatureRoutePolicy.resolve(user, feature) != null'));
+    expect(supervisor, contains('() => openAppFeature(context, feature)'));
+    expect(supervisor, isNot(contains('void _openAction(')));
 
     final reports = source('lib/presentation/screens/reports_center.dart');
     expect(reports, contains("item.\$1 == 'absence'"));

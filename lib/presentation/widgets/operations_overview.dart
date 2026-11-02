@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../core/services/auth_service.dart';
+import '../../core/models/core_models.dart';
 import '../../core/services/container_service.dart';
 import '../../core/services/operations_admin_service.dart';
 import 'app_design.dart';
@@ -18,24 +19,35 @@ class OperationsOverviewStrip extends StatelessWidget {
   Widget build(BuildContext context) {
     final user = context.watch<AuthService>().currentUser;
     if (user == null) return const SizedBox.shrink();
-    return Row(
-      children: [
-        Expanded(child: _ContainersCard(user: user)),
-        const SizedBox(width: 10),
-        Expanded(child: _DumpsitesCard(user: user)),
+    final cards = <Widget>[
+      if (user.can('containers', 'view')) _ContainersCard(user: user),
+      if (user.can('dumpsite', 'view')) _DumpsitesCard(user: user),
+    ];
+    if (cards.isEmpty) return const SizedBox.shrink();
+    return Row(children: [
+      for (var i = 0; i < cards.length; i++) ...[
+        if (i > 0) const SizedBox(width: 10),
+        Expanded(child: cards[i]),
       ],
-    );
+    ]);
   }
 }
 
 class _ContainersCard extends StatelessWidget {
-  final dynamic user;
+  final AppUser user;
   const _ContainersCard({required this.user});
   @override
   Widget build(BuildContext context) {
     final service = context.watch<ContainerService>();
-    final total = service.containers.length;
-    final critical = service.containers.where((c) => c.status == 'full' || c.issueStatus == 'reported' || c.issueStatus == 'resolving').length;
+    final containers = service.containers.where((c) {
+      if (user.role == 'group_supervisor' || user.role == 'worker') {
+        return (user.groupId ?? '').isNotEmpty && c.groupId == user.groupId;
+      }
+      if (user.role == 'municipality_coordinator') return c.municipalityId == user.id;
+      return true;
+    });
+    final total = containers.length;
+    final critical = containers.where((c) => c.status == 'full' || c.issueStatus == 'reported' || c.issueStatus == 'resolving').length;
     return AiGlassCard(
       onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ContainerManagementScreen())),
       padding: const EdgeInsets.all(13),
@@ -54,7 +66,7 @@ class _ContainersCard extends StatelessWidget {
 }
 
 class _DumpsitesCard extends StatelessWidget {
-  final dynamic user;
+  final AppUser user;
   const _DumpsitesCard({required this.user});
   @override
   Widget build(BuildContext context) {

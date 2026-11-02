@@ -1,3 +1,6 @@
+import '../../core/services/feature_route_policy.dart';
+import '../feature_navigation.dart';
+import '../widgets/field_shortcuts.dart';
 import '../widgets/app_navigation_bar.dart';
 import '../widgets/decision_directive_banner.dart';
 import '../../core/services/decision_route_policy.dart';
@@ -21,10 +24,8 @@ import '../../core/services/trip_lifecycle.dart';
 import '../../core/services/operational_insights.dart';
 import 'reports_center.dart';
 import '../widgets/app_design.dart';
-import '../widgets/eco_shortcuts.dart';
 import '../widgets/operations_overview.dart';
 import '../widgets/workspace_overview.dart';
-import 'container_management.dart';
 import 'global_search.dart';
 
 class Level1SupervisorScreen extends StatefulWidget {
@@ -35,7 +36,25 @@ class Level1SupervisorScreen extends StatefulWidget {
 }
 
 class _Level1SupervisorState extends State<Level1SupervisorScreen> {
-  int tab = 0, trips = 0, alternativeTrips = 0, remaining = 0;
+  int tab = 0, remaining = 0;
+  int get trips => _todayTripCount(false);
+  int get alternativeTrips => _todayTripCount(true);
+
+  int _todayTripCount(bool alternative) {
+    final user = context.read<AuthService>().currentUser;
+    final groupId = user?.groupId?.trim() ?? '';
+    if (groupId.isEmpty) return 0;
+    final now = DateTime.now();
+    return context.read<DataService>().operations.where((trip) {
+      if (trip['_entity'] != 'trip' || trip['isDeleted'] == true ||
+          trip['groupId'] != groupId) return false;
+      final started = DateTime.tryParse('${trip["startedAt"] ?? trip["createdAt"] ?? ""}')?.toLocal();
+      final isAlternative = trip['alternative'] == true || trip['cartType'] == 'alternative';
+      return started != null && started.year == now.year &&
+          started.month == now.month && started.day == now.day &&
+          isAlternative == alternative;
+    }).length;
+  }
   bool emergencyLock = false, recording = false, loadingWorkers = true;
   String landfill = 'المكب المركزي';
   int tripTargetMinutes = 90;
@@ -65,12 +84,15 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
     super.initState();
     _loadWorkers();
     WidgetsBinding.instance.addPostFrameCallback((_) => _restoreEmergency());
-    sosUpdates = FirebaseFirestore.instance.collection('operations')
-        .where('_entity', isEqualTo: 'emergency').snapshots().listen((_) async {
+    final groupId = context.read<AuthService>().currentUser?.groupId?.trim() ?? '';
+    if (groupId.isNotEmpty) sosUpdates = FirebaseFirestore.instance.collection('operations')
+        .where('groupId', isEqualTo: groupId).snapshots().listen((_) async {
       if (!mounted || activeEmergencyId == null) return;
       final data = context.read<DataService>();
       await data.refreshOperations();
       if (mounted) _refreshEmergencyStatus(data);
+    }, onError: (Object error) {
+      debugPrint('Emergency updates unavailable; retaining local state: $error');
     });
   }
 
@@ -96,6 +118,7 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
     final emergencies = data.operations.where((item) =>
       item['_entity'] == 'emergency' &&
       item['reportedBy'] == user.id &&
+      item['groupId'] == user.groupId &&
       item['isDeleted'] != true &&
       item['status'] != 'closed' &&
       item['status'] != 'resolved').toList();
@@ -334,7 +357,6 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
       );
       if (mounted) {
         setState(() {
-          if (alternative) { alternativeTrips++; } else { trips++; }
           tripPhotoPaths.clear();
           tripPpe.updateAll((key, value) => false);
         });
@@ -612,39 +634,21 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
                 user: context.read<AuthService>().currentUser!,
                 eyebrow: 'مشرف ميداني',
                 title: 'تشغيل ميداني سريع',
-                subtitle: 'أربع مهام فقط. اختر الإجراء المطلوب مباشرة دون قوائم مزدحمة.',
+                subtitle: 'مهام مجموعتك وأدوات التواصل والمتابعة، حسب صلاحيات حسابك.',
               ),
               const SizedBox(height: 12),
               DecisionDirectiveBanner(onCoverageChanged: _loadWorkers),
               const OperationsOverviewStrip(),
               const SizedBox(height: 12),
               WorkspaceOverview(actions: [
-                if (user.can('attendance','create'))
-                  WorkspaceAction('attendance','حضور مجموعتي',Icons.fact_check,
-                    () => _openAction(context,'حضور مجموعتي',_attendance(config))),
-                if (user.can('trips','create'))
-                  WorkspaceAction('trips','تسجيل نقلة',Icons.local_shipping,
-                    () => _openAction(context,'تسجيل نقلة',_trips(config))),
-                if (user.can('containers','create') || user.can('containers','edit'))
-                  WorkspaceAction('containers','حاويات مجموعتي',Icons.delete_outline,
-                    () => Navigator.push(context,MaterialPageRoute(
-                      builder:(_)=>const ContainerManagementScreen()))),
-                if (user.can('emergency','create'))
-                  WorkspaceAction('emergency','SOS',Icons.warning_amber,
-                    () => _openAction(context,'SOS / طوارئ',_emergency(config))),
+                for (final feature in FieldTaskShortcuts.features)
+                  if (FeatureRoutePolicy.resolve(user, feature) != null)
+                    WorkspaceAction(feature, FieldTaskShortcuts.label(user, feature),
+                      FieldTaskShortcuts.icon(feature),
+                      () => openAppFeature(context, feature)),
               ]),
-              const SizedBox(height: 14),
-              // Red emergency entry remains prominent even after deduplicating
-              // the attendance/trip/container shortcuts already shown above.
-              if (user.can('emergency', 'create'))
-                SizedBox(height: 120, child: _SupervisorActionCard(
-                  icon: Icons.warning_amber_rounded,
-                  title: 'SOS / طوارئ',
-                  subtitle: 'إبلاغ فوري مع الموقع',
-                  color: red,
-                  emergency: true,
-                  onTap: () => _openAction(
-                    context, 'SOS / طوارئ', _emergency(config)))),
+              const SizedBox(height: 12),
+              FieldSupportShortcuts(user: user),
               const SizedBox(height: 16),
               AiSectionCard(
                 title: 'حالة التشغيل',
@@ -657,10 +661,6 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
         ),
       ),
     );
-  }
-
-  void _openAction(BuildContext context, String title, Widget child) {
-    Navigator.push(context, MaterialPageRoute(builder: (_) => Scaffold(appBar: AppBar(bottom: const AppNavigationBar(), title: AppText(title)), body: child)));
   }
 
   Widget _attendance(ConfigService config) {
@@ -842,7 +842,7 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
               onChanged: emergencyLock ? null : (v) => setState(() => attendanceStatus[workerId] = v ?? 'unset'),
             ),
             const SizedBox(height: 8),
-            if (config.ppeEnabled && (attendanceStatus[name] ?? 'present') == 'present')
+            if (config.ppeEnabled && attendanceStatus[workerId] == 'present')
               Wrap(
                 spacing: 4,
                 runSpacing: 4,
@@ -1002,6 +1002,18 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
               Expanded(child: _counter('$trips', 'كارة أساسية', navy)),
               Expanded(child: _counter('$alternativeTrips', 'كارة بديلة', orange)),
             ]),
+            TextField(
+              controller: street,
+              enabled: !emergencyLock && !savingTrip,
+              decoration: InputDecoration(labelText: tr('اسم الشارع / موقع جمع النفايات')),
+            ),
+            const SizedBox(height: 8),
+            FilledButton.tonalIcon(
+              onPressed: emergencyLock || savingTrip ? null : _captureGps,
+              icon: const Icon(Icons.gps_fixed),
+              label: AppText(reportPosition == null ? 'تحديد الموقع' : 'تم تحديد الموقع'),
+            ),
+            const SizedBox(height: 10),
             DropdownButtonFormField<String>(
               value: landfill,
               items: const [
@@ -1159,34 +1171,5 @@ class SupervisorCardSection extends StatelessWidget {
                     ? 'streets'
                     : 'operations',
     child: child,
-  );
-}
-
-
-class _SupervisorActionCard extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final Color color;
-  final VoidCallback onTap;
-  final bool emergency;
-
-  const _SupervisorActionCard({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.color,
-    required this.onTap,
-    this.emergency = false,
-  });
-
-  @override
-  Widget build(BuildContext context) => EcoShortcutCard(
-    title: title,
-    subtitle: subtitle,
-    feature: emergency ? 'emergency' : 'operations',
-    icon: icon,
-    accent: color,
-    onTap: onTap,
   );
 }
