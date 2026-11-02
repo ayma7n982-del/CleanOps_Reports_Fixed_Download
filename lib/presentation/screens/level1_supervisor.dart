@@ -21,6 +21,7 @@ import '../../core/services/data_service.dart';
 import '../../core/services/image_service.dart';
 import '../../core/services/report_service.dart';
 import '../../core/services/trip_lifecycle.dart';
+import '../../core/services/worker_ppe_checklist.dart';
 import '../../core/services/operational_insights.dart';
 import 'reports_center.dart';
 import '../widgets/app_design.dart';
@@ -68,7 +69,7 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
   final quantity = TextEditingController();
   final recorder = AudioRecorder();
   final imageService = ImageService();
-  final Map<String, Map<String, bool>> ppe = {};
+  final WorkerPpeChecklist ppe = WorkerPpeChecklist();
   final Map<String, String> attendanceStatus = {};
   bool savingAttendance = false;
   bool savingTrip = false;
@@ -759,8 +760,7 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
     }
     if (config.ppeEnabled) {
       final incomplete = workers.where((w) => (attendanceStatus[w['id'] ?? ''] ?? 'unset') == 'present').where((w) {
-        final state = ppe[w['name'] ?? ''] ?? const <String, bool>{};
-        return state.length != 5 || !state.values.every((v) => v);
+        return !ppe.isComplete(w['id'] ?? '');
       }).toList();
       if (incomplete.isNotEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: AppText('اعتمد البوت والقفازات والكمامة والقبعة والصديري لكل عامل حاضر قبل حفظ الكشف.')));
@@ -773,7 +773,8 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
     final day = DateTime.now().toIso8601String().substring(0, 10);
     for (final w in workers) {
       final name = w['name'] ?? '';
-      final state = ppe[w['id'] ?? ''] ?? {};
+      final workerId = w['id'] ?? '';
+      final state = ppe.snapshot(workerId);
       final id = 'attendance_${u.groupId}_${config.shift.replaceAll(RegExp(r'[^0-9]'), '')}_${day}_${w['id']}';
       await d.enqueue('attendance', 'create', {
         'id': id,
@@ -787,7 +788,7 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
         'municipalityCoordinatorId': u.municipalityCoordinatorId ?? '',
         'status': attendanceStatus[w['id'] ?? ''] ?? 'unset',
         if ((attendanceStatus[w['id'] ?? ''] ?? 'unset') == 'present') 'checkInAt': DateTime.now().toIso8601String(),
-        'ppeComplete': state.length == 5 && state.values.every((v) => v),
+        'ppeComplete': ppe.isComplete(workerId),
         'ppe': state,
         'reportedBy': u.id,
         'shift': config.shift,
@@ -805,13 +806,12 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
   }
 
   Widget _worker(Map<String, String> w, ConfigService config) {
-    final name = w['name'] ?? '';
     final workerId = w['id'] ?? '';
-    final state = ppe.putIfAbsent(workerId, () => {'صديري': false, 'قفازات': false, 'بوت': false, 'كمامة': false, 'قبعة': false});
+    final state = ppe.forWorker(workerId);
     return Card(
       child: InkWell(
         borderRadius: BorderRadius.circular(18),
-        onTap: emergencyLock ? null : () => _openSafetyApproval(w, config),
+        onTap: emergencyLock || savingAttendance ? null : () => _openSafetyApproval(w, config),
         child: Padding(
           padding: const EdgeInsets.all(10),
         child: Column(
@@ -839,7 +839,7 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
                 DropdownMenuItem(value: 'unexcused_absence', child: AppText('غياب بدون عذر')),
                 DropdownMenuItem(value: 'external_task', child: AppText('مهمة خارج المجموعة')),
               ],
-              onChanged: emergencyLock ? null : (v) => setState(() => attendanceStatus[workerId] = v ?? 'unset'),
+              onChanged: emergencyLock || savingAttendance ? null : (v) => setState(() => attendanceStatus[workerId] = v ?? 'unset'),
             ),
             const SizedBox(height: 8),
             if (config.ppeEnabled && attendanceStatus[workerId] == 'present')
@@ -849,7 +849,7 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
                 children: state.keys.map((k) => FilterChip(
                   label: AppText(k),
                   selected: state[k]!,
-                  onSelected: emergencyLock ? null : (v) => setState(() => state[k] = v),
+                  onSelected: emergencyLock || savingAttendance ? null : (v) => setState(() => state[k] = v),
                 )).toList(),
               ),
           ],
@@ -860,6 +860,8 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
   }
 
   Future<void> _openSafetyApproval(Map<String, String> worker, ConfigService config) async {
+    final workerId = worker['id'] ?? '';
+    if (workerId.trim().isEmpty || emergencyLock || savingAttendance) return;
     final name = worker['name'] ?? 'العامل';
     final result = await showModalBottomSheet<bool>(
       context: context,
@@ -886,9 +888,8 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
         ),
       ),
     );
-    if (!mounted || result == null) return;
-    final state = ppe.putIfAbsent(name, () => {'صديري': false, 'قفازات': false, 'بوت': false, 'كمامة': false, 'قبعة': false});
-    setState(() { for (final key in state.keys) { state[key] = result; } });
+    if (!mounted || result == null || emergencyLock || savingAttendance) return;
+    setState(() => ppe.setAll(workerId, result));
     if (result && config.ppeEnabled) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: AppText('تم اعتماد السلامة للعامل: $name')));
     } else if (!result) {
