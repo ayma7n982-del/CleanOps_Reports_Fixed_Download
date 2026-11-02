@@ -1,12 +1,13 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/core_models.dart';
+import 'trip_dumpsite.dart';
 
 /// Apply a signed-in group's current route directive to new trips only.
 Future<Map<String, String>> resolveDecisionRoute(AppUser user, String requested,
-    {FirebaseFirestore? firestore}) async {
+    {FirebaseFirestore? firestore, String requestedDumpsiteId = ''}) async {
   final db = firestore ?? FirebaseFirestore.instance;
   final group = user.groupId ?? '';
-  if (group.isEmpty) return {'landfill': requested};
+  if (group.isEmpty) return applyDumpsiteRoutes(requested, requestedDumpsiteId, []);
   final snapshot = await db.collection('strategic_decisions')
       .where('groupId', isEqualTo: group).limit(20000).get();
   if (snapshot.docs.length == 20000) {
@@ -23,25 +24,8 @@ Future<Map<String, String>> resolveDecisionRoute(AppUser user, String requested,
     return (bt is Timestamp ? bt.millisecondsSinceEpoch : 0)
       .compareTo(at is Timestamp ? at.millisecondsSinceEpoch : 0);
   });
-  var landfill = requested;
-  final used = <String>[], visited = <String>{requested};
-  for (var step = 0; step < routes.length; step++) {
-    QueryDocumentSnapshot<Map<String, dynamic>>? match;
-    for (final r in routes) {
-      final detail = r.data()['details'];
-      if (detail is Map && [detail['sourceName'], detail['sourceId']].contains(landfill)) {
-        match = r; break;
-      }
-    }
-    if (match == null) break;
-    final details = match.data()['details'] as Map;
-    final next = '${details['alternativeName'] ?? ''}'.trim();
-    if (next.isEmpty || !visited.add(next)) {
-      throw StateError('يوجد تعارض في توجيهات المكبات. راجع المنسق قبل تسجيل النقلة.');
-    }
-    landfill = next; used.add(match.id);
-  }
-  return {'landfill': landfill, if (used.isNotEmpty) 'routeDecisionId': used.join(',')};
+  return applyDumpsiteRoutes(requested, requestedDumpsiteId,
+      routes.map((doc) => {...doc.data(), 'id': doc.id}).toList());
 }
 
 /// Temporary additions to today's roster; the worker's permanent group remains

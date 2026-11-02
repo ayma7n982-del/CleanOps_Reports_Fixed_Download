@@ -11,7 +11,8 @@ const rules = fs.readFileSync(require('node:path').join(__dirname, '..', 'firest
 before(async () => {
   env = await initializeTestEnvironment({
     projectId,
-    firestore: {rules, host: '127.0.0.1', port: 8080},
+    firestore: {rules, host: '127.0.0.1',
+      port: Number((process.env.FIRESTORE_EMULATOR_HOST || '127.0.0.1:8080').split(':').pop())},
   });
 });
 after(async () => { if (env) await env.cleanup(); });
@@ -338,7 +339,7 @@ test('operations: inactive workforce and anonymous users are rejected', async ()
   await assertFails(getDoc(doc(env.unauthenticatedContext().firestore(),'operations','trip-a')));
 });
 
-test('dumpsites: workforce cannot read management dumpsites', async () => {
+test('dumpsites: supervisor reads active trip destinations, worker remains denied', async () => {
   await env.withSecurityRulesDisabled(async ctx => {
     await setDoc(doc(ctx.firestore(),'dumpsites','dump-a'), {
       nameAr:'مكب أ', nameEn:'Dump A', capacity:100,
@@ -346,10 +347,56 @@ test('dumpsites: workforce cannot read management dumpsites', async () => {
     });
   });
   await assertFails(getDoc(doc(db('worker-a'),'dumpsites','dump-a')));
-  await assertFails(getDoc(doc(db('head-a'),'dumpsites','dump-a')));
+  await assertSucceeds(getDoc(doc(db('head-a'),'dumpsites','dump-a')));
   await assertSucceeds(getDoc(doc(db('coordinator'),'dumpsites','dump-a')));
   await assertSucceeds(getDoc(doc(db('jsc'),'dumpsites','dump-a')));
   await assertSucceeds(getDoc(doc(db('manager'),'dumpsites','dump-a')));
+});
+
+test('dumpsites: supervisor query must request active sites only', async () => {
+  await env.withSecurityRulesDisabled(async ctx => {
+    await setDoc(doc(ctx.firestore(),'dumpsites','active'), {isActive:true, nameAr:'A'});
+    await setDoc(doc(ctx.firestore(),'dumpsites','inactive'), {isActive:false, nameAr:'B'});
+  });
+  const active = query(collection(db('head-a'),'dumpsites'), where('isActive','==',true));
+  const result = await assertSucceeds(getDocs(active));
+  assert.equal(result.size, 1);
+  await assertFails(getDocs(collection(db('head-a'),'dumpsites')));
+  await assertFails(getDoc(doc(db('head-a'),'dumpsites','inactive')));
+  for (const uid of ['inactive-head','worker-a']) {
+    await assertFails(getDocs(query(collection(db(uid),'dumpsites'), where('isActive','==',true))));
+  }
+  await assertFails(getDocs(query(collection(env.unauthenticatedContext().firestore(),'dumpsites'),
+    where('isActive','==',true))));
+  for (const uid of ['coordinator','jsc','manager']) {
+    await assertSucceeds(getDoc(doc(db(uid),'dumpsites','inactive')));
+  }
+});
+
+test('dumpsites: unassigned or deleted supervisor cannot read active destinations', async () => {
+  await env.withSecurityRulesDisabled(async ctx => {
+    await setDoc(doc(ctx.firestore(),'dumpsites','active'), {isActive:true});
+    await setDoc(doc(ctx.firestore(),'users','no-group'), {role:'group_supervisor',isActive:true});
+    await setDoc(doc(ctx.firestore(),'users','deleted-head'), {
+      role:'group_supervisor',isActive:true,status:'deleted',groupId:'group-a'});
+  });
+  for (const uid of ['no-group','deleted-head']) {
+    await assertFails(getDoc(doc(db(uid),'dumpsites','active')));
+  }
+});
+
+test('dumpsites: reading a destination never grants supervisor management rights', async () => {
+  const site = {nameAr:'A',nameEn:'A',capacity:100,fillPercentage:20,isActive:true};
+  await env.withSecurityRulesDisabled(async ctx => {
+    await setDoc(doc(ctx.firestore(),'dumpsites','active'), site);
+  });
+  await assertFails(setDoc(doc(db('head-a'),'dumpsites','forged'), site));
+  await assertFails(updateDoc(doc(db('head-a'),'dumpsites','active'), {nameAr:'Spoofed'}));
+  await assertFails(updateDoc(doc(db('head-a'),'dumpsites','active'), {isActive:false}));
+  await assertFails(deleteDoc(doc(db('head-a'),'dumpsites','active')));
+  await assertSucceeds(setDoc(doc(db('coordinator'),'dumpsites','managed'), site));
+  await assertSucceeds(updateDoc(doc(db('jsc'),'dumpsites','managed'), {fillPercentage:30}));
+  await assertFails(setDoc(doc(db('manager'),'dumpsites','manager-write'), site));
 });
 
 test('operations: management roles retain operational oversight', async () => {

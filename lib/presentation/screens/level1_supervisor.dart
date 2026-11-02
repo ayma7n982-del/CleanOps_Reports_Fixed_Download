@@ -1,3 +1,5 @@
+import '../../core/services/trip_dumpsite.dart';
+import '../widgets/trip_dumpsite_picker.dart';
 import '../../core/services/feature_route_policy.dart';
 import '../feature_navigation.dart';
 import '../widgets/field_shortcuts.dart';
@@ -59,7 +61,11 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
     }).length;
   }
   bool emergencyLock = false, recording = false, loadingWorkers = true;
-  String landfill = 'المكب المركزي';
+  String? selectedDumpsiteId;
+  List<TripDumpsite> tripDumpsites = [];
+  bool loadingDumpsites = true, dumpsitesFromCache = false;
+  String? dumpsiteError;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? dumpsiteUpdates;
   int tripTargetMinutes = 90;
   Position? reportPosition;
   String? audioPath;
@@ -90,6 +96,7 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
   void initState() {
     super.initState();
     _watchWorkers();
+    _watchTripDumpsites();
     WidgetsBinding.instance.addPostFrameCallback((_) => _restoreEmergency());
     final groupId = context.read<AuthService>().currentUser?.groupId?.trim() ?? '';
     if (groupId.isNotEmpty) sosUpdates = FirebaseFirestore.instance.collection('operations')
@@ -108,12 +115,44 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
     timer?.cancel();
     sosUpdates?.cancel();
     rosterUpdates?.cancel();
+    dumpsiteUpdates?.cancel();
     street.dispose();
     issue.dispose();
     solution.dispose();
     quantity.dispose();
     recorder.dispose();
     super.dispose();
+  }
+
+  void _watchTripDumpsites() {
+    dumpsiteUpdates?.cancel();
+    setState(() { loadingDumpsites = true; dumpsiteError = null; });
+    // No arbitrary result cap: this is the complete active destination catalog.
+    dumpsiteUpdates = FirebaseFirestore.instance.collection('dumpsites')
+        .where('isActive', isEqualTo: true)
+        .snapshots(includeMetadataChanges: true).listen((snapshot) {
+      if (!mounted) return;
+      final sites = snapshot.docs.map((doc) =>
+          TripDumpsite.fromRecord(doc.id, doc.data())).whereType<TripDumpsite>()
+          .toList()..sort((a, b) => a.name.compareTo(b.name));
+      setState(() {
+        tripDumpsites = sites;
+        loadingDumpsites = false;
+        dumpsitesFromCache = snapshot.metadata.isFromCache;
+        dumpsiteError = null;
+        if (!sites.any((site) => site.id == selectedDumpsiteId)) {
+          selectedDumpsiteId = null;
+        }
+      });
+    }, onError: (Object error) {
+      if (!mounted) return;
+      setState(() {
+        loadingDumpsites = false;
+        dumpsiteError = error is FirebaseException && error.code == 'permission-denied'
+            ? 'تعذر الوصول إلى المكبات. يُرجى مراجعة المنسق لتحديث صلاحية قراءة وجهات النقلات.'
+            : 'تعذر تحميل المكبات. تحقق من الاتصال وأعد المحاولة.';
+      });
+    });
   }
 
   Future<void> _restoreEmergency() async {
@@ -313,7 +352,8 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: AppText('أدخل موقع أو شارع جمع النفايات.')));
       return;
     }
-    if (landfill.trim().isEmpty) {
+    if (loadingDumpsites || dumpsiteError != null ||
+        !tripDumpsites.any((site) => site.id == selectedDumpsiteId)) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: AppText('اختر المكب أو نقطة التجميع قبل تسجيل النقلة.')));
       return;
     }
@@ -330,7 +370,15 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
     final id = startedAt.microsecondsSinceEpoch.toString();
     setState(() => savingTrip = true);
     try {
-      final route = await resolveDecisionRoute(u, landfill);
+      final selected = tripDumpsites.firstWhere((site) => site.id == selectedDumpsiteId);
+      final route = await resolveDecisionRoute(u, selected.name,
+          requestedDumpsiteId: selected.id);
+      // Resolve again after the async directive read: the list may have changed.
+      if (dumpsiteError != null || loadingDumpsites) {
+        throw StateError('تعذر التحقق من قائمة المكبات. أعد تحميلها قبل التسجيل.');
+      }
+      final destination = resolveTripDestination(tripDumpsites, route);
+      final landfill = destination.name;
       await d.enqueue('trip', 'create', {
         'id': id,
         'groupId': u.groupId,
@@ -343,7 +391,8 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
         ...lifecycle,
         'cartType': alternative ? 'alternative' : 'primary',
         'alternative': alternative,
-        'landfill': route['landfill'],
+        ...destination.tripFields,
+        'requestedDumpsiteId': selected.id,
         if (route['routeDecisionId'] != null) 'routeDecisionId': route['routeDecisionId'],
         'estimatedQuantity': quantity.text.trim(),
         'quantityUnit': 'ton',
@@ -1036,14 +1085,15 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
               label: AppText(reportPosition == null ? 'تحديد الموقع' : 'تم تحديد الموقع'),
             ),
             const SizedBox(height: 10),
-            DropdownButtonFormField<String>(
-              value: landfill,
-              items: const [
-                DropdownMenuItem(value: 'المكب المركزي', child: AppText('المكب المركزي')),
-                DropdownMenuItem(value: 'مكب بديل معتمد', child: AppText('مكب بديل معتمد')),
-              ],
-              onChanged: emergencyLock ? null : (v) => setState(() => landfill = v!),
-              decoration: InputDecoration(labelText: tr('المكب / نقطة التجميع')),
+            TripDumpsitePicker(
+              sites: tripDumpsites, selectedId: selectedDumpsiteId,
+              enabled: !emergencyLock && !savingTrip,
+              loading: loadingDumpsites, fromCache: dumpsitesFromCache,
+              error: dumpsiteError, onRetry: _watchTripDumpsites,
+              onSelected: (id) {
+                if (mounted && !savingTrip) setState(() => selectedDumpsiteId =
+                    tripDumpsites.any((site) => site.id == id) ? id : null);
+              },
             ),
             const SizedBox(height: 10),
             DropdownButtonFormField<int>(
@@ -1070,9 +1120,9 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
             ),
             const SizedBox(height: 10),
             Row(children: [
-              Expanded(child: FilledButton.icon(onPressed: emergencyLock || savingTrip ? null : () => _registerTrip(false), icon: const Icon(Icons.play_arrow_rounded), label: const AppText('بدء نقلة أساسية'))),
+              Expanded(child: FilledButton.icon(onPressed: emergencyLock || savingTrip || loadingDumpsites || dumpsiteError != null || selectedDumpsiteId == null ? null : () => _registerTrip(false), icon: const Icon(Icons.play_arrow_rounded), label: const AppText('بدء نقلة أساسية'))),
               const SizedBox(width: 8),
-              Expanded(child: OutlinedButton.icon(onPressed: emergencyLock || savingTrip || !config.alternativeCartEnabled ? null : () => _registerTrip(true), icon: const Icon(Icons.swap_horiz), label: const AppText('بدء نقلة بديلة'))),
+              Expanded(child: OutlinedButton.icon(onPressed: emergencyLock || savingTrip || loadingDumpsites || dumpsiteError != null || selectedDumpsiteId == null || !config.alternativeCartEnabled ? null : () => _registerTrip(true), icon: const Icon(Icons.swap_horiz), label: const AppText('بدء نقلة بديلة'))),
             ]),
             const SizedBox(height: 10),
             TextField(controller: quantity, enabled: !emergencyLock, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: tr('الكمية التقديرية (طن)'))),

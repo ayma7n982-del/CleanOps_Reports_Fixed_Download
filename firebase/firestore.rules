@@ -453,7 +453,12 @@ service cloud.firestore {
 
     // ---------------- Smart dumpsites: Level 2/3 ----------------
     match /dumpsites/{id} {
-      allow read: if isL2() || isL3() || isL4();
+      // Supervisors read active trip destinations only; management writes stay unchanged.
+      allow read: if isL2() || isL3() || isL4()
+        || (activeSignedIn() && role() == 'group_supervisor'
+          && userDoc().get('groupId', '') is string
+          && userDoc().get('groupId', '').size() > 0
+          && resource.data.isActive == true);
       allow create: if isL2OrL3()
         && request.resource.data.nameAr is string
         && request.resource.data.nameEn is string
