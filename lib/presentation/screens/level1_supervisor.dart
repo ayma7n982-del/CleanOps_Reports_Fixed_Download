@@ -960,7 +960,7 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
           'municipalityName': u.scope == 'assigned_only' ? (w['municipalityName'] ?? '') : u.scope,
           'municipalityCoordinatorId': u.municipalityCoordinatorId ?? '',
           'status': status,
-          'checkInAt': status == 'present' ? previous?['checkInAt'] ?? DateTime.now().toIso8601String() : null,
+          'checkInAt': status == 'present' ? (previous?['checkInAt'] ?? DateTime.now().toIso8601String()) : null,
           'checkOutAt': status == 'present' ? (previous?['checkOutAt']) : null,
           'checkInTime': status == 'present' ? (previous?['checkInTime']) : null,
           'checkOutTime': status == 'present' ? (previous?['checkOutTime']) : null,

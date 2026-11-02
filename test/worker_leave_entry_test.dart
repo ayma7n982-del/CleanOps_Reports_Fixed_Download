@@ -352,7 +352,7 @@ void main() {
         WorkerLeaveForm(
           workers: const [workerA, workerB],
           shift: config.shift,
-          onLoad: (_, _) async => {
+          onLoad: (worker, selectedDay) async => {
             'status': 'permission',
             'leaveReason': 'طبيب',
             'permissionFromMinute': 600,

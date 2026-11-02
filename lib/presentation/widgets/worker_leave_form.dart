@@ -124,7 +124,7 @@ class _WorkerLeaveFormState extends State<WorkerLeaveForm> {
           toMinute: end,
         ),
       );
-      if (mounted && saved) setState(() => dirty = false);
+      if (mounted && saved) setState(() { dirty = false; existingStatus = status; });
     } catch (e) {
       if (mounted) setState(() => error = 'تعذر الحفظ: $e');
     } finally {
@@ -177,9 +177,9 @@ class _WorkerLeaveFormState extends State<WorkerLeaveForm> {
       child: ListView(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 110),
         children: [
-          SupervisorCardSection(
+          AiSectionCard(
             title: 'إجازة أو إذن لعامل واحد',
-            icon: const Icon(Icons.event_available_outlined),
+            feature: 'leave',
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
