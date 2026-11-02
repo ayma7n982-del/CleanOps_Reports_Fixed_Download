@@ -127,23 +127,36 @@ class AlertsCenterPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final user = context.watch<AuthService>().currentUser;
+    Query<Map<String, dynamic>> query = FirebaseFirestore.instance.collection('operations');
+    if (focusRecordId == null) {
+      query = query.where('_entity', whereIn: ['emergency', 'notification']).limit(200);
+    } else {
+      query = query.where(FieldPath.documentId, isEqualTo: focusRecordId);
+    }
+    if (user?.role == 'group_supervisor' || user?.role == 'worker') {
+      query = query.where('groupId', isEqualTo: user?.groupId ?? '');
+    }
     return _OpsStreamPage(
       title: 'مركز التنبيهات',
       feature: 'emergency',
-      query: focusRecordId == null
-          ? FirebaseFirestore.instance.collection('operations')
-              .where('_entity', whereIn: ['emergency', 'notification']).limit(200)
-          : FirebaseFirestore.instance.collection('operations')
-              .where(FieldPath.documentId, isEqualTo: focusRecordId),
+      query: query,
       empty: 'لا توجد تنبيهات أو بلاغات مسجلة.',
       builder: (docs) {
         if (user == null || !user.can('emergency', 'view')) {
           return const AppText('ليست لديك صلاحية لعرض التنبيهات.');
         }
-        bool visible(Map<String, dynamic> data) => OperationalInsights.visibleToUser(
-          data, role: user.role, userId: user.id, scope: user.scope,
-          groupId: user.groupId,
-        );
+        bool visible(Map<String, dynamic> data) {
+          // Keep focused search navigation consistent with the search's
+          // council-wide scope, while retaining normal alert filtering.
+          if (focusRecordId != null && user.role == 'jsc_coordinator' &&
+              const ['', 'all', 'assigned_only'].contains(user.scope.trim())) {
+            return data['isDeleted'] != true;
+          }
+          return OperationalInsights.visibleToUser(
+            data, role: user.role, userId: user.id, scope: user.scope,
+            groupId: user.groupId,
+          );
+        }
         final targetedIncidents = <String>{};
         for (final doc in docs) {
           final data = doc.data();
@@ -194,9 +207,21 @@ class AlertsCenterPage extends StatelessWidget {
 class TripsLogPage extends StatelessWidget {
   final String? focusRecordId;
   const TripsLogPage({super.key, this.focusRecordId});
-  @override Widget build(BuildContext context) => _OpsStreamPage(title:'سجل النقلات',feature:'trips',query: focusRecordId == null
-      ? FirebaseFirestore.instance.collection('operations').where('_entity',isEqualTo:'trip').limit(300)
-      : FirebaseFirestore.instance.collection('operations').where('_entity',isEqualTo:'trip').where(FieldPath.documentId,isEqualTo:focusRecordId),empty:'لا توجد ترحيلات مسجلة.',builder:(docs)=>Column(children:docs.map((d)=>_OperationTile(d)).toList()));
+  @override
+  Widget build(BuildContext context) {
+    final user = context.watch<AuthService>().currentUser;
+    Query<Map<String, dynamic>> query = FirebaseFirestore.instance
+        .collection('operations').where('_entity', isEqualTo: 'trip');
+    if (user?.role == 'group_supervisor' || user?.role == 'worker') {
+      query = query.where('groupId', isEqualTo: user?.groupId ?? '');
+    }
+    query = focusRecordId == null ? query.limit(300)
+        : query.where(FieldPath.documentId, isEqualTo: focusRecordId);
+    return _OpsStreamPage(title: 'سجل النقلات', feature: 'trips', query: query,
+        empty: 'لا توجد ترحيلات مسجلة.',
+        builder: (docs) => Column(children: docs.map((d) => _OperationTile(d)).toList()));
+  }
+
 }
 
 class _OpsStreamPage extends StatelessWidget {

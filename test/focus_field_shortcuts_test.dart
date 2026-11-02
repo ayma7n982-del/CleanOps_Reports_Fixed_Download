@@ -18,7 +18,7 @@ class _UnusedBox extends Fake implements Box {}
 
 class _OfflineOperations extends Fake implements OperationsAdminService {
   @override
-  Stream<QuerySnapshot<Map<String, dynamic>>> activeCycles() =>
+  Stream<QuerySnapshot<Map<String, dynamic>>> activeCycles({String? focusRecordId}) =>
       Stream<QuerySnapshot<Map<String, dynamic>>>.error(StateError('offline'));
 
   @override
