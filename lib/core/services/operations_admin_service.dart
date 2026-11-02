@@ -27,10 +27,14 @@ class OperationsAdminService {
   CollectionReference<Map<String, dynamic>> get _cycles => firestore.collection('work_cycles');
   CollectionReference<Map<String, dynamic>> get _dumpsites => firestore.collection('dumpsites');
 
-  Stream<QuerySnapshot<Map<String, dynamic>>> activeCycles() =>
-      _cycles.limit(50).snapshots();
+  Stream<QuerySnapshot<Map<String, dynamic>>> activeCycles({String? focusRecordId}) =>
+      focusRecordId == null ? _cycles.limit(50).snapshots()
+          : _cycles.where(FieldPath.documentId, isEqualTo: focusRecordId).snapshots();
 
-  Stream<QuerySnapshot<Map<String, dynamic>>> dumpsites({bool includeInactive = false}) {
+  Stream<QuerySnapshot<Map<String, dynamic>>> dumpsites({bool includeInactive = false, String? focusRecordId}) {
+    if (focusRecordId != null) {
+      return _dumpsites.where(FieldPath.documentId, isEqualTo: focusRecordId).snapshots();
+    }
     final q = _dumpsites;
     return includeInactive ? q.limit(100).snapshots() : q.where('isActive', isEqualTo: true).limit(100).snapshots();
   }
@@ -377,11 +381,13 @@ class OperationsAdminService {
   }
 
   /// Live list of the accounts the actor manages (updates instantly after creation).
-  Stream<QuerySnapshot<Map<String, dynamic>>> managedUsers({required String actorId, required String actorRole}) {
+  Stream<QuerySnapshot<Map<String, dynamic>>> managedUsers({required String actorId, required String actorRole, String? focusRecordId}) {
+    Query<Map<String, dynamic>> query = _users;
+    if (focusRecordId != null) query = query.where(FieldPath.documentId, isEqualTo: focusRecordId);
     if (actorRole == 'municipality_coordinator') {
-      return _users.where('municipalityCoordinatorId', isEqualTo: actorId).snapshots();
+      return query.where('municipalityCoordinatorId', isEqualTo: actorId).snapshots();
     }
-    return _users.snapshots();
+    return query.snapshots();
   }
 
   /// Live counters computed straight from the users collection.

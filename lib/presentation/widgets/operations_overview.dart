@@ -96,14 +96,15 @@ class _DumpsitesCard extends StatelessWidget {
 
 
 class DumpsitesOverviewScreen extends StatelessWidget {
-  const DumpsitesOverviewScreen({super.key});
+  final String? focusRecordId;
+  const DumpsitesOverviewScreen({super.key, this.focusRecordId});
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: cleanOpsBg,
       appBar: AppBar(title: const AppText('المكبات')),
       body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-        stream: context.read<OperationsAdminService>().dumpsites(includeInactive: true),
+        stream: context.read<OperationsAdminService>().dumpsites(includeInactive: true, focusRecordId: focusRecordId),
         builder: (context, snap) {
           if (snap.hasError) return Center(child: AppText('تعذر تحميل المكبات: ${snap.error}'));
           if (!snap.hasData) return const Center(child: CircularProgressIndicator());

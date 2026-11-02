@@ -11,7 +11,8 @@ import '../widgets/app_design.dart';
 import '../../core/constants/app_constants.dart';
 
 class UserManagementSettingsPage extends StatefulWidget {
-  const UserManagementSettingsPage({super.key});
+  final String? focusRecordId;
+  const UserManagementSettingsPage({super.key, this.focusRecordId});
   @override
   State<UserManagementSettingsPage> createState() => _UserManagementSettingsPageState();
 }
@@ -119,6 +120,7 @@ class _UserManagementSettingsPageState extends State<UserManagementSettingsPage>
         body: ListView(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
           children: [
+          if (widget.focusRecordId == null) ...[
             AiHero(user: actor, eyebrow: 'إدارة المستخدمين', title: 'إنشاء حساب تشغيلي كامل', subtitle: 'أنشئ حسابًا وحدد دوره ونطاق عمله. تُحمى بيانات تسجيل الدخول تلقائيًا.'),
             const SizedBox(height: 14),
             AiSectionCard(
@@ -186,10 +188,11 @@ class _UserManagementSettingsPageState extends State<UserManagementSettingsPage>
             const SizedBox(height: 8),
             const AppText('الأمان: كلمة المرور تُرسل مباشرة إلى Firebase Authentication ولا تُخزن في Firestore أو LocalStore.', style: TextStyle(color: cleanOpsMuted, fontSize: 11)),
             const SizedBox(height: 16),
+          ],
             AiSectionCard(
               title: 'المستخدمون (تحديث مباشر)', feature: 'users',
               child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                stream: context.read<OperationsAdminService>().managedUsers(actorId: actor.id, actorRole: actor.role),
+                stream: context.read<OperationsAdminService>().managedUsers(actorId: actor.id, actorRole: actor.role, focusRecordId: widget.focusRecordId),
                 builder: (_, snap) {
                   if (snap.hasError) return AppText('تعذر تحميل المستخدمين: ${snap.error}');
                   if (!snap.hasData) return const Center(child: Padding(padding: EdgeInsets.all(12), child: CircularProgressIndicator()));

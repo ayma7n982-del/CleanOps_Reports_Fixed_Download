@@ -13,7 +13,8 @@ import '../widgets/location_picker.dart';
 
 class OperationsManagementScreen extends StatefulWidget {
   final int initialTab;
-  const OperationsManagementScreen({super.key, this.initialTab = 0});
+  final String? focusRecordId;
+  const OperationsManagementScreen({super.key, this.initialTab = 0, this.focusRecordId});
   @override
   State<OperationsManagementScreen> createState() => _OperationsManagementScreenState();
 }
@@ -28,15 +29,15 @@ class _OperationsManagementScreenState extends State<OperationsManagementScreen>
     final tabs = <Widget>[];
     final labels = <Tab>[];
     if (user.role == 'municipality_coordinator') {
-      tabs.add(const _WorkforceTab());
+      tabs.add(_WorkforceTab(focusRecordId: widget.focusRecordId));
       labels.add(Tab(text: tr('الموارد')));
     }
     if (user.role == 'municipality_coordinator' || user.role == 'jsc_coordinator') {
-      tabs.add(const _DumpsitesTab());
+      tabs.add(_DumpsitesTab(focusRecordId: widget.focusRecordId));
       labels.add(Tab(text: tr('المكبات')));
     }
     if (user.role == 'donor_manager') {
-      tabs.add(const _CyclesTab());
+      tabs.add(_CyclesTab(focusRecordId: widget.focusRecordId));
       labels.add(Tab(text: tr('الدورات')));
     }
     if (tabs.isEmpty) {
@@ -63,7 +64,8 @@ class _OperationsManagementScreenState extends State<OperationsManagementScreen>
 }
 
 class _CyclesTab extends StatefulWidget {
-  const _CyclesTab();
+  final String? focusRecordId;
+  const _CyclesTab({this.focusRecordId});
   @override
   State<_CyclesTab> createState() => _CyclesTabState();
 }
@@ -125,6 +127,7 @@ class _CyclesTabState extends State<_CyclesTab> {
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
       children: [
+        if (widget.focusRecordId == null) ...[
         AiHero(
           user: context.read<AuthService>().currentUser!,
           eyebrow: 'إدارة دورات العمل',
@@ -160,8 +163,9 @@ class _CyclesTabState extends State<_CyclesTab> {
           ),
         ),
         const SizedBox(height: 14),
+        ],
         StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-          stream: svc.activeCycles(),
+          stream: svc.activeCycles(focusRecordId: widget.focusRecordId),
           builder: (_, snap) {
             if (snap.hasError) {
               return Card(
@@ -278,7 +282,8 @@ class _CyclesTabState extends State<_CyclesTab> {
 }
 
 class _DumpsitesTab extends StatefulWidget {
-  const _DumpsitesTab();
+  final String? focusRecordId;
+  const _DumpsitesTab({this.focusRecordId});
   @override
   State<_DumpsitesTab> createState() => _DumpsitesTabState();
 }
@@ -444,6 +449,7 @@ class _DumpsitesTabState extends State<_DumpsitesTab> {
         ListView(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
       children: [
+        if (widget.focusRecordId == null) ...[
         AiHero(
           user: u,
           eyebrow: 'إدارة المكبات',
@@ -494,8 +500,9 @@ class _DumpsitesTabState extends State<_DumpsitesTab> {
             ),
           ),
         if (can) const SizedBox(height: 14),
+        ],
         StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-          stream: svc.dumpsites(includeInactive: true),
+          stream: svc.dumpsites(includeInactive: true, focusRecordId: widget.focusRecordId),
           builder: (_, snap) {
             if (snap.hasError) return AppText('تعذر تحميل المكبات: ${snap.error}');
             if (snap.connectionState == ConnectionState.waiting && !snap.hasData) return const Padding(padding: EdgeInsets.all(28), child: Center(child: CircularProgressIndicator()));
@@ -547,7 +554,7 @@ class _DumpsitesTabState extends State<_DumpsitesTab> {
         ),
       ],
         ),
-        if (can)
+        if (can && widget.focusRecordId == null)
           Positioned(
             left: 16,
             right: 16,
@@ -571,7 +578,8 @@ class _DumpsitesTabState extends State<_DumpsitesTab> {
 }
 
 class _WorkforceTab extends StatefulWidget {
-  const _WorkforceTab();
+  final String? focusRecordId;
+  const _WorkforceTab({this.focusRecordId});
   @override
   State<_WorkforceTab> createState() => _WorkforceTabState();
 }
@@ -638,6 +646,7 @@ class _WorkforceTabState extends State<_WorkforceTab> {
         return ListView(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
           children: [
+            if (widget.focusRecordId == null) ...[
             AiHero(
               user: u,
               eyebrow: 'إدارة العمال والمجموعات',
@@ -773,18 +782,23 @@ class _WorkforceTabState extends State<_WorkforceTab> {
                 ),
               ),
             const SizedBox(height: 14),
-            if (cycleId.isNotEmpty)
+            ],
+            if (cycleId.isNotEmpty || widget.focusRecordId != null)
               StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                stream: svc.cycleUsers(cycleId, actorId: u.id),
+                stream: widget.focusRecordId == null
+                    ? svc.cycleUsers(cycleId, actorId: u.id)
+                    : svc.managedUsers(actorId: u.id, actorRole: u.role, focusRecordId: widget.focusRecordId),
                 builder: (_, snap) {
                   if (snap.hasError) return Card(child: Padding(padding: const EdgeInsets.all(16), child: AppText('تعذر تحميل عمال ومشرفي البلدية: ${snap.error}')));
                   if (!snap.hasData) return const Center(child: CircularProgressIndicator());
                   final docs = snap.data!.docs.where((d) => d.data()['municipalityCoordinatorId'] == u.id && (d.data()['role'] == 'worker' || d.data()['role'] == 'group_supervisor')).toList();
                   return AiSectionCard(
-                    title: 'مستخدمو الدورة',
+                    title: widget.focusRecordId == null ? 'مستخدمو الدورة' : 'المستخدم المحدد',
                     subtitle: 'Active / Frozen / Deactivated',
                     feature: 'users',
-                    child: Column(
+                    child: docs.isEmpty
+                        ? const AppText('السجل غير موجود أو غير متاح ضمن صلاحياتك.')
+                        : Column(
                       children: docs.map((d) {
                         final x = d.data();
                         final active = x['isActive'] != false;
@@ -818,7 +832,7 @@ class _WorkforceTabState extends State<_WorkforceTab> {
                               if (active && x['role'] == 'worker')
                                 IconButton(
                                   tooltip: 'نقل العامل إلى مجموعة أخرى',
-                                  onPressed: () => _transferDialog(context, svc, u.id, cycleId, workerId: d.id),
+                                  onPressed: () => _transferDialog(context, svc, u.id, '${x['cycleId'] ?? cycleId}', workerId: d.id),
                                   icon: const Icon(Icons.drive_file_move_outline),
                                 ),
                               if (active)

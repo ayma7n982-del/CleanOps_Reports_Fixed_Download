@@ -8,6 +8,7 @@ import 'dart:typed_data';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../core/services/fast_smart_search.dart';
+import '../../core/services/search_page_loader.dart';
 import '../../core/services/container_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -102,7 +103,8 @@ class _HubMetric extends StatelessWidget { final String title,value,feature; con
 class _LoadingCard extends StatelessWidget { const _LoadingCard(); @override Widget build(BuildContext c)=>const AiSectionCard(title:'جاري قراءة البيانات',subtitle:'من سجلات التشغيل',feature:'sync',child:Center(child:Padding(padding:EdgeInsets.all(16),child:CircularProgressIndicator()))); }
 
 class AlertsCenterPage extends StatelessWidget {
-  const AlertsCenterPage({super.key});
+  final String? focusRecordId;
+  const AlertsCenterPage({super.key, this.focusRecordId});
 
   static DateTime _alertTime(Map<String, dynamic> data) {
     final value = data['createdAt'] ?? data['timestamp'] ?? data['updatedAt'];
@@ -128,8 +130,11 @@ class AlertsCenterPage extends StatelessWidget {
     return _OpsStreamPage(
       title: 'مركز التنبيهات',
       feature: 'emergency',
-      query: FirebaseFirestore.instance.collection('operations')
-          .where('_entity', whereIn: ['emergency', 'notification']).limit(200),
+      query: focusRecordId == null
+          ? FirebaseFirestore.instance.collection('operations')
+              .where('_entity', whereIn: ['emergency', 'notification']).limit(200)
+          : FirebaseFirestore.instance.collection('operations')
+              .where(FieldPath.documentId, isEqualTo: focusRecordId),
       empty: 'لا توجد تنبيهات أو بلاغات مسجلة.',
       builder: (docs) {
         if (user == null || !user.can('emergency', 'view')) {
@@ -151,7 +156,7 @@ class AlertsCenterPage extends StatelessWidget {
         }
         final selected = docs.where((doc) {
           final data = doc.data();
-          return OperationalInsights.isOpenAlert(data) &&
+          return (focusRecordId != null || OperationalInsights.isOpenAlert(data)) &&
               (visible(data) || (data['_entity'] == 'emergency' &&
                   targetedIncidents.contains(doc.id)));
         }).toList()
@@ -187,8 +192,11 @@ class AlertsCenterPage extends StatelessWidget {
 }
 
 class TripsLogPage extends StatelessWidget {
-  const TripsLogPage({super.key});
-  @override Widget build(BuildContext context) => _OpsStreamPage(title:'سجل النقلات',feature:'trips',query:FirebaseFirestore.instance.collection('operations').where('_entity',isEqualTo:'trip').limit(300),empty:'لا توجد ترحيلات مسجلة.',builder:(docs)=>Column(children:docs.map((d)=>_OperationTile(d)).toList()));
+  final String? focusRecordId;
+  const TripsLogPage({super.key, this.focusRecordId});
+  @override Widget build(BuildContext context) => _OpsStreamPage(title:'سجل النقلات',feature:'trips',query: focusRecordId == null
+      ? FirebaseFirestore.instance.collection('operations').where('_entity',isEqualTo:'trip').limit(300)
+      : FirebaseFirestore.instance.collection('operations').where('_entity',isEqualTo:'trip').where(FieldPath.documentId,isEqualTo:focusRecordId),empty:'لا توجد ترحيلات مسجلة.',builder:(docs)=>Column(children:docs.map((d)=>_OperationTile(d)).toList()));
 }
 
 class _OpsStreamPage extends StatelessWidget {
@@ -394,6 +402,7 @@ class _GlobalSearchPageState extends State<GlobalSearchPage> {
   bool _autoOpened = false;
   String? remoteWarning;
   String categoryFilter = 'الكل';
+  int _visibleLimit = 100;
 
   @override
   void initState() {
@@ -491,7 +500,7 @@ class _GlobalSearchPageState extends State<GlobalSearchPage> {
 
   void _applyQuery() {
     if (!mounted) return;
-    final found = _index.find(controller.text, limit: 100);
+    final found = _index.find(controller.text, limit: _index.recordCount);
     setState(() => results = found);
     if (widget.openExactResult && !_autoOpened) {
       final expected = widget.initialQuery.trim();
@@ -534,28 +543,50 @@ class _GlobalSearchPageState extends State<GlobalSearchPage> {
     void add(String collection, String label, Query<Map<String, dynamic>> query,
         {String Function(Map<String, dynamic>)? categoryFor}) {
       pending.add(() async {
-        final limited = query.limit(800);
-        void apply(QuerySnapshot<Map<String, dynamic>> snapshot) {
-          if (!mounted || context.read<AuthService>().currentUser?.id != _actor.id) return;
-          final docs = snapshot.docs
-              .map((doc) => {...doc.data(), 'id': doc.id})
-              .where((doc) => visibleRemote(collection, doc));
-          _index.replaceSource(collection, label, docs, categoryFor: categoryFor);
+        bool active() => mounted &&
+            context.read<AuthService>().currentUser?.id == _actor.id;
+        final cachedRows = <String, Map<String, dynamic>>{};
+        final serverRows = <String, Map<String, dynamic>>{};
+        void apply(Iterable<Map<String, dynamic>> rows) {
+          if (!active()) return;
+          _index.replaceSource(collection, label,
+              rows.where((doc) => visibleRemote(collection, doc)),
+              categoryFor: categoryFor,
+              collection: collection == 'remote_operations' ? 'operations' : collection);
           _applyQuery();
         }
 
-        // Cached Firestore data is normally available without any network wait.
+        // The cache is not capped either; it remains available while the
+        // server pages arrive and when a later page fails or we are offline.
         try {
-          final cached = await limited.get(const GetOptions(source: Source.cache))
+          final cached = await query.get(const GetOptions(source: Source.cache))
               .timeout(const Duration(seconds: 2));
-          if (cached.docs.isNotEmpty) apply(cached);
+          for (final doc in cached.docs) {
+            cachedRows[doc.id] = {...doc.data(), 'id': doc.id};
+          }
+          if (cachedRows.isNotEmpty) apply(cachedRows.values);
         } catch (_) {
           // A first-time install legitimately has no cached query.
         }
-        if (!canFetchServer) return;
+        if (!canFetchServer || !active()) return;
         try {
-          final snapshot = await limited.get().timeout(const Duration(seconds: 9));
-          apply(snapshot);
+          final ordered = query.orderBy(FieldPath.documentId);
+          await for (final page in readSearchPages<QueryDocumentSnapshot<Map<String, dynamic>>>(
+            isActive: active,
+            fetchPage: (after, size) async {
+              Query<Map<String, dynamic>> next = ordered.limit(size);
+              if (after != null) next = next.startAfterDocument(after);
+              return (await next.get(const GetOptions(source: Source.server))
+                  .timeout(const Duration(seconds: 15))).docs;
+            },
+          )) {
+            for (final doc in page) {
+              serverRows[doc.id] = {...doc.data(), 'id': doc.id};
+            }
+            apply({...cachedRows, ...serverRows}.values);
+          }
+          // Only a completed scan may remove stale cached documents.
+          apply(serverRows.values);
         } catch (_) {
           failures++;
         }
@@ -564,7 +595,7 @@ class _GlobalSearchPageState extends State<GlobalSearchPage> {
 
     // The container service already maintains an authorized live/offline feed.
     // Unlike the previous implementation, no Firestore request happens on each keystroke.
-    if (_dataService.operations.isEmpty) {
+    { // Always scan: a nonempty local cache may be only a partial history.
       Query<Map<String, dynamic>> operations = db.collection('operations');
       if (_actor.role == 'group_supervisor' || _actor.role == 'worker') {
         final groupId = (_actor.groupId ?? '').trim();
@@ -588,7 +619,11 @@ class _GlobalSearchPageState extends State<GlobalSearchPage> {
     }
     if (_actor.can('operations', 'view') &&
         const ['donor_manager', 'jsc_coordinator', 'municipality_coordinator'].contains(_actor.role)) {
-      add('equipment', 'معدة', db.collection('equipment'));
+      Query<Map<String, dynamic>> equipment = db.collection('equipment');
+      if (_actor.role == 'municipality_coordinator') {
+        equipment = equipment.where('municipalityCoordinatorId', isEqualTo: _actor.id);
+      }
+      add('equipment', 'معدة', equipment);
       add('work_cycles', 'دورة', db.collection('work_cycles'));
     }
     if (_actor.can('dumpsite', 'view') &&
@@ -624,9 +659,10 @@ class _GlobalSearchPageState extends State<GlobalSearchPage> {
   Widget build(BuildContext context) {
     final hasQuery = controller.text.trim().isNotEmpty;
     final categories = <String>['الكل', ...results.map((r) => r.category).toSet()];
-    final displayed = categoryFilter == 'الكل'
+    final filtered = categoryFilter == 'الكل'
         ? results
         : results.where((r) => r.category == categoryFilter).toList();
+    final displayed = filtered.take(_visibleLimit);
     return Scaffold(
       appBar: AppBar(bottom: const AppNavigationBar(),
         title: const AppText('البحث في النظام'),
@@ -648,6 +684,7 @@ class _GlobalSearchPageState extends State<GlobalSearchPage> {
             textInputAction: TextInputAction.search,
             onChanged: (_) {
               categoryFilter = 'الكل';
+              _visibleLimit = 100;
               _applyQuery();
             },
             onSubmitted: (_) => _applyQuery(),
@@ -695,7 +732,7 @@ class _GlobalSearchPageState extends State<GlobalSearchPage> {
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 7),
               child: AppText(
-                '${results.length} نتيجة مطابقة' + (results.length == 100 ? ' (أول 100 نتيجة)' : ''),
+                '${filtered.length} نتيجة مطابقة • عرض ${displayed.length}',
                 style: const TextStyle(color: aiBlue, fontWeight: FontWeight.w800),
               ),
             ),
@@ -710,7 +747,7 @@ class _GlobalSearchPageState extends State<GlobalSearchPage> {
                         child: ChoiceChip(
                           label: AppText(category),
                           selected: categoryFilter == category,
-                          onSelected: (_) => setState(() => categoryFilter = category),
+                          onSelected: (_) => setState(() { categoryFilter = category; _visibleLimit = 100; }),
                         ),
                       ),
                   ],
@@ -720,6 +757,11 @@ class _GlobalSearchPageState extends State<GlobalSearchPage> {
               const Padding(
                 padding: EdgeInsets.all(25),
                 child: Center(child: AppText('لم نجد نتيجة مطابقة ضمن صلاحياتك. جرّب مرادفًا أو جزءًا من الاسم.')),
+              ),
+            if (filtered.length > _visibleLimit)
+              OutlinedButton(
+                onPressed: () => setState(() => _visibleLimit += 100),
+                child: const AppText('عرض المزيد من النتائج'),
               ),
             for (final result in displayed)
               Padding(
@@ -758,6 +800,47 @@ class _GlobalSearchPageState extends State<GlobalSearchPage> {
   }
 }
 
+/// Resolve only destinations that can select this exact collection/document.
+/// Legacy records without a matching management editor keep their detail page.
+Widget? searchRecordManagementPage(AppUser actor, FastSearchRecord record) {
+  final source = record.collection == 'remote_operations' ? 'operations' : record.collection;
+  final id = record.id;
+  if (source == 'users') {
+    if (actor.role == 'donor_manager') return UserManagementSettingsPage(focusRecordId: id);
+    if (actor.role == 'municipality_coordinator' && actor.can('workers', 'view')) {
+      return OperationsManagementScreen(initialTab: 0, focusRecordId: id);
+    }
+  }
+  if (source == 'operations' && record.category == 'مجموعة' &&
+      const ['municipality_coordinator', 'jsc_coordinator', 'donor_manager'].contains(actor.role) &&
+      actor.can('workers', 'view')) {
+    return GroupsCommandCenterPage(focusRecordId: id);
+  }
+  if (source == 'dumpsites' && actor.can('dumpsite', 'view')) {
+    return actor.role == 'donor_manager'
+        ? DumpsitesOverviewScreen(focusRecordId: id)
+        : OperationsManagementScreen(initialTab: actor.role == 'municipality_coordinator' ? 1 : 0, focusRecordId: id);
+  }
+  if (source == 'containers' && actor.can('containers', 'view')) {
+    return ContainerManagementScreen(focusRecordId: id);
+  }
+  if ((source == 'equipment' || (source == 'operations' && record.category == 'معدة')) &&
+      const ['municipality_coordinator', 'jsc_coordinator', 'donor_manager'].contains(actor.role) &&
+      actor.can('operations', 'view')) {
+    return EquipmentSearchScreen(focusRecordId: id, focusCollection: source);
+  }
+  if (source == 'work_cycles' && actor.role == 'donor_manager' && actor.can('reports', 'view')) {
+    return OperationsManagementScreen(initialTab: 0, focusRecordId: id);
+  }
+  if (source == 'operations' && record.category == 'نقلة' && actor.can('trips', 'view')) {
+    return TripsLogPage(focusRecordId: id);
+  }
+  if (source == 'operations' && record.category == 'طوارئ' && actor.can('emergency', 'view')) {
+    return AlertsCenterPage(focusRecordId: id);
+  }
+  return null;
+}
+
 /// Opens the *selected record* (not a generic textual search hit). When online,
 /// its real document remains connected to Firestore; offline, the indexed copy
 /// is shown. Actions connect it to the appropriate management page and map.
@@ -779,50 +862,6 @@ class _SearchRecordPage extends StatelessWidget {
     'description': 'الوصف', 'notes': 'ملاحظات',
     'createdAt': 'تاريخ الإنشاء', 'updatedAt': 'آخر تحديث',
   };
-
-  Widget? _destination(AppUser actor) {
-    switch (record.category) {
-      case 'عامل':
-      case 'مستخدم':
-      case 'مشرف':
-        if (actor.role == 'donor_manager') return const UserManagementSettingsPage();
-        if (actor.role == 'municipality_coordinator') return const OperationsManagementScreen(initialTab: 0);
-        return null;
-      case 'مجموعة':
-        // Field roles can inspect the selected record, but must not be routed
-        // to the management list (whose Firestore queries require management).
-        return const ['municipality_coordinator', 'jsc_coordinator',
-                'donor_manager'].contains(actor.role) &&
-            actor.can('workers', 'view')
-            ? const GroupsCommandCenterPage()
-            : null;
-      case 'مكب':
-        if (!actor.can('dumpsite', 'view')) return null;
-        return actor.role == 'donor_manager'
-            ? const DumpsitesOverviewScreen()
-            : OperationsManagementScreen(initialTab: actor.role == 'municipality_coordinator' ? 1 : 0);
-      case 'حاوية':
-        return actor.can('containers', 'view') ? const ContainerManagementScreen() : null;
-      case 'معدة':
-        return actor.can('operations', 'view') ? const EquipmentSearchScreen() : null;
-      case 'دورة':
-        if (!actor.can('reports', 'view')) return null;
-        return actor.role == 'donor_manager'
-            ? const OperationsManagementScreen(initialTab: 0)
-            : const ReportsCenterScreen();
-      case 'نقلة':
-        return actor.can('trips', 'view') ? const TripsLogPage() : null;
-      case 'طوارئ':
-        return actor.can('emergency', 'view') ? const AlertsCenterPage() : null;
-      case 'تقرير':
-        return actor.can('reports', 'view') ? const ReportsCenterScreen() : null;
-      case 'بلدية':
-      case 'عملية':
-      case 'حضور':
-        return actor.can('operations', 'view') ? const EnterpriseOperationsHubPage() : null;
-    }
-    return null;
-  }
 
   static double? _number(dynamic value) =>
       value is num ? value.toDouble() : double.tryParse('${value ?? ''}');
@@ -867,7 +906,7 @@ class _SearchRecordPage extends StatelessWidget {
 
   Widget _recordBody(BuildContext context, Map<String, dynamic> data, {required bool fromCache}) {
     final actor = context.read<AuthService>().currentUser!;
-    final destination = _destination(actor);
+    final destination = searchRecordManagementPage(actor, record);
     final coordinates = _coordinates(data);
     final entries = _fields.entries
         .where((field) => data[field.key] != null &&
@@ -915,7 +954,7 @@ class _SearchRecordPage extends StatelessWidget {
           FilledButton.icon(
             onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => destination)),
             icon: const Icon(Icons.open_in_new_rounded),
-            label: const AppText('فتح قسم إدارة السجل'),
+            label: const AppText('إدارة السجل المحدد'),
           ),
         if (coordinates != null) ...[
           const SizedBox(height: 9),
@@ -955,15 +994,19 @@ class _SearchRecordPage extends StatelessWidget {
 }
 
 class GroupsCommandCenterPage extends StatelessWidget {
-  const GroupsCommandCenterPage({super.key});
+  final String? focusRecordId;
+  const GroupsCommandCenterPage({super.key, this.focusRecordId});
 
   @override
   Widget build(BuildContext context) {
     final u = context.watch<AuthService>().currentUser;
     if (u == null) return const Scaffold(body: Center(child: AppText('يرجى تسجيل الدخول مجددًا.')));
     final canManage = u.can('workers', 'edit');
-    final groupQuery = FirebaseFirestore.instance.collection('operations').limit(1500);
-    final userQuery = FirebaseFirestore.instance.collection('users').limit(1500);
+    final groupQuery = FirebaseFirestore.instance.collection('operations');
+    Query<Map<String, dynamic>> userQuery = FirebaseFirestore.instance.collection('users');
+    if (u.role == 'municipality_coordinator') {
+      userQuery = userQuery.where('municipalityCoordinatorId', isEqualTo: u.id);
+    }
 
     return Scaffold(
       appBar: AppBar(bottom: const AppNavigationBar(),
@@ -1075,6 +1118,9 @@ class GroupsCommandCenterPage extends StatelessWidget {
                 if (u.role == 'municipality_coordinator' && !_belongsToCoordinator(g, u.id, u.scope)) continue;
                 visible.add(g);
               }
+              if (focusRecordId != null) {
+                visible.removeWhere((row) => row['id'] != focusRecordId);
+              }
               visible.sort((a, b) => '${a['number'] ?? a['name'] ?? ''}'.compareTo('${b['number'] ?? b['name'] ?? ''}'));
 
               if (visible.isEmpty) {
@@ -1114,6 +1160,7 @@ class GroupsCommandCenterPage extends StatelessWidget {
                         }
                       }
                       return ExpansionTile(
+                        initiallyExpanded: focusRecordId != null,
                         leading: Icon(synthetic ? Icons.group_work_outlined : Icons.groups_rounded, color: synthetic ? Colors.amber : aiCyan),
                         title: AppText(name.isEmpty ? 'مجموعة ${number.isEmpty ? 'بدون رقم' : number}' : name),
                         subtitle: AppText('رقم المجموعة: ${number.isEmpty ? '—' : number} • العمال النشطون: $count • ${synthetic ? 'مجموعة قديمة تحتاج تسجيلًا' : (x['status'] ?? 'نشطة')}', style: const TextStyle(fontSize: 11, color: cleanOpsMuted)),

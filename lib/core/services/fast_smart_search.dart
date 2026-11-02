@@ -67,14 +67,15 @@ class FastSmartSearch {
     String category,
     Iterable<Map<String, dynamic>> documents, {
     String Function(Map<String, dynamic>)? categoryFor,
+    String? collection,
   }) {
     final unique = <String, FastSearchRecord>{};
     for (final document in documents) {
-      if (document['isDeleted'] == true) continue;
+      if (document['isDeleted'] == true || document['status'] == 'deleted') continue;
       final id = (document['id'] ?? '').toString().trim();
       if (id.isEmpty) continue;
       unique[id] = FastSearchRecord(
-        collection: source,
+        collection: collection ?? source,
         id: id,
         category: categoryFor?.call(document) ?? category,
         data: document,
@@ -215,6 +216,7 @@ class FastSmartSearch {
     final terms = query.split(' ').where((t) => t.isNotEmpty).toList();
     final variants = [for (final term in terms) _variants(term)];
     final ranked = <(int, FastSearchRecord)>[];
+    final seen = <String>{};
     for (final rows in _sources.values) {
       for (final record in rows) {
         var score = 0;
@@ -232,6 +234,7 @@ class FastSmartSearch {
           score += best;
         }
         if (!matchAll) continue;
+        if (!seen.add('${record.collection}/${record.id}')) continue;
         if (normalize(record.id) == query) score += 250;
         if (normalize(record.title).startsWith(query)) score += 50;
         if (record.compactText.contains(query.replaceAll(' ', ''))) score += 12;

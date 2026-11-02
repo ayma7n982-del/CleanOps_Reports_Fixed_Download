@@ -1,4 +1,7 @@
 import '../widgets/app_navigation_bar.dart';
+import '../../core/services/auth_service.dart';
+import '../../core/services/fast_smart_search.dart';
+import '../../core/services/search_page_loader.dart';
 import 'package:provider/provider.dart';
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -8,7 +11,9 @@ import '../widgets/app_design.dart';
 import '../../core/constants/app_constants.dart';
 
 class EquipmentSearchScreen extends StatefulWidget {
-  const EquipmentSearchScreen({super.key});
+  final String? focusRecordId;
+  final String focusCollection;
+  const EquipmentSearchScreen({super.key, this.focusRecordId, this.focusCollection = 'equipment'});
   @override State<EquipmentSearchScreen> createState() => _EquipmentSearchScreenState();
 }
 
@@ -28,19 +33,61 @@ class _EquipmentSearchScreenState extends State<EquipmentSearchScreen> {
     setState(() { loading = true; error = null; });
     try {
       final db = FirebaseFirestore.instance;
-      final futures = await Future.wait([
-        db.collection('operations').where('_entity', isEqualTo: 'heavy_machinery').limit(1000).get(),
-        db.collection('equipment').limit(1000).get(),
-      ]);
-      final all = <Map<String, dynamic>>[];
-      for (final result in futures) {
-        if (result is QuerySnapshot<Map<String, dynamic>>) {
-          for (final d in result.docs) all.add({'id': d.id, ...d.data()});
-        }
+      final actor = context.read<AuthService>().currentUser;
+      if (actor == null || !actor.can('operations', 'view') ||
+          !const ['municipality_coordinator', 'jsc_coordinator', 'donor_manager'].contains(actor.role)) {
+        throw StateError('لا توجد صلاحية لعرض المعدات.');
       }
       final unique = <String, Map<String, dynamic>>{};
-      for (final x in all) unique['${x['id']}'] = x;
-      if (mounted) setState(() { rows = unique.values.toList(); loading = false; });
+      final sources = widget.focusRecordId == null
+          ? const ['operations', 'equipment']
+          : [widget.focusCollection];
+      var failures = 0;
+      for (final source in sources) {
+        try {
+        if (!const ['operations', 'equipment'].contains(source)) continue;
+        Query<Map<String, dynamic>> query = db.collection(source);
+        if (source == 'operations') {
+          query = query.where('_entity', whereIn: ['heavy_machinery', 'equipment']);
+        } else if (actor.role == 'municipality_coordinator') {
+          query = query.where('municipalityCoordinatorId', isEqualTo: actor.id);
+        }
+        if (widget.focusRecordId != null) {
+          query = query.where(FieldPath.documentId, isEqualTo: widget.focusRecordId);
+        }
+        final ordered = query.orderBy(FieldPath.documentId);
+        await for (final page in readSearchPages<QueryDocumentSnapshot<Map<String, dynamic>>>(
+          isActive: () => mounted && context.read<AuthService>().currentUser?.id == actor.id,
+          fetchPage: (after, size) async {
+            Query<Map<String, dynamic>> next = ordered.limit(size);
+            if (after != null) next = next.startAfterDocument(after);
+            return (await next.get().timeout(const Duration(seconds: 15))).docs;
+          },
+        )) {
+          for (final doc in page) {
+            final data = {...doc.data(), 'id': doc.id};
+            if (data['isDeleted'] == true || data['status'] == 'deleted') continue;
+            final scope = actor.scope.trim();
+            final unrestrictedCouncil = actor.role == 'jsc_coordinator' &&
+                (scope.isEmpty || scope == 'all' || scope == 'assigned_only');
+            final owns = '${data['municipalityCoordinatorId'] ?? data['coordinatorId'] ?? ''}' == actor.id;
+            final field = actor.role == 'jsc_coordinator'
+                ? data['councilName'] ?? data['councilId'] ?? data['municipalityName']
+                : data['municipalityName'] ?? data['municipality'] ?? data['municipalityId'];
+            final inScope = scope.isNotEmpty && scope != 'all' && scope != 'assigned_only' &&
+                FastSmartSearch.normalize('$field') == FastSmartSearch.normalize(scope);
+            if (actor.role != 'donor_manager' && !unrestrictedCouncil && !owns && !inScope) continue;
+            unique['$source/${doc.id}'] = data;
+          }
+          if (mounted) setState(() => rows = unique.values.toList());
+        }
+        } catch (_) {
+          failures++;
+        }
+      }
+      if (mounted) setState(() { rows = unique.values.toList(); loading = false;
+        if (failures > 0) error = 'تعذر تحديث بعض مصادر المعدات؛ النتائج المحملة متاحة.';
+      });
     } catch (e) {
       if (mounted) setState(() { error = '$e'; loading = false; });
     }
@@ -61,7 +108,7 @@ class _EquipmentSearchScreenState extends State<EquipmentSearchScreen> {
     final status = '${x['status'] ?? x['machineStatus'] ?? ''}'.toLowerCase();
     if (filter != 'all' && status != filter) return false;
     if (q.isEmpty) return true;
-    final hay = [x['name'], x['machine'], x['equipmentName'], x['type'], x['model'], x['plateNumber'], x['municipality'], x['municipalityName'], x['groupName'], x['status'], x['notes'], x['location']]
+    final hay = [x['id'], x['name'], x['machine'], x['equipmentName'], x['type'], x['model'], x['plateNumber'], x['municipality'], x['municipalityName'], x['groupName'], x['status'], x['notes'], x['location']]
         .map((v) => _normalize('$v')).join(' ');
     return hay.contains(q) || q.split(' ').every((word) => word.isNotEmpty && hay.contains(word));
   }
@@ -84,8 +131,9 @@ class _EquipmentSearchScreenState extends State<EquipmentSearchScreen> {
             ]),
           ),
           const SizedBox(height: 12),
+          if (error != null && visible.isNotEmpty) AppText(error!),
           if (loading) const Center(child: Padding(padding: EdgeInsets.all(28), child: CircularProgressIndicator()))
-          else if (error != null) AiSectionCard(title: 'تعذر تحميل المعدات', feature: 'emergency', child: AppText(error!))
+          else if (error != null && visible.isEmpty) AiSectionCard(title: 'تعذر تحميل المعدات', feature: 'emergency', child: AppText(error!))
           else if (visible.isEmpty) const AiSectionCard(title: 'لا توجد نتائج', subtitle: 'جرّب كلمة بحث أخرى أو غيّر الفلتر.', feature: 'operations', child: SizedBox.shrink())
           else AiSectionCard(title: '${visible.length} نتيجة', subtitle: 'بيانات المعدات التشغيلية', feature: 'operations', child: Column(children: visible.map(_tile).toList())),
         ]),

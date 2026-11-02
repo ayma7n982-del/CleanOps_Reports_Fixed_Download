@@ -14,7 +14,8 @@ import '../widgets/app_design.dart';
 import '../widgets/location_picker.dart';
 
 class ContainerManagementScreen extends StatelessWidget {
-  const ContainerManagementScreen({super.key});
+  final String? focusRecordId;
+  const ContainerManagementScreen({super.key, this.focusRecordId});
 
   @override
   Widget build(BuildContext context) {
@@ -29,7 +30,9 @@ class ContainerManagementScreen extends StatelessWidget {
             if (user.role == 'jsc_coordinator' || user.role == 'group_supervisor') IconButton(onPressed: () => _openEditor(context), icon: const Icon(Icons.add_box_rounded)),
           ],
         ),
-        body: user.role == 'group_supervisor' ? const _SupervisorContainersBody() : const _ContainerBody(),
+        body: user.role == 'group_supervisor'
+            ? _SupervisorContainersBody(focusRecordId: focusRecordId)
+            : _ContainerBody(focusRecordId: focusRecordId),
         floatingActionButton: user.role == 'jsc_coordinator' || user.role == 'group_supervisor'
             ? FloatingActionButton.extended(onPressed: () => _openEditor(context), icon: const Icon(Icons.add_rounded), label: const AppText('إضافة حاوية'))
             : null,
@@ -48,7 +51,8 @@ class ContainerManagementScreen extends StatelessWidget {
 }
 
 class _SupervisorContainersBody extends StatefulWidget {
-  const _SupervisorContainersBody();
+  final String? focusRecordId;
+  const _SupervisorContainersBody({this.focusRecordId});
   @override
   State<_SupervisorContainersBody> createState() => _SupervisorContainersBodyState();
 }
@@ -63,6 +67,7 @@ class _SupervisorContainersBodyState extends State<_SupervisorContainersBody> {
     final service = context.watch<ContainerService>();
     final own = service.containers.where((c) => c.groupId.isNotEmpty && c.groupId == (user.groupId ?? '')).toList();
     final shown = own.where((c) {
+      if (widget.focusRecordId != null && c.id != widget.focusRecordId) return false;
       final matchesText = search.isEmpty || c.locationName.toLowerCase().contains(search.toLowerCase()) || c.id.toLowerCase().contains(search.toLowerCase());
       return matchesText && (filter == 'all' || c.status == filter);
     }).toList();
@@ -123,12 +128,14 @@ class _SupervisorContainersBodyState extends State<_SupervisorContainersBody> {
 }
 
 class _ContainerBody extends StatelessWidget {
-  const _ContainerBody();
+  final String? focusRecordId;
+  const _ContainerBody({this.focusRecordId});
   @override
   Widget build(BuildContext context) {
     final user = context.watch<AuthService>().currentUser!;
     final service = context.watch<ContainerService>();
-    final list = service.containers;
+    final list = service.containers
+        .where((item) => focusRecordId == null || item.id == focusRecordId).toList();
     return RefreshIndicator(
       onRefresh: () async => service.attachUser(user),
       child: ListView(
