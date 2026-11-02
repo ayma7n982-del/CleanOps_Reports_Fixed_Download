@@ -314,14 +314,16 @@ service cloud.firestore {
 
     // ---------------- User profiles / GPS ----------------
     match /users/{uid} {
-      allow get: if self(uid) || isL3OrL4() || (isL2() && uid == request.auth.uid);
+      allow get: if self(uid) || isL3OrL4()
+        || (isL2() && isWorkforceRole(resource.data.role)
+          && resource.data.get('municipalityCoordinatorId', '') == request.auth.uid);
       allow list: if isL3OrL4() || (isL2() && resource.data.keys().hasAny(['municipalityCoordinatorId']) && resource.data.municipalityCoordinatorId == request.auth.uid);
       // Accounts are created directly from the app by Level 4 (management roles)
       // and Level 2 (workforce roles). The Auth account is created client-side.
       allow create: if signedIn()
         && request.resource.data.keys().hasOnly([
           'id','username','email','contactEmail','name','role','scope','phone','employeeId','jobTitle','notes',
-          'groupId','municipalityCoordinatorId','municipalityName','cycleId','isActive','status','createdBy','createdByRole',
+          'groupId','groupName','municipalityCoordinatorId','municipalityName','cycleId','isActive','status','createdBy','createdByRole',
           'createdAt','updatedAt'
         ])
         && request.resource.data.id == uid
@@ -927,9 +929,39 @@ service cloud.firestore {
       allow create, delete: if false;
     }
 
+    // L4 may only maintain the exact operational view of an existing workforce
+    // profile. The profile and view can be written atomically with getAfter.
+    function validWorkforceProjection(id) {
+      let d = request.resource.data;
+      let u = getAfter(/databases/$(database)/documents/users/$(id)).data;
+      return isL4() && isWorkforceRole(u.role)
+        && d.keys().hasOnly(['id','userId','_entity','rosterSource','name','phone',
+          'job','role','employeeId','groupId','group','groupNumber','groupName',
+          'cycleId','municipalityCoordinatorId','municipalityName','isActive',
+          'status','isDeleted','updatedAt'])
+        && d.id == id && d.userId == id && d._entity == 'worker'
+        && d.rosterSource == 'users'
+        && d.name == u.get('name', '') && d.phone == u.get('phone', '')
+        && d.job == u.get('jobTitle', '') && d.role == u.role
+        && d.employeeId == u.get('employeeId', '')
+        && d.groupId == u.groupId && d.group == u.groupId
+        && d.groupNumber == u.groupId
+        && d.groupName == u.get('groupName', u.groupId)
+        && d.cycleId == u.get('cycleId', '')
+        && d.municipalityCoordinatorId == u.get('municipalityCoordinatorId', '')
+        && d.municipalityName == u.get('municipalityName', '')
+        && d.isActive == (u.get('isActive', true) != false)
+        && d.status == u.get('status', 'active')
+        && d.isDeleted == (u.get('status', '') == 'deleted')
+        && d.updatedAt == request.time;
+    }
+
     match /operations/{id} {
       allow read: if operationReadAllowed();
       allow create: if signedIn() && (
+        (request.resource.data._entity == 'worker'
+          && (isL2() || (isL4() && validWorkforceProjection(id))))
+        ||
         // Fast-path urgent own-group SOS; other role checks are lengthy and
         // must not exhaust Firestore's evaluation budget before this branch.
         (role() == 'group_supervisor' &&
@@ -943,6 +975,9 @@ service cloud.firestore {
         || (role() == 'group_supervisor' && (validSupervisorTripCreate() || request.resource.data._entity == 'trip_photo' || (request.resource.data._entity == 'attendance' && userDoc().isActive != false && userDoc().groupId is string && userDoc().groupId.size() > 0 && request.resource.data.groupId == userDoc().groupId && request.resource.data.reportedBy == request.auth.uid && request.resource.data.status in ['present','absent','leave','permission','excused_absence','unexcused_absence','external_task']) || request.resource.data._entity == 'street_photo' || (request.resource.data._entity == 'emergency' && validSupervisorSosCreate()) || request.resource.data._entity == 'notification' || request.resource.data._entity == 'report'))
       );
       allow update: if signedIn() && (
+        (resource.data._entity == 'worker' && request.resource.data._entity == 'worker'
+          && (isL2() || (isL4() && validWorkforceProjection(id))))
+        ||
         // Fast path for the exact own-group trip completion. Evaluating the
         // unrelated SOS/equipment branches first exceeds the rules 1000-
         // expression limit on real trips and incorrectly denies supervisors.

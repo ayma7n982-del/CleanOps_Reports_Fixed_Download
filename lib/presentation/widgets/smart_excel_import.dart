@@ -167,7 +167,10 @@ class _SmartExcelImportCardState extends State<SmartExcelImportCard> {
         message = 'تم اكتشاف صف العناوين ${parsed.detectedHeaderRow} تلقائيًا، والتقطيع حسب أسماء الأعمدة وليس ترتيبها. البلدية: ${coordinator.municipality} • المجموعة: ${group.label}.';
       });
       if (parsed.validRows.isNotEmpty) {
-        await widget.onImport(parsed.validRows);
+        await widget.onImport(parsed.validRows.map((row) => {
+          ...row, 'groupId': group.id.startsWith('legacy:') ? group.number : group.id,
+          'groupName': group.label,
+        }).toList());
         if (mounted) setState(() => message = '${message}\nتم إرسال ${parsed.validRows.length} سجل صالح إلى طابور المزامنة.');
       }
     } catch (e) {

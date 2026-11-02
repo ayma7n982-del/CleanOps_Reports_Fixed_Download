@@ -16,6 +16,7 @@ import 'config_service.dart';
 import 'local_store.dart';
 import 'operations_cache_merge.dart';
 import 'sos_audience_policy.dart';
+import 'workforce_repository.dart';
 
 class DataService extends ChangeNotifier {
   final LocalStore store;
@@ -36,6 +37,8 @@ class DataService extends ChangeNotifier {
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? sosNotificationSub;
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? sosEmergencySub;
   bool _sosInboxRefreshing = false;
+  bool _repairingWorkers = false;
+  String? _repairedWorkforceUid;
   StreamSubscription<User?>? authNotificationSub;
   final Future<void> Function(SyncItem item, Map<String, dynamic> payload)?
       _syncItemOverride;
@@ -94,7 +97,10 @@ class DataService extends ChangeNotifier {
           if (previousEmergency != null) unawaited(previousEmergency.cancel());
           sosNotificationSub = null;
           sosEmergencySub = null;
-          if (account == null) return;
+          if (account == null) {
+            _repairedWorkforceUid = null;
+            return;
+          }
           unawaited(_subscribeManagementSosFeeds(account.uid));
           if (online) {
             // A queue created while signed out must retry immediately after the
@@ -471,6 +477,21 @@ class DataService extends ChangeNotifier {
       } else if (!const ['municipality_coordinator', 'jsc_coordinator',
                    'donor_manager'].contains(role)) {
         return operations;
+      }
+      if (role == 'municipality_coordinator' && !_repairingWorkers &&
+          _repairedWorkforceUid != account.uid) {
+        _repairingWorkers = true;
+        try {
+          await WorkforceRepository(FirebaseFirestore.instance)
+              .repairManagedWorkers(account.uid);
+          if (FirebaseAuth.instance.currentUser?.uid == account.uid) {
+            _repairedWorkforceUid = account.uid;
+          }
+        } catch (error) {
+          debugPrint('Legacy worker repair deferred; will retry automatically: $error');
+        } finally {
+          _repairingWorkers = false;
+        }
       }
       // Read in bounded pages: a single limit(1000) silently omitted older
       // records and made long-cycle report totals incomplete.

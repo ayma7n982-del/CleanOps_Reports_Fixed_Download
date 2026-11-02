@@ -26,6 +26,11 @@ class WorkerPpeChecklist {
     (item) => _byWorkerId[workerId]?[item] == true,
   );
 
+  /// A transfer removes the worker's draft together with their roster row.
+  void retainWorkers(Set<String> workerIds) {
+    _byWorkerId.removeWhere((id, _) => !workerIds.contains(id));
+  }
+
   /// Detach the queued attendance payload from later edits to the UI draft.
   Map<String, bool> snapshot(String workerId) => {
     for (final item in requiredItems)

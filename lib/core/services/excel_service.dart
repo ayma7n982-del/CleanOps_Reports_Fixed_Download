@@ -182,6 +182,11 @@ class ExcelService {
     var coordinatorMunicipality = '${coordinator['municipalityName'] ?? coordinator['municipality'] ?? coordinator['municipalityScope'] ?? coordinator['scope'] ?? ''}'.trim().toLowerCase();
     if (coordinatorMunicipality == 'assigned_only' || coordinatorMunicipality == 'all' || coordinatorMunicipality == 'null') coordinatorMunicipality = '';
     final map = <String, ExcelGroupOption>{};
+    final realGroups = snap.docs.where((doc) {
+      final x = doc.data();
+      return x['_entity'] == 'group' && x['isDeleted'] != true &&
+        '${x['municipalityCoordinatorId'] ?? x['coordinatorId'] ?? x['createdBy'] ?? ''}'.trim() == coordinatorId;
+    }).toList();
     for (final doc in snap.docs) {
       final x = doc.data();
       final entity = '${x['_entity'] ?? ''}';
@@ -199,9 +204,13 @@ class ExcelService {
           ? '${x['groupName'] ?? x['groupLabel'] ?? number}'.trim()
           : '${x['name'] ?? x['groupName'] ?? x['title'] ?? number}'.trim();
       if (number.isEmpty && name.isEmpty) continue;
-      final optionId = entity == 'group' ? doc.id : 'legacy:${number.isNotEmpty ? number : name}';
+      final matchingGroups = realGroups.where((g) => g.id == number ||
+        '${g.data()['number'] ?? g.data()['groupNumber'] ?? ''}' == number).toList();
+      final resolvedGroup = matchingGroups.length == 1 ? matchingGroups.single : null;
+      final optionId = entity == 'group' ? doc.id : resolvedGroup?.id ??
+        'legacy:${number.isNotEmpty ? number : name}';
       final option = ExcelGroupOption(id: optionId, number: number, name: name, coordinatorId: coordinatorId);
-      final key = (number.isNotEmpty ? number : name).toLowerCase();
+      final key = optionId.toLowerCase();
       // Prefer the real group document when both a group record and worker records
       // reference the same group; otherwise keep a recoverable legacy option.
       if (!map.containsKey(key) || entity == 'group') map[key] = option;

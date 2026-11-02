@@ -7,6 +7,8 @@ import '../widgets/app_navigation_bar.dart';
 import '../widgets/decision_directive_banner.dart';
 import '../../core/services/decision_route_policy.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_core/firebase_core.dart';
+import '../../core/services/worker_roster.dart';
 import '../../core/localization.dart';
 import 'dart:async';
 import 'dart:io';
@@ -85,11 +87,15 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
   final Map<String, bool> tripPpe = {'بوت': false, 'قفازات': false, 'كمامة': false, 'قبعة': false, 'صديري': false};
   final List<String> tripPhotoPaths = [];
   List<Map<String, String>> workers = [];
+  List<Map<String, String>>? _liveWorkers;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? rosterUpdates;
+  int _rosterLoad = 0;
+  String? workerLoadError;
 
   @override
   void initState() {
     super.initState();
-    _loadWorkers();
+    _watchWorkers();
     _watchTripDumpsites();
     WidgetsBinding.instance.addPostFrameCallback((_) => _restoreEmergency());
     final groupId = context.read<AuthService>().currentUser?.groupId?.trim() ?? '';
@@ -108,6 +114,7 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
   void dispose() {
     timer?.cancel();
     sosUpdates?.cancel();
+    rosterUpdates?.cancel();
     dumpsiteUpdates?.cancel();
     street.dispose();
     issue.dispose();
@@ -172,39 +179,49 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
     _refreshEmergencyStatus(data);
   }
 
-  Future<void> _loadWorkers() async {
-    final loaded = <String, Map<String, String>>{};
+  void _watchWorkers() {
     final user = context.read<AuthService>().currentUser;
-    final groupId = user?.groupId?.trim() ?? '';
-    try {
-      final data = context.read<DataService>();
-      await data.refreshOperations();
-      if (groupId.isNotEmpty) {
-        for (final m in data.operations.where((e) => '${e['_entity'] ?? ''}' == 'worker')) {
-          if (m['isDeleted'] == true || m['isActive'] == false ||
-              '${m['status'] ?? ''}'.toLowerCase() == 'frozen' ||
-              '${m['status'] ?? ''}'.toLowerCase() == 'deleted') continue;
-          final workerGroup = '${m['groupId'] ?? m['groupNumber'] ?? m['group'] ?? ''}'.trim();
-          if (workerGroup != groupId) continue;
-          final id = '${m['id'] ?? ''}';
-          if (id.isEmpty) continue;
-          loaded[id] = {
-            'id': id,
-            'name': '${m['name'] ?? ''}',
-            'phone': '${m['phone'] ?? ''}',
-            'job': '${m['job'] ?? ''}',
-            'role': '${m['role'] ?? 'worker'}',
-            'group': workerGroup,
-            'groupId': workerGroup,
-            'groupName': '${m['groupName'] ?? workerGroup}',
-            'municipalityName': '${m['municipalityName'] ?? m['municipality'] ?? ''}',
-          };
-        }
-      }
-    } catch (e) {
-      debugPrint('Unable to load group attendance workers: $e');
+    final group = user?.groupId?.trim() ?? '';
+    if (user == null || group.isEmpty) {
+      loadingWorkers = false;
+      return;
     }
-    if (user != null && groupId.isNotEmpty) {
+    final store = context.read<DataService>().store;
+    if (store.hasWorkerRoster(user.id, group)) {
+      _liveWorkers = store.cachedWorkerRoster(user.id, group)
+          .map((r) => r.map((key, value) => MapEntry(key, '$value'))).toList();
+    }
+    unawaited(_loadWorkers());
+    if (Firebase.apps.isEmpty) return;
+    rosterUpdates = FirebaseFirestore.instance.collection('operations')
+        .where('groupId', isEqualTo: group)
+        .where('_entity', isEqualTo: 'worker')
+        .snapshots(includeMetadataChanges: true).listen((snapshot) async {
+      if (!mounted) return;
+      // Replace the whole roster, including an empty server snapshot. Merging
+      // here would keep a worker removed by a transfer in the old group's cache.
+      if (snapshot.metadata.isFromCache && snapshot.docs.isEmpty &&
+          _liveWorkers != null) return;
+      final records = snapshot.docs.map((doc) => {...doc.data(), 'id': doc.id});
+      _liveWorkers = WorkerRoster.forGroup(records, group);
+      workerLoadError = null;
+      await store.saveWorkerRoster(user.id, group, _liveWorkers!);
+      if (mounted) await _loadWorkers();
+    }, onError: (Object error) {
+      if (mounted) setState(() => workerLoadError =
+          'تعذر تحديث كشف العمال. تظهر آخر نسخة محفوظة؛ سيُعاد الاتصال تلقائيًا.');
+      debugPrint('Group worker roster listener failed: $error');
+    });
+  }
+
+  Future<void> _loadWorkers() async {
+    final generation = ++_rosterLoad;
+    final user = context.read<AuthService>().currentUser;
+    final group = user?.groupId?.trim() ?? '';
+    final base = _liveWorkers ?? WorkerRoster.forGroup(
+        context.read<DataService>().operations, group);
+    final loaded = {for (final worker in base) worker['id']!: worker};
+    if (user != null && group.isNotEmpty) {
       try {
         for (final worker in await temporaryDecisionWorkers(user)) {
           loaded.putIfAbsent(worker['id']!, () => worker);
@@ -213,13 +230,15 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
         debugPrint('Temporary coverage roster is unavailable: $error');
       }
     }
-    if (mounted) {
-      setState(() {
-        workers = loaded.values.where((w) => (w['name'] ?? '').isNotEmpty).toList()
-          ..sort((a, b) => (a['name'] ?? '').compareTo(b['name'] ?? ''));
-        loadingWorkers = false;
-      });
-    }
+    if (!mounted || generation != _rosterLoad) return;
+    setState(() {
+      workers = loaded.values.toList()
+        ..sort((a, b) => (a['name'] ?? '').compareTo(b['name'] ?? ''));
+      final ids = loaded.keys.toSet();
+      attendanceStatus.removeWhere((id, _) => !ids.contains(id));
+      ppe.retainWorkers(ids);
+      loadingWorkers = false;
+    });
   }
 
   Future<void> _call(String phone) async {
@@ -773,10 +792,11 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
           child: loadingWorkers
               ? const Center(child: Padding(padding: EdgeInsets.all(16), child: CircularProgressIndicator()))
               : workers.isEmpty
-                  ? const AppText('لا توجد سجلات عمال مخصصة للمجموعة ضمن البيانات المتاحة. استورد كشف العمال من مستوى البلدية أولاً.')
+                  ? const AppText('لا يوجد عمال نشطون مخصصون لهذه المجموعة ضمن الكشف المتاح.')
                   : Column(children: workers.map((w) => _worker(w, config)).toList()),
         ),
         const SizedBox(height: 12),
+        if (workerLoadError != null) AppText(workerLoadError!),
         AppText('العمال: ${workers.length} • حاضر: ${attendanceStatus.values.where((v) => v == 'present').length} • لم تُحدد حالتهم: ${workers.where((w) => !attendanceStatus.containsKey(w['id'])).length}'),
         const SizedBox(height: 12),
         FilledButton.tonalIcon(
@@ -820,7 +840,8 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
     try {
     final d = context.read<DataService>();
     final day = DateTime.now().toIso8601String().substring(0, 10);
-    for (final w in workers) {
+    final rosterToSave = List<Map<String, String>>.from(workers);
+    for (final w in rosterToSave) {
       final name = w['name'] ?? '';
       final workerId = w['id'] ?? '';
       final state = ppe.snapshot(workerId);

@@ -1055,3 +1055,105 @@ test('decision hub: adjacent coverage notifies both groups without widening acce
   await assertSucceeds(getDocs(query(collection(db('head-b'),'strategic_decisions'),
     where('additionalGroupId','==','group-b'),where('kind','==','temporary_coverage'))));
 });
+
+// Worker account/operational roster regression tests.
+const workforceProfile = (extra = {}) => ({
+  id: 'worker-a', username: 'worker-a', name: 'Worker A', role: 'worker',
+  phone: '059000', employeeId: '123456789', jobTitle: 'Worker with cart',
+  groupId: 'group-a', cycleId: 'cycle-a', municipalityCoordinatorId: 'coordinator',
+  isActive: true, status: 'active', ...extra,
+});
+const workforceProjection = (uid, u) => ({
+  id: uid, userId: uid, _entity: 'worker', rosterSource: 'users',
+  name: u.name ?? '', phone: u.phone ?? '', job: u.jobTitle ?? '', role: u.role,
+  employeeId: u.employeeId ?? '', groupId: u.groupId, group: u.groupId,
+  groupNumber: u.groupId, groupName: u.groupName ?? u.groupId,
+  cycleId: u.cycleId ?? '', municipalityCoordinatorId: u.municipalityCoordinatorId ?? '',
+  municipalityName: u.municipalityName ?? '', isActive: u.isActive !== false,
+  status: u.status ?? 'active', isDeleted: u.status === 'deleted', updatedAt: serverTimestamp(),
+});
+async function seedWorkforce(extra = {}) {
+  const u = workforceProfile(extra);
+  await env.withSecurityRulesDisabled(async ctx => {
+    await setDoc(doc(ctx.firestore(), 'users', 'worker-a'), u);
+    await setDoc(doc(ctx.firestore(), 'operations', 'worker-a'), workforceProjection('worker-a', u));
+  });
+  return u;
+}
+
+test('municipality can read its workforce document; other municipality and supervisor cannot', async () => {
+  await seedWorkforce();
+  await env.withSecurityRulesDisabled(async ctx => {
+    await setDoc(doc(ctx.firestore(), 'users', 'other-coordinator'), {
+      role: 'municipality_coordinator', isActive: true,
+    });
+  });
+  await assertSucceeds(getDoc(doc(db('coordinator'), 'users', 'worker-a')));
+  await assertFails(getDoc(doc(db('other-coordinator'), 'users', 'worker-a')));
+  await assertFails(getDoc(doc(db('head-a'), 'users', 'worker-a')));
+  await assertFails(getDocs(collection(db('coordinator'), 'users')));
+});
+
+test('provisioning creates account and operational worker in the same atomic write', async () => {
+  await env.withSecurityRulesDisabled(ctx => setDoc(doc(ctx.firestore(), 'work_cycles', 'cycle-a'), {
+    status: 'active', endDate: Timestamp.fromMillis(Date.now() + 86400000),
+  }));
+  const u = workforceProfile({id: 'new-worker', username: 'new-worker',
+    createdBy: 'coordinator', createdByRole: 'municipality_coordinator'});
+  const client = db('coordinator');
+  const batch = writeBatch(client);
+  batch.set(doc(client, 'users', 'new-worker'), u);
+  batch.set(doc(client, 'operations', 'new-worker'), workforceProjection('new-worker', u));
+  await assertSucceeds(batch.commit());
+  const rows = await assertSucceeds(getDocs(query(collection(db('head-a'), 'operations'),
+    where('groupId', '==', 'group-a'))));
+  assert.equal(rows.docs.find(row => row.id === 'new-worker').data().userId, 'new-worker');
+});
+
+test('atomic transfer immediately removes worker from old group and adds to destination roster', async () => {
+  const old = await seedWorkforce();
+  const client = db('coordinator');
+  const u = {...old, groupId: 'group-b', groupName: 'group-b'};
+  const batch = writeBatch(client);
+  batch.update(doc(client, 'users', 'worker-a'), {groupId: 'group-b', groupName: 'group-b'});
+  batch.set(doc(client, 'operations', 'worker-a'), workforceProjection('worker-a', u));
+  await assertSucceeds(batch.commit());
+  const oldRoster = await getDocs(query(collection(db('head-a'), 'operations'), where('groupId','==','group-a')));
+  const newRoster = await getDocs(query(collection(db('head-b'), 'operations'), where('groupId','==','group-b')));
+  assert.equal(oldRoster.docs.some(row => row.id === 'worker-a'), false);
+  assert.equal(newRoster.docs.some(row => row.id === 'worker-a'), true);
+  await assertFails(getDoc(doc(db('head-a'), 'operations', 'worker-a')));
+});
+
+test('failed account change rolls back the roster write too', async () => {
+  const old = await seedWorkforce();
+  const client = db('coordinator');
+  const batch = writeBatch(client);
+  batch.update(doc(client, 'users', 'worker-a'), {role: 'donor_manager', groupId: 'group-b'});
+  batch.set(doc(client, 'operations', 'worker-a'), workforceProjection('worker-a', {...old, groupId:'group-b'}));
+  await assertFails(batch.commit());
+  const saved = await getDoc(doc(client, 'operations', 'worker-a'));
+  assert.equal(saved.data().groupId, 'group-a');
+});
+
+test('L4 deactivation atomically updates only the matching workforce projection', async () => {
+  const old = await seedWorkforce();
+  const client = db('manager');
+  const u = {...old, isActive: false, status: 'deactivated'};
+  const batch = writeBatch(client);
+  batch.update(doc(client, 'users', 'worker-a'), {isActive: false, status:'deactivated'});
+  batch.set(doc(client, 'operations', 'worker-a'), workforceProjection('worker-a', u));
+  await assertSucceeds(batch.commit());
+  assert.equal((await getDoc(doc(db('head-a'), 'operations', 'worker-a'))).data().isActive, false);
+});
+
+test('L4 cannot spoof workforce projection identity, group, state, or extra fields', async () => {
+  const u = await seedWorkforce();
+  for (const extra of [{userId:'worker-b'}, {groupId:'group-b'}, {isActive:false},
+    {status:'deleted'}, {name:'forged'}, {username:'private-login'}]) {
+    await assertFails(setDoc(doc(db('manager'), 'operations', 'worker-a'), {
+      ...workforceProjection('worker-a', u), ...extra,
+    }));
+  }
+  await assertFails(setDoc(doc(db('head-a'), 'operations', 'worker-a'), workforceProjection('worker-a', u)));
+});
