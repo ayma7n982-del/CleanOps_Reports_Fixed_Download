@@ -1,4 +1,6 @@
 import '../widgets/app_navigation_bar.dart';
+import '../feature_navigation.dart';
+import '../widgets/container_status_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:geolocator/geolocator.dart';
@@ -97,9 +99,9 @@ class _SupervisorContainersBodyState extends State<_SupervisorContainersBody> {
                 child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                   AppText(item.locationName.isEmpty ? 'حاوية بدون اسم موقع' : item.locationName, style: const TextStyle(fontWeight: FontWeight.bold)),
                   AppText('الحالة: ${item.status == 'full' ? 'ممتلئة' : item.status == 'partial' ? 'نصف ممتلئة' : 'فارغة'} • ${item.issueStatus == 'reported' ? 'مشكلة مسجلة' : item.issueStatus == 'resolving' ? 'قيد المعالجة' : 'لا توجد مشكلة'}'),
-                  if (item.updatedAt.isNotEmpty) AppText('آخر تحديث: ${item.updatedAt}', style: const TextStyle(fontSize: 11, color: cleanOpsMuted)),
+                  ContainerUpdateDetails(item: item),
                   const SizedBox(height: 8),
-                  OutlinedButton.icon(onPressed: () => ContainerManagementScreen._openEditor(context, item), icon: const Icon(Icons.edit_location_alt_outlined), label: const AppText('تعديل موقع الحاوية')),
+                  if (context.read<AuthService>().currentUser?.role == 'jsc_coordinator') OutlinedButton.icon(onPressed: () => ContainerManagementScreen._openEditor(context, item), icon: const Icon(Icons.edit_location_alt_outlined), label: const AppText('تعديل موقع الحاوية')),
                   Row(children: [
                     Expanded(child: FilledButton.icon(
                       onPressed: () => showModalBottomSheet<void>(context: context, isScrollControlled: true, builder: (_) => _SupervisorContainerActions(item: item, issueOnly: false)),
@@ -200,6 +202,7 @@ class _ContainerTile extends StatelessWidget {
           ]),
           const SizedBox(height: 10),
           Row(children: [Icon(Icons.feedback_outlined, size: 15, color: issueColor), const SizedBox(width: 6), Expanded(child: AppText(issueLabel, style: TextStyle(color: issueColor, fontSize: 11, fontWeight: FontWeight.w800))), if (item.feedbackNotes.isNotEmpty) const Icon(Icons.notes_outlined, size: 15, color: cleanOpsMuted)]),
+          ContainerUpdateDetails(item: item),
           if (item.feedbackNotes.isNotEmpty) ...[const SizedBox(height: 5), AppText(item.feedbackNotes, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: cleanOpsMuted, fontSize: 10))],
         ]),
       ),
@@ -208,15 +211,15 @@ class _ContainerTile extends StatelessWidget {
 
   Future<void> _openActions(BuildContext context) async {
     final service = context.read<ContainerService>();
-    if (user.role == 'jsc_coordinator') {
-      await showModalBottomSheet<void>(context: context, backgroundColor: cleanOpsSurface, builder: (_) => _ContainerEditor(item: item));
+    if (user.role == 'jsc_coordinator' || user.role == 'donor_manager') {
+      await showModalBottomSheet<void>(context: context, backgroundColor: cleanOpsSurface, isScrollControlled: true, builder: (_) => _ContainerDetails(item: item));
       return;
     }
     if (user.role == 'municipality_coordinator') {
       await showModalBottomSheet<void>(context: context, backgroundColor: cleanOpsSurface, builder: (_) => _MunicipalityContainerActions(item: item));
       return;
     }
-    await showModalBottomSheet<void>(context: context, backgroundColor: cleanOpsSurface, builder: (_) => _SupervisorContainerActions(item: item));
+    await showModalBottomSheet<void>(context: context, backgroundColor: cleanOpsSurface, isScrollControlled: true, builder: (_) => _SupervisorContainerActions(item: item));
     if (service.containers.isEmpty) return;
   }
 }
@@ -234,7 +237,7 @@ class _SupervisorContainerActions extends StatefulWidget {
   @override State<_SupervisorContainerActions> createState() => _SupervisorContainerActionsState();
 }
 class _SupervisorContainerActionsState extends State<_SupervisorContainerActions> {
-  late String status = widget.item.status;
+  String? status;
   final notes = TextEditingController();
   bool busy = false;
   @override void dispose(){notes.dispose();super.dispose();}
@@ -246,27 +249,38 @@ class _SupervisorContainerActionsState extends State<_SupervisorContainerActions
         if (notes.text.trim().isEmpty) throw StateError('يرجى وصف المشكلة أولًا.');
         await service.reportIssue(widget.item, notes.text.trim());
       } else {
-        await service.updateDailyStatus(widget.item, status);
+        if (status == null) throw StateError('اختر حالة امتلاء الحاوية أولًا.');
+        await service.updateDailyStatus(widget.item, status!);
       }
-      if (mounted) Navigator.pop(context);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: AppText(widget.issueOnly ? 'حُفظ البلاغ محليًا وبانتظار المزامنة.' : 'حُفظت حالة الحاوية محليًا وبانتظار المزامنة.')));
+        Navigator.pop(context);
+      }
     } catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: AppText('$e'))); } finally { if (mounted) setState(() => busy = false); }
   }
-  @override Widget build(BuildContext context) => Padding(
+  @override Widget build(BuildContext context) => SingleChildScrollView(child: Padding(
     padding: EdgeInsets.fromLTRB(18, 18, 18, MediaQuery.viewInsetsOf(context).bottom + 18),
     child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       AppText(widget.item.locationName, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
       const SizedBox(height: 12),
-      if (!widget.issueOnly) DropdownButtonFormField<String>(value: status, items: const [DropdownMenuItem(value: 'empty', child: AppText('فارغة')), DropdownMenuItem(value: 'partial', child: AppText('نصف ممتلئة')), DropdownMenuItem(value: 'full', child: AppText('ممتلئة'))], onChanged: busy ? null : (v) => setState(() => status = v ?? status), decoration: InputDecoration(labelText: tr('الحالة اليومية'))),
+      ContainerUpdateDetails(item: widget.item),
+      if (!widget.issueOnly) ContainerStatusPicker(value: status, enabled: !busy, onChanged: (v) => setState(() => status = v)),
       const SizedBox(height: 10),
       if (widget.issueOnly) TextField(controller: notes, minLines: 2, maxLines: 4, decoration: InputDecoration(labelText: tr('وصف المشكلة / العطل / عدم إمكانية الوصول'))),
       const SizedBox(height: 12),
-      FilledButton.icon(onPressed: busy ? null : _save, icon: const Icon(Icons.save_rounded), label: AppText(busy ? 'جارٍ الحفظ...' : widget.issueOnly ? 'إرسال البلاغ' : 'حفظ الحالة')),
+      FilledButton.icon(onPressed: busy || (!widget.issueOnly && status == null) ? null : _save, icon: const Icon(Icons.save_rounded), label: AppText(busy ? 'جارٍ الحفظ...' : widget.issueOnly ? 'إرسال البلاغ' : 'حفظ حالة الحاوية')),
+      if (!widget.issueOnly) ...[
+        const SizedBox(height: 8),
+        const AppText('تسجيل الحالة لا يسجل عملية تفريغ أو نقلة.', style: TextStyle(color: cleanOpsMuted, fontSize: 12)),
+        if (context.read<AuthService>().currentUser?.role == 'group_supervisor')
+          OutlinedButton.icon(onPressed: busy ? null : () { openAppFeature(context, 'trips'); }, icon: const Icon(Icons.local_shipping_outlined), label: const AppText('تسجيل نقلة')),
+      ],
       if (!widget.issueOnly && widget.item.issueStatus == 'resolving') ...[
         const SizedBox(height: 8),
         OutlinedButton.icon(onPressed: busy ? null : () async { try { await context.read<ContainerService>().confirmResolved(widget.item, notes.text); if (context.mounted) Navigator.pop(context); } catch (e) { if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: AppText('$e'))); } }, icon: const Icon(Icons.verified_rounded, color: green), label: const AppText('توكيد حل المشكلة')),
       ],
     ]),
-  );
+  ));
 }
 
 class _MunicipalityContainerActions extends StatefulWidget {
@@ -309,19 +323,38 @@ class _ContainerEditorState extends State<_ContainerEditor> {
   late final TextEditingController municipality = TextEditingController(text: widget.item?.municipalityId ?? (context.read<AuthService>().currentUser?.role == 'group_supervisor' ? context.read<AuthService>().currentUser?.municipalityCoordinatorId ?? '' : ''));
   late final TextEditingController group = TextEditingController(text: widget.item?.groupId ?? (context.read<AuthService>().currentUser?.role == 'group_supervisor' ? context.read<AuthService>().currentUser?.groupId ?? '' : ''));
   LatLng? point; bool busy = false; double? accuracy;
+  String? initialStatus;
   @override void initState(){super.initState(); point=widget.item == null ? null : LatLng(widget.item!.latitude, widget.item!.longitude); if(widget.item==null) _loadCurrent();}
   @override void dispose(){location.dispose();municipality.dispose();group.dispose();super.dispose();}
   Future<void> _loadCurrent() async { try { if(!await Geolocator.isLocationServiceEnabled()) return; var p=await Geolocator.checkPermission(); if(p==LocationPermission.denied)p=await Geolocator.requestPermission(); if(p==LocationPermission.denied||p==LocationPermission.deniedForever)return; Position? x; try{x=await Geolocator.getCurrentPosition(locationSettings:const LocationSettings(accuracy:LocationAccuracy.high,timeLimit:Duration(seconds:8)));}catch(_){x=await Geolocator.getLastKnownPosition();} if(x!=null&&mounted)setState(() { point=LatLng(x!.latitude,x.longitude); accuracy=x.accuracy; }); } catch(_){} }
   Future<void> _save() async {
+    if (widget.item == null && initialStatus == null) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: AppText('اختر حالة امتلاء الحاوية أولًا.'))); return; }
     final p=point; if(location.text.trim().isEmpty||p==null){ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:AppText('أدخل اسم الموقع واختر موقع GPS من الخريطة.')));return;}
-    setState(()=>busy=true); try { final s=context.read<ContainerService>(); if(widget.item==null) await s.createContainer(locationName:location.text,latitude:p.latitude,longitude:p.longitude,municipalityId:municipality.text,groupId:group.text); else await s.updateContainer(widget.item!,locationName:location.text,latitude:p.latitude,longitude:p.longitude,groupId:group.text); if(mounted)Navigator.pop(context); } catch(e){if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:AppText('$e')));}finally{if(mounted)setState(()=>busy=false);}
+    setState(()=>busy=true); try { final s=context.read<ContainerService>(); if(widget.item==null) await s.createContainer(locationName:location.text,latitude:p.latitude,longitude:p.longitude,municipalityId:municipality.text,groupId:group.text,status:initialStatus!); else await s.updateContainer(widget.item!,locationName:location.text,latitude:p.latitude,longitude:p.longitude,groupId:group.text); if(mounted) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: AppText('حُفظت الحاوية محليًا وبانتظار المزامنة.'))); Navigator.pop(context); } } catch(e){if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:AppText('$e')));}finally{if(mounted)setState(()=>busy=false);}
   }
   @override Widget build(BuildContext context)=>Padding(padding:EdgeInsets.fromLTRB(18,18,18,MediaQuery.viewInsetsOf(context).bottom+18),child:SingleChildScrollView(padding: const EdgeInsets.only(bottom: 120), child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
     AppText(widget.item==null?'إضافة حاوية جديدة':'تعديل الحاوية',style:const TextStyle(fontSize:20,fontWeight:FontWeight.w900)),const SizedBox(height:12),
+    if (widget.item == null) ...[ContainerStatusPicker(value: initialStatus, enabled: !busy, onChanged: (v) => setState(() => initialStatus = v)), const SizedBox(height: 12)],
     TextField(controller:location,decoration:InputDecoration(labelText:tr('اسم الموقع'))),const SizedBox(height:9),
     LocationField(value:point,onChanged:(v)=>setState(()=>point=v)),
     if(accuracy!=null)Padding(padding:const EdgeInsets.only(top:4),child:Text('دقة GPS: ${accuracy!.round()} م${accuracy!>50?' — يفضّل تحسين الدقة':''}',style:TextStyle(fontSize:11,color:accuracy!>50?Colors.orange:Colors.green))),
     const SizedBox(height:5),OutlinedButton.icon(onPressed:_loadCurrent,icon:const Icon(Icons.my_location),label:const AppText('تحديث موقعي الآن')),
-    const SizedBox(height:9),TextField(controller:municipality,readOnly:context.read<AuthService>().currentUser?.role == 'group_supervisor',decoration:InputDecoration(labelText:tr('معرّف البلدية / منسق البلدية'))),const SizedBox(height:9),TextField(controller:group,readOnly:context.read<AuthService>().currentUser?.role == 'group_supervisor',decoration:InputDecoration(labelText:tr('معرّف المجموعة (اختياري)'))),const SizedBox(height:14),FilledButton.icon(onPressed:busy?null:_save,icon:const Icon(Icons.save_rounded),label:AppText(busy?'جارٍ الحفظ...':'حفظ الحاوية'))
+    const SizedBox(height:9),TextField(controller:municipality,readOnly:context.read<AuthService>().currentUser?.role == 'group_supervisor',decoration:InputDecoration(labelText:tr('معرّف البلدية / منسق البلدية'))),const SizedBox(height:9),TextField(controller:group,readOnly:context.read<AuthService>().currentUser?.role == 'group_supervisor',decoration:InputDecoration(labelText:tr('معرّف المجموعة (اختياري)'))),const SizedBox(height:14),FilledButton.icon(onPressed:busy || (widget.item == null && initialStatus == null)?null:_save,icon:const Icon(Icons.save_rounded),label:AppText(busy?'جارٍ الحفظ...':'حفظ الحاوية'))
   ])));
+}
+
+class _ContainerDetails extends StatelessWidget {
+  final ContainerItem item;
+  const _ContainerDetails({required this.item});
+  @override
+  Widget build(BuildContext context) => SafeArea(child: Padding(
+    padding: const EdgeInsets.all(18),
+    child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      AppText(item.locationName, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+      ContainerUpdateDetails(item: item),
+      const SizedBox(height: 12),
+      if (context.read<AuthService>().currentUser?.role == 'jsc_coordinator') FilledButton.icon(onPressed: () => showModalBottomSheet<void>(context: context, isScrollControlled: true, builder: (_) => _SupervisorContainerActions(item: item)), icon: const Icon(Icons.check_circle_outline), label: const AppText('تسجيل حالة الامتلاء')),
+      if (context.read<AuthService>().currentUser?.role == 'jsc_coordinator') OutlinedButton.icon(onPressed: () => ContainerManagementScreen._openEditor(context, item), icon: const Icon(Icons.edit_location_alt_outlined), label: const AppText('تعديل موقع الحاوية')),
+    ]),
+  ));
 }

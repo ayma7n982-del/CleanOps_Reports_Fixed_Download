@@ -42,6 +42,7 @@ class ReportPdfTemplate {
         pw.Text('${t('البلديات: ','Municipalities: ')}${snapshot.municipalityNames.isEmpty ? (snapshot.selectedMunicipality ?? t('غير محددة','Unspecified')) : snapshot.municipalityNames.take(10).join(' • ')}',style:pw.TextStyle(font:bold,fontSize:8,color:PdfColors.white)),
         pw.Text(roleTitle,style:pw.TextStyle(font:bold,fontSize:9,color:PdfColors.amber)),
         pw.Text('${t('الفترة: ','Period: ')}${snapshot.periodLabel}',style:pw.TextStyle(font:regular,fontSize:8,color:PdfColors.white)),
+        pw.Text(snapshot.filterLabel(english: english), style: pw.TextStyle(font: regular, fontSize: 8, color: PdfColors.white)),
         pw.Text('${t('تاريخ الإصدار: ','Generated: ')}${DateFormat('yyyy-MM-dd HH:mm').format(snapshot.generatedAt)}',style:pw.TextStyle(font:regular,fontSize:8,color:PdfColors.white)),
       ])),
       pw.SizedBox(height:12),pw.Table(border:pw.TableBorder.all(color:PdfColors.grey300,width:.5),children:[pw.TableRow(children:[_kpi(t('الرحلات','Trips'),'${snapshot.trips}'),_kpi(t('الحضور','Attendance'),'${(snapshot.attendanceRate*100).toStringAsFixed(0)}%'),_kpi('PPE','${(snapshot.ppeRate*100).toStringAsFixed(0)}%'),_kpi(t('الطوارئ المفتوحة','Open emergencies'),'${snapshot.emergencyOpen}')])]),
@@ -51,7 +52,7 @@ class ReportPdfTemplate {
       _section(t('الاعتماد والتوقيع','Review and signatures'),[pw.Text('${t('معدّ التقرير: ','Prepared by: ')}${user?.name ?? t('النظام','System')}',style:pw.TextStyle(font:regular,fontSize:9)),pw.Text(t('المراجع: ____________________','Reviewer: ____________________'),style:pw.TextStyle(font:regular,fontSize:9)),pw.Text(t('المعتمد: ____________________    التاريخ: __________','Approved by: ____________________    Date: __________'),style:pw.TextStyle(font:regular,fontSize:9))]),
     ];
   }
-  String _statusLabel(String value) => english ? ({'full':'Full','partial':'Partial','empty':'Empty','unknown':'Unknown','ممتلئة':'Full','جزئية':'Partial','فارغة':'Empty'}[value] ?? value) : ({'full':'ممتلئة','partial':'جزئية','empty':'فارغة','unknown':'غير محددة'}[value] ?? value);
+  String _statusLabel(String value) => english ? ({'full':'Full','partial':'Partial','empty':'Empty','unknown':'Unknown','ممتلئة':'Full','جزئية':'Partial','فارغة':'Empty'}[value] ?? value) : ({'full':'ممتلئة','partial':'نصف ممتلئة','empty':'فارغة','unknown':'غير محددة'}[value] ?? value);
   pw.Widget _comparisonTable(){final rows=snapshot.tripsByGroup.entries.toList()..sort((a,b)=>b.value.compareTo(a.value)); return pw.Table(border:pw.TableBorder.all(color:PdfColors.grey300),children:[pw.TableRow(children:['#',t('المجموعة','Group'),t('الرحلات','Trips')].map((x)=>pw.Padding(padding:const pw.EdgeInsets.all(4),child:pw.Text(x,style:pw.TextStyle(font:bold,fontSize:8)))).toList()),...rows.asMap().entries.map((e)=>pw.TableRow(children:[pw.Text('${e.key+1}',style:pw.TextStyle(font:regular,fontSize:8)),pw.Text(e.value.key,style:pw.TextStyle(font:regular,fontSize:8)),pw.Text('${e.value.value}',style:pw.TextStyle(font:bold,fontSize:8))]))]);}
   pw.Widget header(pw.Context context){
     final municipalities = snapshot.municipalityNames.isEmpty ? (snapshot.selectedMunicipality ?? 'كل البلديات') : snapshot.municipalityNames.take(5).join(' • ');

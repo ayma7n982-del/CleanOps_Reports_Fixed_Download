@@ -712,7 +712,8 @@ class DataService extends ChangeNotifier {
             if (item.operation == 'create') {
               // Own-group container creation is authorized without reading a
               // nonexistent document; no status interval exists yet.
-              await ref.set({...cloudPayload, 'updatedAt': FieldValue.serverTimestamp()},
+              await ref.set({...cloudPayload, 'updatedAt': FieldValue.serverTimestamp(),
+                if (cloudPayload['status'] == 'full') 'fullSince': FieldValue.serverTimestamp()},
                 SetOptions(merge: true));
             } else {
             await db.runTransaction((tx) async {

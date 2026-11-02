@@ -49,6 +49,10 @@ class I18n {
 
   static String _dynamic(String source) {
     var s = source;
+    s = s.replaceFirst(RegExp(r'^سجّل الحالة: (.+)$'), r'Recorded by: $1');
+    s = s.replaceFirst(RegExp(r'^آخر حالة مسجلة: (.+)$'), r'Last recorded status: $1');
+    s = s.replaceFirst(RegExp(r'^تعرض الآن: (.+)$'), r'Showing: $1');
+    s = s.replaceFirst(RegExp(r'^النتائج: (.+)$'), r'Results: $1');
     s = s.replaceFirst(RegExp(r'^إعداد (.+)\n\nيمكن تعديل هذه الإعدادات لاحقًا من مركز إعدادات المنظومة\.$'), r'Configure $1' + '\n\nThese settings can be changed later from System Settings.');
     s = s.replaceFirst(RegExp(r'^(.+) بانتظار المزامنة$'), r'$1 pending sync');
     s = s.replaceFirst(RegExp(r'^آخر مزامنة: (.+)$'), r'Last sync: $1');
@@ -72,6 +76,35 @@ class I18n {
   }
 
   static const Map<String, String> _en = {
+    'ما حالة امتلاء الحاوية؟': 'How full is the container?',
+    'اختر الحالة قبل الحفظ.': 'Select a status before saving.',
+    'اختر حالة امتلاء الحاوية أولًا.': 'Select the container fill status first.',
+    'اختر حالة امتلاء صحيحة.': 'Select a valid fill status.',
+    'حفظ حالة الحاوية': 'Save container status',
+    'تسجيل حالة الامتلاء': 'Record fill status',
+    'حُفظت حالة الحاوية محليًا وبانتظار المزامنة.': 'Container status saved locally, pending sync.',
+    'حُفظت الحاوية محليًا وبانتظار المزامنة.': 'Container saved locally, pending sync.',
+    'حُفظ البلاغ محليًا وبانتظار المزامنة.': 'Issue saved locally, pending sync.',
+    'تسجيل الحالة لا يسجل عملية تفريغ أو نقلة.': 'Recording a status does not record an emptying operation or trip.',
+    'آخر حالة مسجلة للحاويات': 'Latest recorded container status',
+    'آخر حالة مسجلة لكل حاوية، بصرف النظر عن تاريخ الإضافة.': 'The latest recorded status of each container, regardless of its creation date.',
+    'اختر ما تريد عرضه': 'Choose what to display',
+    'عمليات الترحيل': 'Transport operations',
+    'تقارير أخرى': 'Other reports',
+    'هذا الشهر': 'This month',
+    'فترة محددة': 'Custom period',
+    'لم تُحدّث اليوم': 'Not updated today',
+    'كل المواقع المتاحة': 'All permitted locations',
+    'فلاتر إضافية': 'More filters',
+    'ابحث برقم الحاوية أو اسم الموقع': 'Search by container ID or location',
+    'ابحث بالموقع أو رقم النقلة': 'Search by location or trip ID',
+    'مسح الفلاتر': 'Clear filters',
+    'تعرض الآن: آخر حالة للحاويات': 'Showing: latest container status',
+    'لا توجد نتائج مطابقة. جرّب مسح الفلاتر أو تغيير الفترة.': 'No matching results. Clear filters or change the period.',
+    'تُعرض أول 100 نتيجة. ملخص التقرير يشمل جميع النتائج المطابقة.': 'Showing the first 100 results. The summary includes all matching results.',
+    'تقرير عمليات الترحيل': 'Transport Operations Report',
+    'ليس لديك صلاحية تحديث حالة الحاوية.': 'You do not have permission to update this container status.',
+    'يمكنك تحديث حاويات مجموعتك فقط.': 'You can only update containers in your group.',
     'الوردية المعتمدة': 'Approved shift',
     'اسم الشارع / المربع': 'Street / area name',
     'حالة العامل': 'Worker status',

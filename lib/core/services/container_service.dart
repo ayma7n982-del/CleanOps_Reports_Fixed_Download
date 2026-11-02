@@ -40,6 +40,7 @@ class ContainerItem {
 
   factory ContainerItem.fromMap(Map<String, dynamic> x) {
     final gps = x['gpsCoordinates'];
+    String dateText(dynamic raw) => raw is Timestamp ? raw.toDate().toIso8601String() : raw is DateTime ? raw.toIso8601String() : '${raw ?? ''}';
     double number(Object? v) => v is num ? v.toDouble() : double.tryParse('$v') ?? 0;
     return ContainerItem(
       id: '${x['id'] ?? ''}',
@@ -51,9 +52,9 @@ class ContainerItem {
       municipalityId: '${x['municipalityId'] ?? ''}',
       groupId: '${x['groupId'] ?? ''}',
       feedbackNotes: '${x['feedbackNotes'] ?? ''}',
-      updatedAt: '${x['updatedAt'] ?? x['createdAt'] ?? ''}',
+      updatedAt: dateText(x['updatedAt'] ?? x['createdAt']),
       updatedBy: '${x['updatedBy'] ?? x['createdBy'] ?? ''}',
-      createdAt: x['createdAt']?.toString(),
+      createdAt: x['createdAt'] == null ? null : dateText(x['createdAt']),
     );
   }
 
@@ -172,14 +173,15 @@ class ContainerService extends ChangeNotifier {
 
   ContainerItem? byId(String id) { for (final c in containers) { if (c.id == id) return c; } return null; }
 
-  Future<void> createContainer({required String locationName, required double latitude, required double longitude, required String municipalityId, String groupId = ''}) async {
+  Future<void> createContainer({required String locationName, required double latitude, required double longitude, required String municipalityId, String groupId = '', String status = 'empty'}) async {
     final u = _user;
     if (u == null || (u.role != 'jsc_coordinator' && u.role != 'group_supervisor')) throw StateError('ليس لديك صلاحية إنشاء الحاويات.');
     if (u.role == 'group_supervisor' && (u.groupId == null || u.groupId!.isEmpty || groupId != u.groupId || municipalityId != u.municipalityCoordinatorId)) throw StateError('يمكنك إنشاء حاويات مجموعتك وبلديتك فقط.');
     if (locationName.trim().isEmpty) throw ArgumentError('اسم موقع الحاوية مطلوب.');
     if (latitude.abs() > 90 || longitude.abs() > 180) throw ArgumentError('إحداثيات GPS غير صحيحة.');
+    if (!const ['empty', 'partial', 'full'].contains(status)) throw ArgumentError('اختر حالة امتلاء صحيحة.');
     final now = DateTime.now().toIso8601String();
-    final item = ContainerItem(id: _uuid.v4(), locationName: locationName.trim(), latitude: latitude, longitude: longitude, status: 'empty', issueStatus: 'none', municipalityId: municipalityId.trim(), groupId: groupId.trim(), feedbackNotes: '', updatedAt: now, updatedBy: u.id, createdAt: now);
+    final item = ContainerItem(id: _uuid.v4(), locationName: locationName.trim(), latitude: latitude, longitude: longitude, status: status, issueStatus: 'none', municipalityId: municipalityId.trim(), groupId: groupId.trim(), feedbackNotes: '', updatedAt: now, updatedBy: u.id, createdAt: now);
     containers = [...containers, item];
     await store.saveCachedContainers(containers.map((e) => e.toMap()).toList());
     await data.enqueue('container', 'create', item.toMap());
@@ -199,16 +201,14 @@ class ContainerService extends ChangeNotifier {
 
   Future<void> updateDailyStatus(ContainerItem item, String status) async {
     final u = _user;
-    if (u == null || (u.role != 'group_supervisor' && u.role != 'worker')) throw StateError('تحديث حالة الحاوية متاح للمشرف الميداني.');
+    if (u == null || !const ['jsc_coordinator', 'group_supervisor', 'worker'].contains(u.role)) throw StateError('ليس لديك صلاحية تحديث حالة الحاوية.');
+    if (u.role != 'jsc_coordinator' && ((u.groupId ?? '').isEmpty || item.groupId != u.groupId)) throw StateError('يمكنك تحديث حاويات مجموعتك فقط.');
     if (!const ['empty', 'partial', 'full'].contains(status)) throw ArgumentError('حالة الحاوية غير صالحة.');
-    final previous = item.status;
     final next = item.copyWith(status: status, updatedAt: DateTime.now().toIso8601String(), updatedBy: u.id);
     await _saveLocal(next);
     await data.enqueue('container', 'update', {...next.toMap(), '_trackStatus': true});
     if (status == 'full') {
       try { await messaging.sendContainerAlert(next, 'full'); } catch (e) { debugPrint('Container full alert deferred: $e'); }
-    } else if (status == 'empty' && previous == 'full') {
-      try { await messaging.sendContainerAlert(next, 'emptied'); } catch (e) { debugPrint('Container emptied alert deferred: $e'); }
     }
   }
 

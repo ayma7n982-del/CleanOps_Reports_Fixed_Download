@@ -40,6 +40,11 @@ class ReportPeriodPresets {
     );
   }
 
+  static ReportPeriodRange monthly(DateTime now) => ReportPeriodRange(
+    startDate: DateTime(now.year, now.month, 1),
+    endDate: DateTime(now.year, now.month, now.day),
+  );
+
   static ReportPeriodRange custom(DateTime start, DateTime end) {
     final normalizedStart = DateTime(start.year, start.month, start.day);
     final normalizedEnd = DateTime(end.year, end.month, end.day);
@@ -75,6 +80,9 @@ class ReportSnapshot {
   final Map<String, int> ppeByGroup;
   final Map<String, int> emergenciesByGroup;
   final Map<String, int> containerByStatus;
+  final List<String> availableMunicipalities;
+  final String search, containerStatus;
+  final List<Map<String, dynamic>> containerRecords, tripRecords;
   final String reportId;
   final String periodLabel;
   final DateTime generatedAt;
@@ -106,7 +114,20 @@ class ReportSnapshot {
     required this.periodLabel,
     required this.generatedAt,
     this.sourceMayBeIncomplete = false,
+    this.availableMunicipalities = const [],
+    this.search = '', this.containerStatus = 'all',
+    this.containerRecords = const [], this.tripRecords = const [],
   });
+
+  String filterLabel({bool english = false}) => [
+    selectedMunicipality ?? (english ? 'All permitted locations' : 'كل المواقع المتاحة'),
+    if (selectedGroup != null) selectedGroup!,
+    if (selectedCycle != null) selectedCycle!,
+    if (search.isNotEmpty) '${english ? 'Search' : 'البحث'}: $search',
+    if (containerStatus != 'all') (english
+        ? const {'empty':'Empty', 'partial':'Half full', 'full':'Full', 'stale':'Not updated today'}
+        : const {'empty':'فارغة', 'partial':'نصف ممتلئة', 'full':'ممتلئة', 'stale':'لم تُحدّث اليوم'})[containerStatus] ?? containerStatus,
+  ].join(' • ');
 
   double get ppeRate => attendance == 0 ? 0 : (ppeCompliant / attendance).clamp(0.0, 1.0).toDouble();
   double get attendanceRate => attendance + absence == 0 ? 0 : (attendance / (attendance + absence)).clamp(0.0, 1.0).toDouble();
@@ -126,6 +147,8 @@ class ReportService {
     String? cycle,
     String? reportType,
     String? reportId,
+    String search = '',
+    String containerStatus = 'all',
   }) async {
     final now = DateTime.now();
     final end = DateTime(endDate?.year ?? now.year, endDate?.month ?? now.month, endDate?.day ?? now.day, 23, 59, 59, 999);
@@ -135,6 +158,9 @@ class ReportService {
     double landfill = 0, heavyMachineryHours = 0;
     final byGroup = <String, int>{}, byDay = <String, int>{}, attendanceByGroup = <String,int>{}, ppeByGroup = <String,int>{}, emergenciesByGroup = <String,int>{}, containerByStatus = <String,int>{};
     final tripsByMunicipality = <String,int>{}, attendanceByMunicipality = <String,int>{}, absenceByGroup = <String,int>{}, containersByMunicipality = <String,int>{}, containersByGroup = <String,int>{};
+    final containerRecords = <Map<String, dynamic>>[];
+    final tripRecords = <Map<String, dynamic>>[];
+    final availableMunicipalities = <String>{};
     final groups = <String>{}, municipalities = <String>{}, workers = <String>{}, supervisors = <String>{};
 
     // Firestore permits user-list queries only to management, and restricts
@@ -156,6 +182,7 @@ class ReportService {
           if (m['isActive'] == false || !_inScope(m, user)) continue;
           final mun = '${m['municipalityName'] ?? m['municipality'] ?? m['scope'] ?? 'غير محددة'}';
           final grp = '${m['groupName'] ?? m['groupId'] ?? 'غير محددة'}';
+          if (mun != 'غير محددة') availableMunicipalities.add(mun);
           if (!_matchesFilters(m, municipality: municipality, group: group, cycle: cycle)) continue;
           if (mun != 'غير محددة') municipalities.add(mun);
           if (grp != 'غير محددة' && grp.isNotEmpty) groups.add(grp);
@@ -171,9 +198,13 @@ class ReportService {
     final sourceMayBeIncomplete = data.online && data.operationsCapped;
     for (final m in cached) {
       if (m['isDeleted'] == true || !_inDateRange(m, start, end) || !_inScope(m, user)) continue;
+      final location = '${m['municipalityName'] ?? m['municipality'] ?? m['municipalityId'] ?? ''}'.trim();
+      if (location.isNotEmpty) availableMunicipalities.add(location);
+      if (!ReportRecordFilters.matchesSearch(m, search)) continue;
       if (!_matchesFilters(m, municipality: municipality, group: group, cycle: cycle)) continue;
       final rawEntity = '${m['_entity'] ?? ''}';
       final entity = rawEntity == 'report' ? '${m['reportKind'] ?? 'report'}' : rawEntity;
+      if (reportType == 'trips' && entity != 'trip' && entity != 'trips') continue;
       if (reportType == 'absence' && entity != 'attendance') continue;
       if (reportType == 'containers' && entity != 'container' && entity != 'containers') continue;
       if (reportType == 'work' && !['work_report', 'heavy_machinery', 'landfill_status'].contains(entity)) continue;
@@ -187,6 +218,7 @@ class ReportService {
       final workerId = '${m['workerId'] ?? m['userId'] ?? ''}';
       if (workerId.isNotEmpty) workers.add(workerId);
       if (entity == 'trip' || entity == 'trips') {
+        tripRecords.add(m);
         trips++; if (m['alternative'] == true || m['cartType'] == 'alternative') alternativeTrips++;
         byGroup[grp]=(byGroup[grp]??0)+1; tripsByMunicipality[mun]=(tripsByMunicipality[mun]??0)+1;
         final created = _dateValue(m['createdAt'] ?? m['date'] ?? m['timestamp']) ?? now; final day=DateFormat('MM/dd').format(created); byDay[day]=(byDay[day]??0)+1;
@@ -210,6 +242,7 @@ class ReportService {
       else if (entity == 'landfill_status') { final c=(m['capacity'] as num?)?.toDouble(); if(c!=null) landfill=math.max(landfill,c.clamp(0.0,1.0).toDouble()); }
     }
 
+    var containerSource = data.store.cachedContainers();
     if (Firebase.apps.isNotEmpty) {
       try {
         Query<Map<String, dynamic>> containersQuery =
@@ -223,11 +256,21 @@ class ReportService {
               isEqualTo: user!.id);
         }
         final snap = await containersQuery.get();
-        for (final d in snap.docs) {
-          final m={'id':d.id,...d.data()};
+        containerSource = snap.docs.map((d) => <String, dynamic>{'id': d.id, ...d.data()}).toList();
+      } catch (_) {}
+    }
+    final containerMap = {for (final m in containerSource) '${m['id']}': m};
+    final pendingContainerIds = data.queue.where((q) => q.entity == 'container').map((q) {
+      try { return '${(jsonDecode(q.payload) as Map)['id']}'; } catch (_) { return ''; }
+    }).toSet();
+    for (final local in data.store.cachedContainers()) {
+      if (pendingContainerIds.contains('${local['id']}')) containerMap['${local['id']}'] = local;
+    }
+    {
+        for (final m in containerMap.values) {
+          if (m['isDeleted'] == true) continue;
           final mun='${m['municipalityName'] ?? m['municipalityId'] ?? 'غير محددة'}'; final grp='${m['groupName'] ?? m['groupId'] ?? 'غير محددة'}';
-          if (municipality != null && municipality.isNotEmpty && mun != municipality && '${m['municipalityId']}' != municipality) continue;
-          if (group != null && group.isNotEmpty && grp != group && '${m['groupId']}' != group) continue;
+          if (user == null || !const ['donor_manager', 'jsc_coordinator', 'municipality_coordinator', 'group_supervisor', 'worker'].contains(user.role)) continue;
           if (user != null) {
             final rowGroup = '${m['groupId'] ?? m['groupName'] ?? ''}'.trim();
             final rowOwner = '${m['municipalityCoordinatorId'] ?? m['reportedBy'] ?? ''}'.trim();
@@ -235,7 +278,7 @@ class ReportService {
               if ((user.groupId ?? '').trim().isEmpty || rowGroup != user.groupId!.trim()) continue;
             } else if (user.role == 'municipality_coordinator') {
               final scope = user.scope.trim();
-              final belongsByOwner = rowOwner == user.id || '${m['municipalityCoordinatorId'] ?? ''}' == user.id;
+              final belongsByOwner = rowOwner == user.id || '${m['municipalityId'] ?? ''}' == user.id;
               final belongsByName = scope.isNotEmpty && scope != 'all' && scope != 'assigned_only' && (mun == scope || '${m['municipalityId'] ?? ''}' == scope);
               if (!belongsByOwner && !belongsByName) continue;
             } else if (user.role == 'jsc_coordinator') {
@@ -244,12 +287,17 @@ class ReportService {
               if (scope.isEmpty || scope == 'all' || scope == 'assigned_only' || (council != scope && mun != scope)) continue;
             }
           }
+          if (mun != 'غير محددة') availableMunicipalities.add(mun);
+          if (!_matchesFilters(m, municipality: municipality, group: group)) continue;
+          if (!ReportRecordFilters.matchesSearch(m, search) || !ReportRecordFilters.matchesContainerStatus(m, containerStatus, now)) continue;
+          containerRecords.add(Map<String, dynamic>.from(m));
+          if (mun != 'غير محددة') municipalities.add(mun);
+          if (grp != 'غير محددة') groups.add(grp);
           containersTotal++; containersByMunicipality[mun]=(containersByMunicipality[mun]??0)+1; containersByGroup[grp]=(containersByGroup[grp]??0)+1;
           final status='${m['status']??'unknown'}'; containerByStatus[status]=(containerByStatus[status]??0)+1;
           if(status=='full') containersFull++; else if(status=='partial') containersPartial++; else if(status=='empty') containersEmpty++;
           if('${m['issueStatus']??'none'}' != 'none' && '${m['issueStatus']}' != 'verified_resolved') containerIssues++;
         }
-      } catch (_) {}
     }
 
     if (Firebase.apps.isNotEmpty) {
@@ -281,8 +329,15 @@ class ReportService {
     if (Firebase.apps.isNotEmpty) { try { final snap=await FirebaseFirestore.instance.collection('work_cycles').orderBy('startDate', descending:true).limit(50).get(); cycles=[for(final d in snap.docs) '${d.data()['name'] ?? d.id}']; cycleCount=snap.docs.length; } catch (_) {} }
     if (user?.role == 'municipality_coordinator' && user!.scope.trim().isNotEmpty && user.scope != 'assigned_only' && user.scope != 'all') municipalities.add(user.scope.trim());
     final municipalityNames = municipalities.toList()..sort();
+    final locationOptions = availableMunicipalities.toList()..sort();
     if (municipality != null && municipality.isNotEmpty && !municipalityNames.contains(municipality)) municipalityNames.insert(0, municipality);
-    return ReportSnapshot(trips: trips, alternativeTrips: alternativeTrips, attendance: attendance, absence: absence, ppeCompliant: ppe, emergencies: emergencies, emergencyOpen: emergencyOpen, emergencySecured: emergencySecured, landfillCapacity: landfill, heavyMachineryHours: heavyMachineryHours, tripsByGroup: byGroup, tripsByDay: byDay, attendanceByGroup: attendanceByGroup, ppeByGroup: ppeByGroup, emergenciesByGroup: emergenciesByGroup, containerByStatus: containerByStatus, containersTotal: containersTotal, containersFull: containersFull, containersPartial: containersPartial, containersEmpty: containersEmpty, containerIssues: containerIssues, workers: workers.length, supervisors: supervisors.length, groups: groups.length, municipalities: municipalities.length, dumpsites: dumpsites, cycleCount: cycleCount, municipalityNames: municipalityNames, tripsByMunicipality: tripsByMunicipality, attendanceByMunicipality: attendanceByMunicipality, absenceByGroup: absenceByGroup, containersByMunicipality: containersByMunicipality, containersByGroup: containersByGroup, cycles: cycles, selectedMunicipality: municipality, selectedGroup: group, selectedCycle: cycle, reportType: reportType, reportId: reportId ?? 'CO-${now.millisecondsSinceEpoch}', sourceMayBeIncomplete: sourceMayBeIncomplete, periodLabel: '${DateFormat('yyyy-MM-dd').format(start)} → ${DateFormat('yyyy-MM-dd').format(end)}', generatedAt: now);
+    final sourceRows = reportType == 'containers' ? containerRecords : tripRecords;
+    final sourceKeys = sourceRows.map((m) => '${m['id']}:${m['status']}:${m['updatedAt']}:${m['createdAt']}').toList()..sort();
+    final filterKey = '$search|$containerStatus|${sourceKeys.join(';')}';
+    var filterHash = 0;
+    for (final unit in filterKey.codeUnits) { filterHash = (filterHash * 31 + unit) & 0x7fffffff; }
+    final snapshotId = reportId == null ? 'CO-${now.millisecondsSinceEpoch}' : '$reportId-${filterHash.toRadixString(16)}';
+    return ReportSnapshot(trips: trips, alternativeTrips: alternativeTrips, attendance: attendance, absence: absence, ppeCompliant: ppe, emergencies: emergencies, emergencyOpen: emergencyOpen, emergencySecured: emergencySecured, landfillCapacity: landfill, heavyMachineryHours: heavyMachineryHours, tripsByGroup: byGroup, tripsByDay: byDay, attendanceByGroup: attendanceByGroup, ppeByGroup: ppeByGroup, emergenciesByGroup: emergenciesByGroup, containerByStatus: containerByStatus, containersTotal: containersTotal, containersFull: containersFull, containersPartial: containersPartial, containersEmpty: containersEmpty, containerIssues: containerIssues, workers: workers.length, supervisors: supervisors.length, groups: groups.length, municipalities: municipalities.length, dumpsites: dumpsites, cycleCount: cycleCount, municipalityNames: municipalityNames, tripsByMunicipality: tripsByMunicipality, attendanceByMunicipality: attendanceByMunicipality, absenceByGroup: absenceByGroup, containersByMunicipality: containersByMunicipality, containersByGroup: containersByGroup, cycles: cycles, selectedMunicipality: municipality, selectedGroup: group, selectedCycle: cycle, reportType: reportType, reportId: snapshotId, sourceMayBeIncomplete: sourceMayBeIncomplete, availableMunicipalities: locationOptions, search: search, containerStatus: containerStatus, containerRecords: containerRecords, tripRecords: tripRecords, periodLabel: reportType == 'containers' ? 'آخر حالة مسجلة للحاويات' : '${DateFormat('yyyy-MM-dd').format(start)} → ${DateFormat('yyyy-MM-dd').format(end)}', generatedAt: now);
   }
 
   bool _matchesFilters(Map<String,dynamic> m, {String? municipality, String? group, String? cycle}) {
@@ -374,6 +429,8 @@ class ReportService {
       'cycle': cycle,
       'reportId': snapshot.reportId,
       'reportType': snapshot.reportType ?? 'all',
+      'search': snapshot.search, 'containerStatus': snapshot.containerStatus,
+      'filterLabel': snapshot.filterLabel(),
       'period': snapshot.periodLabel,
       'periodPreset': periodPreset ?? 'custom',
       'generatedBy': user.id,
@@ -440,6 +497,7 @@ class ReportService {
       [en ? 'Metric' : 'المؤشر', en ? 'Value' : 'القيمة'],
       [en ? 'Report ID' : 'معرّف التقرير', s.reportId],
       [en ? 'Period' : 'الفترة', s.periodLabel],
+      [en ? 'Filters' : 'الفلاتر', s.filterLabel(english: en)],
       [en ? 'Municipality' : 'البلديات', s.selectedMunicipality ?? s.municipalityNames.join('، ')],
       [en ? 'Groups' : 'المجموعات', '${s.groups}'],
       [en ? 'Workers' : 'العمال', '${s.workers}'],
@@ -472,6 +530,7 @@ class ReportService {
     final rows = <List<String>>[
       [en ? 'Report ID' : 'معرّف التقرير', s.reportId],
       [en ? 'Period' : 'الفترة', s.periodLabel],
+      [en ? 'Filters' : 'الفلاتر', s.filterLabel(english: en)],
       [en ? 'Municipality' : 'البلديات', s.selectedMunicipality ?? s.municipalityNames.join('، ')],
       [en ? 'Groups' : 'المجموعات', '${s.groups}'], [en ? 'Workers' : 'العمال', '${s.workers}'],
       [en ? 'Supervisors' : 'المشرفون', '${s.supervisors}'], [en ? 'Trips' : 'النقلات', '${s.trips}'],
@@ -507,6 +566,7 @@ class ReportService {
   String _englishReportTitle(String title) {
     const map = <String, String>{
       'تقرير الغياب والحضور — CleanOps': 'Attendance & Absence Report — CleanOps',
+      'تقرير عمليات الترحيل — CleanOps': 'Transport Operations Report — CleanOps',
       'تقرير الحاويات — CleanOps': 'Container Report — CleanOps',
       'تقرير العمل والتشغيل — CleanOps': 'Work & Operations Report — CleanOps',
       'تقرير الدورات — CleanOps': 'Work Cycles Report — CleanOps',
@@ -517,4 +577,23 @@ class ReportService {
     return map[title] ?? title.replaceAll('التقرير التشغيلي لمنظومة جمع النفايات', 'Solid Waste Operations Report');
   }
 
+}
+
+/// Shared by report queries so preview, totals and exported data use one filter.
+class ReportRecordFilters {
+  static bool matchesSearch(Map<String, dynamic> record, String query) {
+    final value = query.trim().toLowerCase();
+    if (value.isEmpty) return true;
+    return const ['id', 'locationName', 'location', 'street', 'title', 'landfill', 'municipalityName', 'municipality', 'municipalityId', 'groupName', 'groupId']
+        .any((key) => '${record[key] ?? ''}'.toLowerCase().contains(value));
+  }
+
+  static bool matchesContainerStatus(Map<String, dynamic> record, String status, DateTime now) {
+    if (status == 'all') return true;
+    if (status != 'stale') return record['status'] == status;
+    final raw = record['updatedAt'];
+    final updated = raw is Timestamp ? raw.toDate() : raw is DateTime ? raw : DateTime.tryParse('$raw');
+    final today = DateTime(now.year, now.month, now.day);
+    return updated == null || updated.toLocal().isBefore(today);
+  }
 }
