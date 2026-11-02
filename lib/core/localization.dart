@@ -76,6 +76,15 @@ class I18n {
   }
 
   static const Map<String, String> _en = {
+    'اختر المكب / نقطة التجميع': 'Select dumpsite / collection point',
+    'ابحث باسم المكب أو موقعه': 'Search by dumpsite name or location',
+    'إعادة تحميل المكبات': 'Reload dumpsites',
+    'لا توجد نتائج.': 'No results.',
+    'لا توجد مكبات متاحة. يُرجى إضافتها من إدارة المكبات.': 'No dumpsites available. Ask management to add one.',
+    'لا توجد مكبات محفوظة على الجهاز. اتصل بالإنترنت لتحميلها أول مرة.': 'No dumpsites cached on this device. Connect to load them for the first time.',
+    'تعرض المكبات المحفوظة على الجهاز؛ تُحدّث تلقائيًا عند الاتصال.': 'Showing cached dumpsites; they update automatically when connected.',
+    'تعذر الوصول إلى المكبات. يُرجى مراجعة المنسق لتحديث صلاحية قراءة وجهات النقلات.': 'Dumpsite access is unavailable. Ask the coordinator to update trip destination read permission.',
+    'تعذر تحميل المكبات. تحقق من الاتصال وأعد المحاولة.': 'Unable to load dumpsites. Check the connection and retry.',
     'ما حالة امتلاء الحاوية؟': 'How full is the container?',
     'اختر الحالة قبل الحفظ.': 'Select a status before saving.',
     'اختر حالة امتلاء الحاوية أولًا.': 'Select the container fill status first.',
