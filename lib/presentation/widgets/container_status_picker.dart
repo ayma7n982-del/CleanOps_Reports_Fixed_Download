@@ -4,7 +4,7 @@ import 'package:provider/provider.dart';
 import '../../core/services/auth_service.dart';
 
 import '../../core/services/container_service.dart';
-import 'app_design.dart';
+import '../../core/localization.dart';
 
 const containerStatusLabels = <String, String>{
   'empty': 'فارغة',
