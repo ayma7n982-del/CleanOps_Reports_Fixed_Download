@@ -19,15 +19,16 @@ const workerB = {'id': 'b', 'name': 'عامل ب', 'groupId': 'g1', 'group': 'g1
 AppUser actor({
   String role = 'group_supervisor',
   Map<String, FeaturePolicy> policies = const {},
-}) => AppUser(
-  id: 's1',
-  username: 's1',
-  name: 'مشرف',
-  role: role,
-  scope: 'بلدية',
-  groupId: 'g1',
-  policies: policies,
-);
+}) =>
+    AppUser(
+      id: 's1',
+      username: 's1',
+      name: 'مشرف',
+      role: role,
+      scope: 'بلدية',
+      groupId: 'g1',
+      policies: policies,
+    );
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -61,16 +62,17 @@ void main() {
     int? from,
     int? to,
     Future<bool> Function(Map<String, dynamic>)? confirm,
-  }) => service.saveLeave(
-    actor: user ?? actor(),
-    worker: worker,
-    status: status,
-    day: day,
-    reason: reason,
-    fromMinute: from,
-    toMinute: to,
-    confirmReplacement: confirm ?? (_) async => false,
-  );
+  }) =>
+      service.saveLeave(
+        actor: user ?? actor(),
+        worker: worker,
+        status: status,
+        day: day,
+        reason: reason,
+        fromMinute: from,
+        toMinute: to,
+        confirmReplacement: confirm ?? (_) async => false,
+      );
 
   test(
     'leave queues only selected worker, preserves colleagues, survives restart and syncs once',
@@ -102,18 +104,17 @@ void main() {
         reason: 'Repeated save cannot enqueue an identical write',
       );
       final sent = <Map<String, dynamic>>[];
-      final restored =
-          DataService(
-              store,
-              config,
-              syncItemOverride: (item, payload) async {
-                expect(item.entity, 'attendance');
-                sent.add(payload);
-              },
-            )
-            ..queue = store.queue()
-            ..operations = store.cachedOperations()
-            ..online = true;
+      final restored = DataService(
+        store,
+        config,
+        syncItemOverride: (item, payload) async {
+          expect(item.entity, 'attendance');
+          sent.add(payload);
+        },
+      )
+        ..queue = store.queue()
+        ..operations = store.cachedOperations()
+        ..online = true;
       try {
         await restored.sync();
         await restored.sync();
@@ -397,6 +398,9 @@ void main() {
       expect(find.byType(WorkerLeaveForm), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey('leave-worker-a')));
       await tester.pumpAndSettle();
+      await tester.ensureVisible(find.byKey(const ValueKey('leave-reason')));
+      await tester.enterText(
+          find.byKey(const ValueKey('leave-reason')), 'إجازة طبية');
       await tester.ensureVisible(
         find.byKey(const ValueKey('save-worker-leave')),
       );
@@ -426,6 +430,26 @@ void main() {
           .map((w) => w.initialValue);
       expect(statuses, contains('leave'));
       expect(statuses, contains('unset'));
+      final unset = find.byWidgetPredicate((w) =>
+          w is DropdownButtonFormField<String> && w.initialValue == 'unset');
+      await tester.ensureVisible(unset);
+      await tester.tap(unset);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('غياب').last);
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text('حفظ كشف حضور مجموعتي'));
+      await tester.tap(find.text('حفظ كشف حضور مجموعتي'));
+      await tester.pumpAndSettle();
+      expect(data.queue.where((item) => item.entity == 'attendance'),
+          hasLength(2));
+      final leave = data.operations.singleWhere(
+          (r) => r['_entity'] == 'attendance' && r['workerId'] == 'a');
+      expect(leave['status'], 'leave');
+      expect(leave['leaveReason'], 'إجازة طبية');
+      expect(
+          data.operations.singleWhere((r) =>
+              r['_entity'] == 'attendance' && r['workerId'] == 'b')['status'],
+          'absent');
       expect(tester.takeException(), isNull);
     },
   );

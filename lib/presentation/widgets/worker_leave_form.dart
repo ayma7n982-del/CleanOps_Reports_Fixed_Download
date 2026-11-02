@@ -27,8 +27,7 @@ class WorkerLeaveForm extends StatefulWidget {
   final Future<Map<String, dynamic>?> Function(
     Map<String, String> worker,
     DateTime day,
-  )?
-  onLoad;
+  )? onLoad;
   final Future<bool> Function(WorkerLeaveSelection selection) onSave;
   const WorkerLeaveForm({
     super.key,
@@ -58,9 +57,8 @@ class _WorkerLeaveFormState extends State<WorkerLeaveForm> {
   }
 
   Future<void> _loadSelection() async {
-    final selected = widget.workers
-        .where((w) => w['id'] == workerId)
-        .firstOrNull;
+    final selected =
+        widget.workers.where((w) => w['id'] == workerId).firstOrNull;
     if (selected == null) return;
     setState(() {
       loading = true;
@@ -124,7 +122,11 @@ class _WorkerLeaveFormState extends State<WorkerLeaveForm> {
           toMinute: end,
         ),
       );
-      if (mounted && saved) setState(() { dirty = false; existingStatus = status; });
+      if (mounted && saved)
+        setState(() {
+          dirty = false;
+          existingStatus = status;
+        });
     } catch (e) {
       if (mounted) setState(() => error = 'تعذر الحفظ: $e');
     } finally {
@@ -140,8 +142,8 @@ class _WorkerLeaveFormState extends State<WorkerLeaveForm> {
           (w) =>
               query.isEmpty ||
               '${w['name']} ${w['id']}'.toLowerCase().contains(
-                query.toLowerCase(),
-              ),
+                    query.toLowerCase(),
+                  ),
         )
         .toList();
     return PopScope(
@@ -180,190 +182,201 @@ class _WorkerLeaveFormState extends State<WorkerLeaveForm> {
           AiSectionCard(
             title: 'إجازة أو إذن لعامل واحد',
             feature: 'leave',
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const AppText(
-                  'اختر العامل وسجل حالته مباشرة. تبقى حالات بقية عمال المجموعة كما هي.',
-                ),
-                const SizedBox(height: 12),
-                AppText('الوردية: ${widget.shift}'),
-                TextButton.icon(
-                  key: const ValueKey('leave-date'),
-                  onPressed: disabled
-                      ? null
-                      : () async {
-                          final picked = await showDatePicker(
-                            context: context,
-                            initialDate: day,
-                            firstDate: DateTime.now().subtract(
-                              const Duration(days: 366),
-                            ),
-                            lastDate: DateTime.now().add(
-                              const Duration(days: 366),
-                            ),
-                          );
-                          if (picked != null && mounted) {
-                            setState(() {
-                              day = picked;
-                              dirty = true;
-                            });
-                            await _loadSelection();
-                          }
-                        },
-                  icon: const Icon(Icons.calendar_today),
-                  label: AppText(AttendanceEntryService.dayKey(day)),
-                ),
-                TextField(
-                  key: const ValueKey('leave-search'),
-                  enabled: !disabled,
-                  decoration: InputDecoration(
-                    labelText: tr('البحث عن عامل'),
-                    prefixIcon: const Icon(Icons.search),
+            child: Material(
+              type: MaterialType.transparency,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const AppText(
+                    'اختر العامل وسجل حالته مباشرة. تبقى حالات بقية عمال المجموعة كما هي.',
                   ),
-                  onChanged: (value) => setState(() => query = value.trim()),
-                ),
-                if (workerId != null)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 8),
-                    child: AppText(
-                      'العامل المحدد: ${widget.workers.where((w) => w['id'] == workerId).firstOrNull?['name'] ?? ''}',
+                  if (widget.locked)
+                    const AppText(
+                        'التسجيل مقفل مؤقتًا بسبب تجميد المرحلة أو بلاغ طارئ مفتوح.'),
+                  const SizedBox(height: 12),
+                  AppText('الوردية: ${widget.shift}'),
+                  TextButton.icon(
+                    key: const ValueKey('leave-date'),
+                    onPressed: disabled
+                        ? null
+                        : () async {
+                            final picked = await showDatePicker(
+                              context: context,
+                              initialDate: day,
+                              firstDate: DateTime.now().subtract(
+                                const Duration(days: 366),
+                              ),
+                              lastDate: DateTime.now().add(
+                                const Duration(days: 366),
+                              ),
+                            );
+                            if (picked != null && mounted) {
+                              setState(() {
+                                day = picked;
+                                dirty = true;
+                              });
+                              await _loadSelection();
+                            }
+                          },
+                    icon: const Icon(Icons.calendar_today),
+                    label: AppText(AttendanceEntryService.dayKey(day)),
+                  ),
+                  TextField(
+                    key: const ValueKey('leave-search'),
+                    enabled: !disabled,
+                    decoration: InputDecoration(
+                      labelText: tr('البحث عن عامل'),
+                      prefixIcon: const Icon(Icons.search),
                     ),
+                    onChanged: (value) => setState(() => query = value.trim()),
                   ),
-                if (widget.workers.isEmpty)
-                  const AppText('لا يوجد عمال متاحون ضمن مجموعتك.')
-                else if (choices.isEmpty)
-                  const AppText('لا يوجد عامل مطابق للبحث.')
-                else
-                  SizedBox(
-                    height: 180,
-                    child: ListView(
-                      children: [
-                        for (final worker in choices)
-                          RadioListTile<String>(
-                            key: ValueKey('leave-worker-${worker['id']}'),
-                            value: worker['id']!,
-                            groupValue: workerId,
-                            title: AppText(worker['name'] ?? ''),
-                            subtitle: AppText(worker['job'] ?? worker['id']!),
-                            onChanged: disabled
-                                ? null
-                                : (value) async {
-                                    setState(() {
-                                      workerId = value;
-                                      dirty = true;
-                                      error = null;
-                                    });
-                                    await _loadSelection();
-                                  },
-                          ),
-                      ],
-                    ),
-                  ),
-                if (loading) const LinearProgressIndicator(),
-                if (existingStatus != null)
-                  AppText(
-                    'الحالة المسجلة: ${const {'present': 'حضور', 'absent': 'غياب', 'leave': 'إجازة', 'permission': 'إذن خاص'}[existingStatus] ?? existingStatus}',
-                  ),
-                const SizedBox(height: 12),
-                DropdownButtonFormField<String>(
-                  key: const ValueKey('leave-type'),
-                  value: status,
-                  decoration: InputDecoration(labelText: tr('نوع التسجيل')),
-                  items: const [
-                    DropdownMenuItem(value: 'leave', child: AppText('إجازة')),
-                    DropdownMenuItem(
-                      value: 'permission',
-                      child: AppText('إذن خاص'),
-                    ),
-                  ],
-                  onChanged: disabled
-                      ? null
-                      : (value) => setState(() {
-                          status = value!;
-                          dirty = true;
-                        }),
-                ),
-                if (status == 'permission')
-                  Wrap(
-                    spacing: 8,
-                    children: [
-                      TextButton(
-                        key: const ValueKey('permission-from'),
-                        onPressed: disabled
-                            ? null
-                            : () async {
-                                final value = await showTimePicker(
-                                  context: context,
-                                  initialTime:
-                                      from ??
-                                      const TimeOfDay(hour: 8, minute: 0),
-                                );
-                                if (value != null && mounted)
-                                  setState(() {
-                                    from = value;
-                                    dirty = true;
-                                  });
-                              },
-                        child: AppText(
-                          'من: ${from?.format(context) ?? 'اختيار الوقت'}',
-                        ),
+                  if (workerId != null)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      child: AppText(
+                        'العامل المحدد: ${widget.workers.where((w) => w['id'] == workerId).firstOrNull?['name'] ?? ''}',
                       ),
-                      TextButton(
-                        key: const ValueKey('permission-to'),
-                        onPressed: disabled
-                            ? null
-                            : () async {
-                                final value = await showTimePicker(
-                                  context: context,
-                                  initialTime:
-                                      to ?? const TimeOfDay(hour: 9, minute: 0),
-                                );
-                                if (value != null && mounted)
-                                  setState(() {
-                                    to = value;
-                                    dirty = true;
-                                  });
-                              },
-                        child: AppText(
-                          'إلى: ${to?.format(context) ?? 'اختيار الوقت'}',
-                        ),
+                    ),
+                  if (widget.workers.isEmpty)
+                    const AppText('لا يوجد عمال متاحون ضمن مجموعتك.')
+                  else if (choices.isEmpty)
+                    const AppText('لا يوجد عامل مطابق للبحث.')
+                  else
+                    SizedBox(
+                      height: 180,
+                      child: ListView(
+                        children: [
+                          for (final worker in choices)
+                            RadioListTile<String>(
+                              key: ValueKey('leave-worker-${worker['id']}'),
+                              value: worker['id']!,
+                              groupValue: workerId,
+                              title: AppText(worker['name'] ?? ''),
+                              subtitle: AppText(worker['job'] ?? worker['id']!),
+                              onChanged: disabled
+                                  ? null
+                                  : (value) async {
+                                      setState(() {
+                                        workerId = value;
+                                        dirty = true;
+                                        error = null;
+                                      });
+                                      await _loadSelection();
+                                    },
+                            ),
+                        ],
+                      ),
+                    ),
+                  if (loading) const LinearProgressIndicator(),
+                  if (existingStatus != null)
+                    AppText(
+                      'الحالة المسجلة: ${const {
+                            'present': 'حضور',
+                            'absent': 'غياب',
+                            'leave': 'إجازة',
+                            'permission': 'إذن خاص'
+                          }[existingStatus] ?? existingStatus}',
+                    ),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<String>(
+                    key: const ValueKey('leave-type'),
+                    value: status,
+                    decoration: InputDecoration(labelText: tr('نوع التسجيل')),
+                    items: const [
+                      DropdownMenuItem(value: 'leave', child: AppText('إجازة')),
+                      DropdownMenuItem(
+                        value: 'permission',
+                        child: AppText('إذن خاص'),
                       ),
                     ],
+                    onChanged: disabled
+                        ? null
+                        : (value) => setState(() {
+                              status = value!;
+                              dirty = true;
+                            }),
                   ),
-                const SizedBox(height: 12),
-                TextField(
-                  key: const ValueKey('leave-reason'),
-                  controller: reason,
-                  enabled: !disabled,
-                  maxLines: 2,
-                  decoration: InputDecoration(
-                    labelText: tr('السبب / ملاحظة (اختياري)'),
+                  if (status == 'permission')
+                    Wrap(
+                      spacing: 8,
+                      children: [
+                        TextButton(
+                          key: const ValueKey('permission-from'),
+                          onPressed: disabled
+                              ? null
+                              : () async {
+                                  final value = await showTimePicker(
+                                    context: context,
+                                    initialTime: from ??
+                                        const TimeOfDay(hour: 8, minute: 0),
+                                  );
+                                  if (value != null && mounted)
+                                    setState(() {
+                                      from = value;
+                                      dirty = true;
+                                    });
+                                },
+                          child: AppText(
+                            'من: ${from?.format(context) ?? 'اختيار الوقت'}',
+                          ),
+                        ),
+                        TextButton(
+                          key: const ValueKey('permission-to'),
+                          onPressed: disabled
+                              ? null
+                              : () async {
+                                  final value = await showTimePicker(
+                                    context: context,
+                                    initialTime: to ??
+                                        const TimeOfDay(hour: 9, minute: 0),
+                                  );
+                                  if (value != null && mounted)
+                                    setState(() {
+                                      to = value;
+                                      dirty = true;
+                                    });
+                                },
+                          child: AppText(
+                            'إلى: ${to?.format(context) ?? 'اختيار الوقت'}',
+                          ),
+                        ),
+                      ],
+                    ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    key: const ValueKey('leave-reason'),
+                    controller: reason,
+                    enabled: !disabled,
+                    maxLines: 2,
+                    decoration: InputDecoration(
+                      labelText: tr('السبب / ملاحظة (اختياري)'),
+                    ),
+                    onChanged: (_) => setState(() => dirty = true),
                   ),
-                  onChanged: (_) => setState(() => dirty = true),
-                ),
-                if (error != null)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    child: AppText(
-                      error!,
-                      style: const TextStyle(color: Colors.red),
+                  if (error != null)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      child: AppText(
+                        error!,
+                        style: const TextStyle(color: Colors.red),
+                      ),
+                    ),
+                  const SizedBox(height: 16),
+                  FilledButton.icon(
+                    key: const ValueKey('save-worker-leave'),
+                    onPressed:
+                        disabled || widget.workers.isEmpty ? null : _save,
+                    icon: const Icon(Icons.save_outlined),
+                    label: AppText(
+                      saving
+                          ? 'جارٍ الحفظ...'
+                          : status == 'leave'
+                              ? 'حفظ الإجازة'
+                              : 'حفظ الإذن',
                     ),
                   ),
-                const SizedBox(height: 16),
-                FilledButton.icon(
-                  key: const ValueKey('save-worker-leave'),
-                  onPressed: disabled || widget.workers.isEmpty ? null : _save,
-                  icon: const Icon(Icons.save_outlined),
-                  label: AppText(
-                    saving
-                        ? 'جارٍ الحفظ...'
-                        : status == 'leave'
-                        ? 'حفظ الإجازة'
-                        : 'حفظ الإذن',
-                  ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ],

@@ -78,8 +78,9 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
   final issue = TextEditingController();
   final solution = TextEditingController();
   final quantity = TextEditingController();
-  final recorder = AudioRecorder();
-  final imageService = ImageService();
+  AudioRecorder? _recorder;
+  AudioRecorder get recorder => _recorder ??= AudioRecorder();
+  late final imageService = ImageService();
   final WorkerPpeChecklist ppe = WorkerPpeChecklist();
   final Map<String, String> attendanceStatus = {};
   bool savingAttendance = false;
@@ -125,7 +126,7 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
     issue.dispose();
     solution.dispose();
     quantity.dispose();
-    recorder.dispose();
+    _recorder?.dispose();
     super.dispose();
   }
 
@@ -1349,6 +1350,6 @@ class SupervisorCardSection extends StatelessWidget {
                 : title.contains('الشوارع')
                     ? 'streets'
                     : 'operations',
-    child: child,
+    child: Material(type: MaterialType.transparency, child: child),
   );
 }
