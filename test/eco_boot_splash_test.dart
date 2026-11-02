@@ -152,4 +152,22 @@ void main() {
       contains('assets/brand/cleanops_icon_new.png'),
     );
   });
+  test('native handoff retains the approved logo before Flutter draws', () {
+    for (final version in ['values', 'values-v31']) {
+      final xml = File('android/app/src/main/res/$version/styles.xml')
+          .readAsStringSync();
+      final normalTheme = RegExp(
+        r'<style name="NormalTheme"[^>]*>([\s\S]*?)</style>',
+      ).firstMatch(xml);
+      expect(normalTheme, isNotNull, reason: version);
+      expect(normalTheme!.group(1), contains('@drawable/launch_background'),
+          reason: 'The handoff must retain the logo on $version');
+      expect(normalTheme.group(1), isNot(contains('>#F8FCFA</item>')));
+    }
+    final manifest = File('android/app/src/main/AndroidManifest.xml')
+        .readAsStringSync();
+    expect(manifest, contains('io.flutter.embedding.android.NormalTheme'));
+    expect(manifest, contains('@style/NormalTheme'));
+  });
+
 }
