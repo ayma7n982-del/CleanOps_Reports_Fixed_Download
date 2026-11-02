@@ -4,6 +4,8 @@ import '../../core/services/attendance_entry_service.dart';
 import '../widgets/worker_leave_form.dart';
 import '../../core/services/trip_dumpsite.dart';
 import '../widgets/trip_dumpsite_picker.dart';
+import '../widgets/recoverable_form.dart';
+import '../../core/services/input_numbers.dart';
 import '../../core/services/feature_route_policy.dart';
 import '../feature_navigation.dart';
 import '../widgets/field_shortcuts.dart';
@@ -43,7 +45,38 @@ class Level1SupervisorScreen extends StatefulWidget {
   State<Level1SupervisorScreen> createState() => _Level1SupervisorState();
 }
 
-class _Level1SupervisorState extends State<Level1SupervisorScreen> {
+class _Level1SupervisorState extends State<Level1SupervisorScreen> with RecoverableForm<Level1SupervisorScreen> {
+  @override String get draftId {
+    final action = widget.initialAction ?? 'workspace';
+    return 'supervisor:$action:${DateTime.now().toIso8601String().substring(0, 10)}:${context.read<ConfigService>().shift}';
+  }
+  @override bool get draftBusy => savingAttendance || savingTrip || sendingEmergency;
+  @override Map<String, TextEditingController> get draftFields => {'street': street, 'issue': issue, 'solution': solution, 'quantity': quantity};
+  @override Map<String, dynamic> get draftValues => {
+    'attendance': attendanceStatus, 'attendanceSession': attendanceSession,
+    'ppe': {for (final id in attendanceStatus.keys) id: ppe.snapshot(id)},
+    'dumpsiteId': selectedDumpsiteId, 'minutes': tripTargetMinutes, 'tripPpe': tripPpe,
+    'photos': tripPhotoPaths, 'audio': audioPath,
+  };
+  @override void restoreDraftValues(Map<String, dynamic> v) {
+    attendanceSession = v['attendanceSession'] as String? ?? '';
+    const validStatuses = {'present', 'absent', 'leave', 'permission', 'excused_absence', 'unexcused_absence', 'external_task'};
+    for (final e in Map<String, dynamic>.from(v['attendance'] as Map? ?? {}).entries) {
+      if (e.key.isNotEmpty && validStatuses.contains(e.value)) attendanceStatus[e.key] = e.value as String;
+    }
+    for (final e in Map<String, dynamic>.from(v['ppe'] as Map? ?? {}).entries) {
+      if (e.key.isEmpty || e.value is! Map) continue;
+      final state = ppe.forWorker(e.key);
+      for (final item in WorkerPpeChecklist.requiredItems) { state[item] = e.value[item] == true; }
+    }
+    selectedDumpsiteId = v['dumpsiteId'] as String?;
+    if (v['minutes'] is int && (v['minutes'] as int) > 0) tripTargetMinutes = v['minutes'] as int;
+    final savedPpe = v['tripPpe'] as Map? ?? {};
+    tripPpe.updateAll((key, _) => savedPpe[key] == true);
+    tripPhotoPaths.addAll((v['photos'] as List? ?? []).whereType<String>().where((p) => File(p).existsSync()).take(3));
+    final path = v['audio'];
+    if (path is String && File(path).existsSync()) audioPath = path;
+  }
   int tab = 0, remaining = 0;
   int get trips => _todayTripCount(false);
   int get alternativeTrips => _todayTripCount(true);
@@ -419,7 +452,8 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: AppText('يجب ربط المشرف بمجموعة قبل تسجيل النقلة.')));
       return;
     }
-    if (double.tryParse(quantity.text.trim()) == null || double.parse(quantity.text.trim()) <= 0) {
+    final quantityValue = InputNumbers.decimal(quantity.text);
+    if (quantityValue == null || quantityValue <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: AppText('أدخل كمية صحيحة أكبر من صفر.')));
       return;
     }
@@ -469,7 +503,7 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
         ...destination.tripFields,
         'requestedDumpsiteId': selected.id,
         if (route['routeDecisionId'] != null) 'routeDecisionId': route['routeDecisionId'],
-        'estimatedQuantity': quantity.text.trim(),
+        'estimatedQuantity': quantityValue,
         'quantityUnit': 'ton',
         'issue': issue.text.trim(),
         'solution': solution.text.trim(),
@@ -503,7 +537,13 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
         setState(() {
           tripPhotoPaths.clear();
           tripPpe.updateAll((key, value) => false);
+          quantity.clear();
+          issue.clear();
+          solution.clear();
+          street.clear();
         });
+        await clearFormDraft();
+        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: AppText('حُفظت النقلة محليًا وتنتظر تأكيد مزامنتها مع الخادم.')));
       }
     } catch (e) {
@@ -745,14 +785,14 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
               'emergency' => _emergency(config),
               _ => const Center(child: AppText('المهمة المطلوبة غير متاحة.')),
             };
-      return Scaffold(
+      return protectDraft(Scaffold(
         appBar: AppBar(bottom: const AppNavigationBar(), title: AppText(const {
           'attendance': 'تسجيل الحضور والغياب', 'leave': 'تسجيل الإجازة أو الإذن',
           'trips': 'تسجيل نقلة', 'streets': 'توثيق الشوارع',
           'emergency': 'بلاغ طارئ',
         }[action] ?? 'المهام الميدانية')),
         body: taskBody,
-      );
+      ));
     }
     return Directionality(
       textDirection: context.watch<LocaleController>().isArabic ? TextDirection.rtl : TextDirection.ltr,
@@ -974,6 +1014,7 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
         };
         await d.enqueue('attendance', previous == null ? 'create' : 'update', payload);
       }
+      await clearFormDraft();
       await d.addActivity('الحضور وPPE', 'تم حفظ كشف الحضور وفحص معدات الوقاية للمجموعة.', level: 'success');
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: AppText('تم حفظ الكشف محليًا وإضافته لقائمة المزامنة؛ تأكيد الخادم لاحقًا.')));
     } catch (e) {

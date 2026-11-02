@@ -1,3 +1,4 @@
+import '../widgets/recoverable_form.dart';
 import '../widgets/app_navigation_bar.dart';
 import '../feature_navigation.dart';
 import '../widgets/container_status_picker.dart';
@@ -243,12 +244,18 @@ class _SupervisorContainerActions extends StatefulWidget {
   const _SupervisorContainerActions({required this.item, this.issueOnly = false});
   @override State<_SupervisorContainerActions> createState() => _SupervisorContainerActionsState();
 }
-class _SupervisorContainerActionsState extends State<_SupervisorContainerActions> {
+class _SupervisorContainerActionsState extends State<_SupervisorContainerActions> with RecoverableForm<_SupervisorContainerActions> {
+  @override String get draftId => 'container-action:${widget.item.id}:${widget.issueOnly}';
+  @override bool get draftBusy => busy;
+  @override Map<String, TextEditingController> get draftFields => {'notes': notes};
+  @override Map<String, dynamic> get draftValues => {'status': status};
+  @override void restoreDraftValues(Map<String, dynamic> v) { status = v['status'] as String?; }
   String? status;
   final notes = TextEditingController();
   bool busy = false;
   @override void dispose(){notes.dispose();super.dispose();}
   Future<void> _save() async {
+    if (busy) return;
     setState(() => busy = true);
     try {
       final service = context.read<ContainerService>();
@@ -259,13 +266,14 @@ class _SupervisorContainerActionsState extends State<_SupervisorContainerActions
         if (status == null) throw StateError('اختر حالة امتلاء الحاوية أولًا.');
         await service.updateDailyStatus(widget.item, status!);
       }
+      await clearFormDraft();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: AppText(widget.issueOnly ? 'حُفظ البلاغ محليًا وبانتظار المزامنة.' : 'حُفظت حالة الحاوية محليًا وبانتظار المزامنة.')));
         Navigator.pop(context);
       }
     } catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: AppText('$e'))); } finally { if (mounted) setState(() => busy = false); }
   }
-  @override Widget build(BuildContext context) => SingleChildScrollView(child: Padding(
+  @override Widget build(BuildContext context) => protectDraft(SingleChildScrollView(child: Padding(
     padding: EdgeInsets.fromLTRB(18, 18, 18, MediaQuery.viewInsetsOf(context).bottom + 18),
     child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       AppText(widget.item.locationName, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
@@ -284,10 +292,10 @@ class _SupervisorContainerActionsState extends State<_SupervisorContainerActions
       ],
       if (!widget.issueOnly && widget.item.issueStatus == 'resolving') ...[
         const SizedBox(height: 8),
-        OutlinedButton.icon(onPressed: busy ? null : () async { try { await context.read<ContainerService>().confirmResolved(widget.item, notes.text); if (context.mounted) Navigator.pop(context); } catch (e) { if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: AppText('$e'))); } }, icon: const Icon(Icons.verified_rounded, color: green), label: const AppText('توكيد حل المشكلة')),
+        OutlinedButton.icon(onPressed: busy ? null : () async { try { await context.read<ContainerService>().confirmResolved(widget.item, notes.text); await clearFormDraft(); if (context.mounted) Navigator.pop(context); } catch (e) { if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: AppText('$e'))); } }, icon: const Icon(Icons.verified_rounded, color: green), label: const AppText('توكيد حل المشكلة')),
       ],
     ]),
-  ));
+  )), compact: true);
 }
 
 class _MunicipalityContainerActions extends StatefulWidget {
@@ -295,19 +303,24 @@ class _MunicipalityContainerActions extends StatefulWidget {
   const _MunicipalityContainerActions({required this.item});
   @override State<_MunicipalityContainerActions> createState() => _MunicipalityContainerActionsState();
 }
-class _MunicipalityContainerActionsState extends State<_MunicipalityContainerActions> {
+class _MunicipalityContainerActionsState extends State<_MunicipalityContainerActions> with RecoverableForm<_MunicipalityContainerActions> {
+  @override String get draftId => 'container-corrective:${widget.item.id}';
+  @override bool get draftBusy => busy;
+  @override Map<String, TextEditingController> get draftFields => {'notes': notes};
   final notes = TextEditingController(); bool busy = false;
   @override void dispose(){notes.dispose();super.dispose();}
   Future<void> _run(String mode) async {
+    if (busy) return;
     setState(() => busy = true);
     try {
       final s = context.read<ContainerService>();
       if (mode == 'resolve') await s.confirmResolved(widget.item, notes.text);
       else await s.startCorrectiveAction(widget.item, notes.text);
+      await clearFormDraft();
       if (mounted) Navigator.pop(context);
     } catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: AppText('$e'))); } finally { if (mounted) setState(() => busy = false); }
   }
-  @override Widget build(BuildContext context) => Padding(
+  @override Widget build(BuildContext context) => protectDraft(Padding(
     padding: EdgeInsets.fromLTRB(18, 18, 18, MediaQuery.viewInsetsOf(context).bottom + 18),
     child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       AppText(widget.item.locationName, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
@@ -317,7 +330,7 @@ class _MunicipalityContainerActionsState extends State<_MunicipalityContainerAct
       FilledButton.icon(onPressed: busy ? null : () => _run('start'), icon: const Icon(Icons.build_circle_outlined), label: const AppText('بدء إجراء تصحيحي')),
       const SizedBox(height: 8), OutlinedButton.icon(onPressed: busy ? null : () => _run('resolve'), icon: const Icon(Icons.verified_rounded, color: green), label: const AppText('توكيد حل المشكلة')),
     ]),
-  );
+  ), compact: true);
 }
 
 class _ContainerEditor extends StatefulWidget {
@@ -325,7 +338,15 @@ class _ContainerEditor extends StatefulWidget {
   const _ContainerEditor({this.item});
   @override State<_ContainerEditor> createState() => _ContainerEditorState();
 }
-class _ContainerEditorState extends State<_ContainerEditor> {
+class _ContainerEditorState extends State<_ContainerEditor> with RecoverableForm<_ContainerEditor> {
+  @override String get draftId => 'container:${widget.item?.id ?? 'new'}';
+  @override bool get draftBusy => busy;
+  @override Map<String, TextEditingController> get draftFields => {'location': location, 'municipality': municipality, 'group': group};
+  @override Map<String, dynamic> get draftValues => {'lat': point?.latitude, 'lng': point?.longitude, 'status': initialStatus};
+  @override void restoreDraftValues(Map<String, dynamic> v) {
+    if (v['lat'] is num && v['lng'] is num) point = LatLng((v['lat'] as num).toDouble(), (v['lng'] as num).toDouble());
+    initialStatus = v['status'] as String?;
+  }
   late final TextEditingController location = TextEditingController(text: widget.item?.locationName ?? '');
   late final TextEditingController municipality = TextEditingController(text: widget.item?.municipalityId ?? (context.read<AuthService>().currentUser?.role == 'group_supervisor' ? context.read<AuthService>().currentUser?.municipalityCoordinatorId ?? '' : ''));
   late final TextEditingController group = TextEditingController(text: widget.item?.groupId ?? (context.read<AuthService>().currentUser?.role == 'group_supervisor' ? context.read<AuthService>().currentUser?.groupId ?? '' : ''));
@@ -333,21 +354,22 @@ class _ContainerEditorState extends State<_ContainerEditor> {
   String? initialStatus;
   @override void initState(){super.initState(); point=widget.item == null ? null : LatLng(widget.item!.latitude, widget.item!.longitude); if(widget.item==null) _loadCurrent();}
   @override void dispose(){location.dispose();municipality.dispose();group.dispose();super.dispose();}
-  Future<void> _loadCurrent() async { try { if(!await Geolocator.isLocationServiceEnabled()) return; var p=await Geolocator.checkPermission(); if(p==LocationPermission.denied)p=await Geolocator.requestPermission(); if(p==LocationPermission.denied||p==LocationPermission.deniedForever)return; Position? x; try{x=await Geolocator.getCurrentPosition(locationSettings:const LocationSettings(accuracy:LocationAccuracy.high,timeLimit:Duration(seconds:8)));}catch(_){x=await Geolocator.getLastKnownPosition();} if(x!=null&&mounted)setState(() { point=LatLng(x!.latitude,x.longitude); accuracy=x.accuracy; }); } catch(_){} }
+  Future<void> _loadCurrent({bool force = false}) async { try { if(!await Geolocator.isLocationServiceEnabled()) return; var p=await Geolocator.checkPermission(); if(p==LocationPermission.denied)p=await Geolocator.requestPermission(); if(p==LocationPermission.denied||p==LocationPermission.deniedForever)return; Position? x; try{x=await Geolocator.getCurrentPosition(locationSettings:const LocationSettings(accuracy:LocationAccuracy.high,timeLimit:Duration(seconds:8)));}catch(_){x=await Geolocator.getLastKnownPosition();} if(x!=null&&mounted&&(force||point==null))setState(() { point=LatLng(x!.latitude,x.longitude); accuracy=x.accuracy; }); } catch(_){} }
   Future<void> _save() async {
+    if (busy) return;
     if (widget.item == null && initialStatus == null) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: AppText('اختر حالة امتلاء الحاوية أولًا.'))); return; }
     final p=point; if(location.text.trim().isEmpty||p==null){ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:AppText('أدخل اسم الموقع واختر موقع GPS من الخريطة.')));return;}
-    setState(()=>busy=true); try { final s=context.read<ContainerService>(); if(widget.item==null) await s.createContainer(locationName:location.text,latitude:p.latitude,longitude:p.longitude,municipalityId:municipality.text,groupId:group.text,status:initialStatus!); else await s.updateContainer(widget.item!,locationName:location.text,latitude:p.latitude,longitude:p.longitude,groupId:group.text); if(mounted) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: AppText('حُفظت الحاوية محليًا وبانتظار المزامنة.'))); Navigator.pop(context); } } catch(e){if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:AppText('$e')));}finally{if(mounted)setState(()=>busy=false);}
+    setState(()=>busy=true); try { final s=context.read<ContainerService>(); if(widget.item==null) await s.createContainer(locationName:location.text,latitude:p.latitude,longitude:p.longitude,municipalityId:municipality.text,groupId:group.text,status:initialStatus!); else await s.updateContainer(widget.item!,locationName:location.text,latitude:p.latitude,longitude:p.longitude,groupId:group.text); await clearFormDraft(); if(mounted) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: AppText('حُفظت الحاوية محليًا وبانتظار المزامنة.'))); Navigator.pop(context); } } catch(e){if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:AppText('$e')));}finally{if(mounted)setState(()=>busy=false);}
   }
-  @override Widget build(BuildContext context)=>Padding(padding:EdgeInsets.fromLTRB(18,18,18,MediaQuery.viewInsetsOf(context).bottom+18),child:SingleChildScrollView(padding: const EdgeInsets.only(bottom: 120), child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
+  @override Widget build(BuildContext context)=>protectDraft(Padding(padding:EdgeInsets.fromLTRB(18,18,18,MediaQuery.viewInsetsOf(context).bottom+18),child:SingleChildScrollView(padding: const EdgeInsets.only(bottom: 120), child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
     AppText(widget.item==null?'إضافة حاوية جديدة':'تعديل الحاوية',style:const TextStyle(fontSize:20,fontWeight:FontWeight.w900)),const SizedBox(height:12),
     if (widget.item == null) ...[ContainerStatusPicker(value: initialStatus, enabled: !busy, onChanged: (v) => setState(() => initialStatus = v)), const SizedBox(height: 12)],
     TextField(controller:location,decoration:InputDecoration(labelText:tr('اسم الموقع'))),const SizedBox(height:9),
     LocationField(value:point,onChanged:(v)=>setState(()=>point=v)),
     if(accuracy!=null)Padding(padding:const EdgeInsets.only(top:4),child:Text('دقة GPS: ${accuracy!.round()} م${accuracy!>50?' — يفضّل تحسين الدقة':''}',style:TextStyle(fontSize:11,color:accuracy!>50?Colors.orange:Colors.green))),
-    const SizedBox(height:5),OutlinedButton.icon(onPressed:_loadCurrent,icon:const Icon(Icons.my_location),label:const AppText('تحديث موقعي الآن')),
+    const SizedBox(height:5),OutlinedButton.icon(onPressed:()=>_loadCurrent(force: true),icon:const Icon(Icons.my_location),label:const AppText('تحديث موقعي الآن')),
     const SizedBox(height:9),TextField(controller:municipality,readOnly:context.read<AuthService>().currentUser?.role == 'group_supervisor',decoration:InputDecoration(labelText:tr('معرّف البلدية / منسق البلدية'))),const SizedBox(height:9),TextField(controller:group,readOnly:context.read<AuthService>().currentUser?.role == 'group_supervisor',decoration:InputDecoration(labelText:tr('معرّف المجموعة (اختياري)'))),const SizedBox(height:14),FilledButton.icon(onPressed:busy || (widget.item == null && initialStatus == null)?null:_save,icon:const Icon(Icons.save_rounded),label:AppText(busy?'جارٍ الحفظ...':'حفظ الحاوية'))
-  ])));
+  ]))), compact: true);
 }
 
 class _ContainerDetails extends StatelessWidget {

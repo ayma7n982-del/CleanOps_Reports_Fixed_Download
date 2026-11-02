@@ -1,3 +1,4 @@
+import '../../core/services/input_numbers.dart';
 import '../widgets/app_navigation_bar.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -28,7 +29,7 @@ class _ApiSettingsPageState extends State<ApiSettingsPage> {
         const SizedBox(height:8),TextField(controller:version,textDirection:TextDirection.ltr,decoration:InputDecoration(labelText:'API Version')),
         const SizedBox(height:8),TextField(controller:timeout,textDirection:TextDirection.ltr,keyboardType:TextInputType.number,decoration:InputDecoration(labelText:'Timeout (seconds)')),
         const SizedBox(height:8),TextField(controller:key,textDirection:TextDirection.ltr,obscureText:true,decoration:InputDecoration(labelText:'API Key',hintText:c.maskedApiKey.isEmpty?'أدخل المفتاح':'اتركه فارغًا للإبقاء على المفتاح الحالي')),
-        const SizedBox(height:14),SizedBox(width:double.infinity,child:FilledButton.icon(onPressed:()async{await c.updateApiSettings(enabled:c.apiEnabled,baseUrl:base.text,version:version.text,timeoutSeconds:int.tryParse(timeout.text)??30,apiKey:key.text);if(mounted)ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:AppText('تم حفظ إعدادات API بأمان.')));},icon:const Icon(Icons.save_rounded),label:const AppText('حفظ الإعدادات')))
+        const SizedBox(height:14),SizedBox(width:double.infinity,child:FilledButton.icon(onPressed:()async{final seconds=InputNumbers.whole(timeout.text);if(seconds==null||seconds<1||seconds>300){ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:AppText('مهلة الاتصال يجب أن تكون عددًا صحيحًا بين 1 و300 ثانية.')));return;}await c.updateApiSettings(enabled:c.apiEnabled,baseUrl:base.text,version:version.text,timeoutSeconds:seconds,apiKey:key.text);if(mounted)ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:AppText('تم حفظ إعدادات API بأمان.')));},icon:const Icon(Icons.save_rounded),label:const AppText('حفظ الإعدادات')))
       ])),
       const SizedBox(height:12),
       AiSectionCard(title:'CleanOps AI — OpenAI',subtitle:'الخدمة اختيارية. لا تعمل إلا بعد تفعيلها وإضافة مفتاح API من الإعدادات.',feature:'ai',child:Column(children:[

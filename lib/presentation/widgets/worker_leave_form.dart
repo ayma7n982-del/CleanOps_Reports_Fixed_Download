@@ -1,3 +1,4 @@
+import 'recoverable_form.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/localization.dart';
@@ -41,7 +42,25 @@ class WorkerLeaveForm extends StatefulWidget {
   State<WorkerLeaveForm> createState() => _WorkerLeaveFormState();
 }
 
-class _WorkerLeaveFormState extends State<WorkerLeaveForm> {
+class _WorkerLeaveFormState extends State<WorkerLeaveForm> with RecoverableForm<WorkerLeaveForm> {
+  @override String get draftId => 'worker-leave:${widget.shift}';
+  @override bool get draftBusy => saving || loading;
+  @override Map<String, TextEditingController> get draftFields => {'reason': reason};
+  @override Map<String, dynamic> get draftValues => {
+    'worker': workerId, 'day': day.toIso8601String(), 'status': status, 'dirty': dirty,
+    'from': from == null ? null : from!.hour * 60 + from!.minute,
+    'to': to == null ? null : to!.hour * 60 + to!.minute,
+  };
+  @override void restoreDraftValues(Map<String, dynamic> v) {
+    final id = v['worker'];
+    workerId = widget.workers.any((w) => w['id'] == id) ? id as String? : null;
+    day = DateTime.tryParse('${v['day']}') ?? day;
+    status = v['status'] == 'permission' ? 'permission' : 'leave';
+    TimeOfDay? time(dynamic minute) => minute is int && minute >= 0 && minute < 1440
+        ? TimeOfDay(hour: minute ~/ 60, minute: minute % 60) : null;
+    from = time(v['from']); to = time(v['to']);
+    dirty = v['dirty'] == true;
+  }
   final reason = TextEditingController();
   String? workerId;
   String status = 'leave', query = '';
@@ -122,11 +141,10 @@ class _WorkerLeaveFormState extends State<WorkerLeaveForm> {
           toMinute: end,
         ),
       );
-      if (mounted && saved)
-        setState(() {
-          dirty = false;
-          existingStatus = status;
-        });
+      if (mounted && saved) {
+        setState(() { dirty = false; existingStatus = status; });
+        await clearFormDraft();
+      }
     } catch (e) {
       if (mounted) setState(() => error = 'تعذر الحفظ: $e');
     } finally {
@@ -146,37 +164,7 @@ class _WorkerLeaveFormState extends State<WorkerLeaveForm> {
                   ),
         )
         .toList();
-    return PopScope(
-      canPop: !dirty && !saving,
-      onPopInvokedWithResult: (popped, result) async {
-        if (popped || saving) return;
-        final discard = await showDialog<bool>(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            title: const AppText('مغادرة دون حفظ؟'),
-            content: const AppText(
-              'لم تُحفظ بيانات الإجازة. يمكنك العودة لإكمالها.',
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx, false),
-                child: const AppText('متابعة الإدخال'),
-              ),
-              TextButton(
-                onPressed: () => Navigator.pop(ctx, true),
-                child: const AppText('تجاهل ومغادرة'),
-              ),
-            ],
-          ),
-        );
-        if (discard == true && mounted) {
-          setState(() => dirty = false);
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted) Navigator.pop(context);
-          });
-        }
-      },
-      child: ListView(
+    return protectDraft(ListView(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 110),
         children: [
           AiSectionCard(
@@ -380,7 +368,6 @@ class _WorkerLeaveFormState extends State<WorkerLeaveForm> {
             ),
           ),
         ],
-      ),
-    );
+      ));
   }
 }

@@ -97,8 +97,8 @@ class OperationsAdminService {
     final ar = nameAr.trim();
     final en = nameEn.trim();
     if (ar.isEmpty || en.isEmpty) throw ArgumentError('Dumpsite names are required.');
-    if (capacity < 0) throw ArgumentError('Capacity cannot be negative.');
-    if (fillPercentage < 0 || fillPercentage > 100) throw ArgumentError('Fill percentage must be between 0 and 100.');
+    if (!capacity.isFinite || capacity < 0) throw ArgumentError('السعة يجب أن تكون رقمًا صالحًا غير سالب.');
+    if (!fillPercentage.isFinite || fillPercentage < 0 || fillPercentage > 100) throw ArgumentError('نسبة الامتلاء يجب أن تكون رقمًا بين 0 و100.');
     final ref = _dumpsites.doc();
     await ref.set({
       'id': ref.id,
@@ -137,8 +137,8 @@ class OperationsAdminService {
     final ar = nameAr.trim();
     final en = nameEn.trim();
     if (ar.isEmpty || en.isEmpty) throw ArgumentError('Dumpsite names are required.');
-    if (capacity < 0) throw ArgumentError('Capacity cannot be negative.');
-    if (fillPercentage < 0 || fillPercentage > 100) throw ArgumentError('Fill percentage must be between 0 and 100.');
+    if (!capacity.isFinite || capacity < 0) throw ArgumentError('السعة يجب أن تكون رقمًا صالحًا غير سالب.');
+    if (!fillPercentage.isFinite || fillPercentage < 0 || fillPercentage > 100) throw ArgumentError('نسبة الامتلاء يجب أن تكون رقمًا بين 0 و100.');
     await _dumpsites.doc(dumpsiteId).update({
       'name': ar,
       'nameAr': ar,

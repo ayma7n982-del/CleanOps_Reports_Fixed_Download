@@ -1,3 +1,4 @@
+import '../widgets/recoverable_form.dart';
 import '../widgets/app_navigation_bar.dart';
 import 'package:flutter/material.dart';
 import 'dart:ui' as ui;
@@ -673,7 +674,19 @@ class _MessagesCenterScreenState extends State<MessagesCenterScreen> {
       showDragHandle: true,
       backgroundColor: cleanOpsSurface,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
-      builder: (sheetContext) => StatefulBuilder(builder: (context, setSheetState) {
+      builder: (sheetContext) => RecoverableDraftPanel(
+        id: 'message-compose', busy: () => sending, fields: {'content': composer},
+        values: () => {'type': type, 'group': selectedGroup, 'broadcast': supervisorBroadcast,
+          'mode': recipientMode, 'recipient': selectedRecipient, 'scheduled': scheduledAt?.toIso8601String()},
+        restore: (v) {
+          if (['info', 'warning', 'emergency'].contains(v['type'])) type = v['type'] as String;
+          selectedGroup = groups.contains(v['group']) ? v['group'] as String : null;
+          supervisorBroadcast = v['broadcast'] == true;
+          recipientMode = v['mode'] == 'direct' ? 'direct' : 'broadcast';
+          selectedRecipient = directRecipients.any((r) => r.$1 == v['recipient']) ? v['recipient'] as String : null;
+          scheduledAt = DateTime.tryParse('${v['scheduled']}');
+        },
+        builder: (context, setSheetState, clearDraft) {
         final isL1 = user.role == 'group_supervisor';
         final isManagement = user.role == 'municipality_coordinator' || user.role == 'jsc_coordinator' || user.role == 'donor_manager';
         final canChooseGroup = user.role == 'municipality_coordinator' && recipientMode == 'broadcast';
@@ -872,6 +885,7 @@ class _MessagesCenterScreenState extends State<MessagesCenterScreen> {
                     } else {
                       await messaging.sendBroadcast(content: composer.text, type: type);
                     }
+                    await clearDraft();
                     if (context.mounted) Navigator.pop(context);
                     if (mounted) ScaffoldMessenger.of(this.context).showSnackBar(SnackBar(
                       content: AppText(scheduledAt == null ? 'أُضيفت الرسالة لقائمة الانتظار، وتنتظر تأكيد الخادم.' : 'تم تسجيل موعد الإرسال لدى خادم Firebase.')));

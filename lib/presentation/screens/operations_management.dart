@@ -1,3 +1,5 @@
+import '../widgets/recoverable_form.dart';
+import '../../core/services/input_numbers.dart';
 import '../widgets/app_navigation_bar.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
@@ -70,7 +72,15 @@ class _CyclesTab extends StatefulWidget {
   State<_CyclesTab> createState() => _CyclesTabState();
 }
 
-class _CyclesTabState extends State<_CyclesTab> {
+class _CyclesTabState extends State<_CyclesTab> with RecoverableForm<_CyclesTab> {
+  @override String get draftId => 'create-cycle';
+  @override bool get draftBusy => busy;
+  @override Map<String, TextEditingController> get draftFields => {'name': name};
+  @override Map<String, dynamic> get draftValues => {'start': start.toIso8601String(), 'end': end.toIso8601String()};
+  @override void restoreDraftValues(Map<String, dynamic> v) {
+    start = DateTime.tryParse('${v['start']}') ?? start;
+    end = DateTime.tryParse('${v['end']}') ?? end;
+  }
   final name = TextEditingController();
   DateTime start = DateTime.now();
   DateTime end = DateTime.now().add(const Duration(days: 1));
@@ -94,6 +104,7 @@ class _CyclesTabState extends State<_CyclesTab> {
         createdBy: u.id,
       );
       name.clear();
+      await clearFormDraft();
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: AppText('تم إنشاء دورة جديدة.')));
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
@@ -124,7 +135,7 @@ class _CyclesTabState extends State<_CyclesTab> {
   Widget build(BuildContext context) {
     final svc = context.read<OperationsAdminService>();
     final days = end.difference(start).inDays;
-    return ListView(
+    return protectDraft(ListView(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
       children: [
         if (widget.focusRecordId == null) ...[
@@ -246,7 +257,7 @@ class _CyclesTabState extends State<_CyclesTab> {
           },
         ),
       ],
-    );
+    ));
   }
 
   Future<void> _confirmDeleteCycle(BuildContext context, String id) async {
@@ -288,7 +299,17 @@ class _DumpsitesTab extends StatefulWidget {
   State<_DumpsitesTab> createState() => _DumpsitesTabState();
 }
 
-class _DumpsitesTabState extends State<_DumpsitesTab> {
+class _DumpsitesTabState extends State<_DumpsitesTab> with RecoverableForm<_DumpsitesTab> {
+  @override String get draftId => 'create-dumpsite';
+  @override bool get draftBusy => busy;
+  @override Map<String, TextEditingController> get draftFields => {
+    'nameAr': nameAr, 'nameEn': nameEn, 'capacity': capacity,
+    'fill': fillPercentage, 'code': code, 'location': location,
+  };
+  @override Map<String, dynamic> get draftValues => {'lat': selectedLocation?.latitude, 'lng': selectedLocation?.longitude};
+  @override void restoreDraftValues(Map<String, dynamic> v) {
+    if (v['lat'] is num && v['lng'] is num) selectedLocation = LatLng((v['lat'] as num).toDouble(), (v['lng'] as num).toDouble());
+  }
   final _formKey = GlobalKey<FormState>();
   final nameAr = TextEditingController();
   final nameEn = TextEditingController();
@@ -310,12 +331,13 @@ class _DumpsitesTabState extends State<_DumpsitesTab> {
     super.dispose();
   }
 
-  double? _number(String value) => double.tryParse(value.trim().replaceAll(',', '.'));
+  double? _number(String value) => InputNumbers.decimal(value);
 
   @override void initState() { super.initState(); _loadPhoneLocation(); }
-  Future<void> _loadPhoneLocation() async { try { if(!await Geolocator.isLocationServiceEnabled()) return; var p=await Geolocator.checkPermission(); if(p==LocationPermission.denied)p=await Geolocator.requestPermission(); if(p==LocationPermission.denied||p==LocationPermission.deniedForever)return; final x=await Geolocator.getCurrentPosition(locationSettings:const LocationSettings(accuracy:LocationAccuracy.high,timeLimit:Duration(seconds:8))); if(mounted)setState(()=>selectedLocation=LatLng(x.latitude,x.longitude)); } catch(_) {} }
+  Future<void> _loadPhoneLocation() async { try { if(!await Geolocator.isLocationServiceEnabled()) return; var p=await Geolocator.checkPermission(); if(p==LocationPermission.denied)p=await Geolocator.requestPermission(); if(p==LocationPermission.denied||p==LocationPermission.deniedForever)return; final x=await Geolocator.getCurrentPosition(locationSettings:const LocationSettings(accuracy:LocationAccuracy.high,timeLimit:Duration(seconds:8))); if(mounted && selectedLocation == null)setState(()=>selectedLocation=LatLng(x.latitude,x.longitude)); } catch(_) {} }
 
   Future<void> _saveNew() async {
+    if (busy || !(_formKey.currentState?.validate() ?? false)) return;
     final u = context.read<AuthService>().currentUser!;
     final cap = _number(capacity.text);
     final fill = _number(fillPercentage.text);
@@ -343,6 +365,7 @@ class _DumpsitesTabState extends State<_DumpsitesTab> {
       code.clear();
       location.clear();
       selectedLocation = null;
+      await clearFormDraft();
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: AppText('تمت إضافة المكب بنجاح.')));
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
@@ -359,17 +382,31 @@ class _DumpsitesTabState extends State<_DumpsitesTab> {
     final fill = TextEditingController(text: '${data['fillPercentage'] ?? 0}');
     final c = TextEditingController(text: '${data['code'] ?? ''}');
     final loc = TextEditingController(text: '${data['location'] ?? ''}');
+    final editForm = GlobalKey<FormState>();
+    bool editBusy = false;
     final geo = data['locationGeo'];
-    final LatLng? initialPoint = geo is GeoPoint ? LatLng(geo.latitude, geo.longitude) : geo is Map && geo['latitude'] != null && geo['longitude'] != null ? LatLng(double.tryParse('${geo['latitude']}') ?? 0, double.tryParse('${geo['longitude']}') ?? 0) : null;
+    LatLng? initialPoint;
+    if (geo is GeoPoint) initialPoint = LatLng(geo.latitude, geo.longitude);
+    if (geo is Map) {
+      final lat = double.tryParse('${geo['latitude']}');
+      final lng = double.tryParse('${geo['longitude']}');
+      if (lat != null && lng != null && lat.isFinite && lng.isFinite && lat.abs() <= 90 && lng.abs() <= 180) initialPoint = LatLng(lat, lng);
+    }
     LatLng? editPoint = initialPoint;
     bool active = data['isActive'] == true;
     try {
       final saved = await showDialog<bool>(
         context: context,
-        builder: (dialogContext) => StatefulBuilder(
-          builder: (context, setDialogState) => AlertDialog(
+        builder: (dialogContext) => RecoverableDraftPanel(
+          id: 'edit-dumpsite:$id', busy: () => editBusy, fields: {'ar': ar, 'en': en, 'capacity': cap, 'fill': fill, 'code': c, 'location': loc},
+          values: () => {'lat': editPoint?.latitude, 'lng': editPoint?.longitude, 'active': active},
+          restore: (v) {
+            if (v['lat'] is num && v['lng'] is num) editPoint = LatLng((v['lat'] as num).toDouble(), (v['lng'] as num).toDouble());
+            active = v['active'] as bool? ?? active;
+          },
+          builder: (context, setDialogState, clearDraft) => AlertDialog(
             title: const AppText('تعديل بيانات المكب'),
-            content: SingleChildScrollView(
+            content: Form(key: editForm, autovalidateMode: AutovalidateMode.onUserInteraction, child: SingleChildScrollView(
               padding: const EdgeInsets.only(bottom: 120),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -379,16 +416,16 @@ class _DumpsitesTabState extends State<_DumpsitesTab> {
                   TextField(controller: en, decoration: InputDecoration(labelText: tr('اسم المكب بالإنجليزية'))),
                   const SizedBox(height: 8),
                   Row(children: [
-                    Expanded(child: TextField(controller: cap, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: InputDecoration(labelText: tr('السعة')))),
+                    Expanded(child: TextFormField(controller: cap, validator: (v) => InputNumbers.decimalError(v), keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: InputDecoration(labelText: tr('السعة')))),
                     const SizedBox(width: 8),
-                    Expanded(child: TextField(controller: fill, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: InputDecoration(labelText: tr('الامتلاء %')))),
+                    Expanded(child: TextFormField(controller: fill, validator: (v) => InputNumbers.decimalError(v, max: 100), keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: InputDecoration(labelText: tr('الامتلاء %')))),
                   ]),
                   const SizedBox(height: 8),
                   TextField(controller: c, decoration: InputDecoration(labelText: tr('الرمز'))),
                   const SizedBox(height: 8),
                   TextField(controller: loc, decoration: InputDecoration(labelText: tr('الموقع'))),
                   const SizedBox(height: 8),
-                  StatefulBuilder(builder: (ctx, setLoc) => LocationField(value: editPoint, onChanged: (v) { editPoint=v; setLoc((){}); })),
+                  LocationField(value: editPoint, onChanged: (v) => setDialogState(() => editPoint = v)),
                   const SizedBox(height: 8),
                   SwitchListTile.adaptive(
                     contentPadding: EdgeInsets.zero,
@@ -399,17 +436,20 @@ class _DumpsitesTabState extends State<_DumpsitesTab> {
                   ),
                 ],
               ),
-            ),
+            )),
             actions: [
-              TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const AppText('إلغاء')),
+              TextButton(onPressed: editBusy ? null : () => Navigator.pop(dialogContext, false), child: const AppText('إلغاء')),
               FilledButton(
-                onPressed: () async {
+                onPressed: editBusy ? null : () async {
+                  if (!(editForm.currentState?.validate() ?? false)) return;
                   final capacityValue = _number(cap.text);
                   final fillValue = _number(fill.text);
                   if (ar.text.trim().isEmpty || en.text.trim().isEmpty || capacityValue == null || fillValue == null || capacityValue < 0 || fillValue < 0 || fillValue > 100) {
                     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: AppText('بيانات المكب غير صحيحة.')));
                     return;
                   }
+                  setDialogState(() => editBusy = true);
+                  try {
                   await context.read<OperationsAdminService>().updateDumpsite(
                     dumpsiteId: id,
                     nameAr: ar.text,
@@ -423,7 +463,11 @@ class _DumpsitesTabState extends State<_DumpsitesTab> {
                     isActive: active,
                     actorId: u.id,
                   );
+                  await clearDraft();
                   if (dialogContext.mounted) Navigator.pop(dialogContext, true);
+                  } catch (e) {
+                    if (dialogContext.mounted) ScaffoldMessenger.of(dialogContext).showSnackBar(SnackBar(content: Text('تعذر حفظ المكب: $e')));
+                  } finally { if (context.mounted) setDialogState(() => editBusy = false); }
                 },
                 child: const AppText('حفظ'),
               ),
@@ -444,7 +488,7 @@ class _DumpsitesTabState extends State<_DumpsitesTab> {
     final svc = context.read<OperationsAdminService>();
     final u = context.read<AuthService>().currentUser!;
     final can = u.role == 'municipality_coordinator' || u.role == 'jsc_coordinator';
-    return Stack(
+    return protectDraft(Stack(
       children: [
         ListView(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
@@ -463,7 +507,7 @@ class _DumpsitesTabState extends State<_DumpsitesTab> {
             subtitle: 'يُحفظ على الجهاز ويتزامن عند توفر الاتصال',
             feature: 'dumpsite',
             child: Form(
-              key: _formKey,
+              key: _formKey, autovalidateMode: AutovalidateMode.onUserInteraction,
               child: Column(
               children: [
                 Row(children: [
@@ -473,9 +517,9 @@ class _DumpsitesTabState extends State<_DumpsitesTab> {
                 ]),
                 const SizedBox(height: 8),
                 Row(children: [
-                  Expanded(child: TextField(controller: capacity, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: InputDecoration(labelText: tr('السعة')))),
+                  Expanded(child: TextFormField(controller: capacity, validator: (v) => InputNumbers.decimalError(v), keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: InputDecoration(labelText: tr('السعة')))),
                   const SizedBox(width: 8),
-                  Expanded(child: TextField(controller: fillPercentage, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: InputDecoration(labelText: tr('نسبة الامتلاء %')))),
+                  Expanded(child: TextFormField(controller: fillPercentage, validator: (v) => InputNumbers.decimalError(v, max: 100), keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: InputDecoration(labelText: tr('نسبة الامتلاء %')))),
                 ]),
                 const SizedBox(height: 8),
                 Row(children: [
@@ -573,7 +617,7 @@ class _DumpsitesTabState extends State<_DumpsitesTab> {
             ),
           ),
       ],
-    );
+    ));
   }
 }
 
@@ -584,7 +628,16 @@ class _WorkforceTab extends StatefulWidget {
   State<_WorkforceTab> createState() => _WorkforceTabState();
 }
 
-class _WorkforceTabState extends State<_WorkforceTab> {
+class _WorkforceTabState extends State<_WorkforceTab> with RecoverableForm<_WorkforceTab> {
+  @override String get draftId => 'create-worker';
+  @override bool get draftBusy => busy;
+  @override Map<String, TextEditingController> get draftFields => {'name': name, 'username': username, 'phone': phone};
+  @override Map<String, dynamic> get draftValues => {'group': selectedGroupId, 'role': role, 'cycle': cycleId};
+  @override void restoreDraftValues(Map<String, dynamic> v) {
+    selectedGroupId = v['group'] as String? ?? '';
+    role = ['worker', 'group_supervisor'].contains(v['role']) ? v['role'] as String : 'worker';
+    cycleId = v['cycle'] as String? ?? '';
+  }
   final name = TextEditingController();
   final username = TextEditingController();
   final phone = TextEditingController();
@@ -603,6 +656,7 @@ class _WorkforceTabState extends State<_WorkforceTab> {
   }
 
   Future<void> provision() async {
+    if (busy) return;
     if (cycleId.isEmpty || selectedGroupId.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: AppText('اختر دورة عمل ومجموعة تابعة لبلديتك أولًا.')));
       return;
@@ -621,6 +675,8 @@ class _WorkforceTabState extends State<_WorkforceTab> {
         name.clear();
         username.clear();
         phone.clear();
+        await clearFormDraft();
+        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: AppText('تم إنشاء ${role == 'worker' ? 'العامل' : 'مشرف ميداني'} • ${result['username'] ?? ''}')));
       }
     } catch (e) {
@@ -634,7 +690,7 @@ class _WorkforceTabState extends State<_WorkforceTab> {
   Widget build(BuildContext context) {
     final svc = context.read<OperationsAdminService>();
     final u = context.read<AuthService>().currentUser!;
-    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+    return protectDraft(StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
       stream: svc.activeCycles(),
       builder: (_, cs) {
         final cycles = (cs.data?.docs ?? []).where((cycle) => cycle.data()['status'] == 'active').toList();
@@ -857,17 +913,21 @@ class _WorkforceTabState extends State<_WorkforceTab> {
           ],
         );
       },
-    );
+    ));
   }
 
   Future<void> _editWorkerDialog(BuildContext context, OperationsAdminService svc,
       String actor, String workerId, Map<String, dynamic> details) async {
     final name = TextEditingController(text: '${details['name'] ?? ''}');
     final phone = TextEditingController(text: '${details['phone'] ?? ''}');
+    bool editBusy = false;
     try {
       await showDialog<void>(
         context: context,
-        builder: (dialogContext) => AlertDialog(
+        builder: (dialogContext) => RecoverableDraftPanel(
+          id: 'edit-worker:$workerId', busy: () => editBusy, fields: {'name': name, 'phone': phone},
+          values: () => {}, restore: (_) {},
+          builder: (context, change, clearDraft) => AlertDialog(
           title: const AppText('تعديل بيانات العامل'),
           content: SingleChildScrollView(
             child: Column(mainAxisSize: MainAxisSize.min, children: [
@@ -878,24 +938,26 @@ class _WorkforceTabState extends State<_WorkforceTab> {
             ]),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(dialogContext), child: const AppText('إلغاء')),
+            TextButton(onPressed: editBusy ? null : () => Navigator.pop(dialogContext), child: const AppText('إلغاء')),
             FilledButton(
-              onPressed: () async {
+              onPressed: editBusy ? null : () async {
+                change(() => editBusy = true);
                 try {
                   await svc.updateWorkerDetails(userId: workerId, name: name.text,
                       phone: phone.text, actorId: actor);
+                  await clearDraft();
                   if (dialogContext.mounted) Navigator.pop(dialogContext);
                   if (mounted) ScaffoldMessenger.of(this.context).showSnackBar(
                     const SnackBar(content: AppText('تم تأكيد حفظ تعديل العامل.')));
                 } catch (e) {
                   if (dialogContext.mounted) ScaffoldMessenger.of(dialogContext).showSnackBar(
                     SnackBar(content: Text('$e')));
-                }
+                } finally { if (context.mounted) change(() => editBusy = false); }
               },
               child: const AppText('حفظ التعديل'),
             ),
           ],
-        ),
+        )),
       );
     } finally {
       name.dispose();

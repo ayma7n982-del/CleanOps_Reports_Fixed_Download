@@ -1,3 +1,4 @@
+import '../widgets/recoverable_form.dart';
 import '../widgets/app_navigation_bar.dart';
 
 import 'package:flutter/material.dart';
@@ -22,7 +23,23 @@ class WorkEntryFormScreen extends StatefulWidget {
   State<WorkEntryFormScreen> createState() => _WorkEntryFormScreenState();
 }
 
-class _WorkEntryFormScreenState extends State<WorkEntryFormScreen> {
+class _WorkEntryFormScreenState extends State<WorkEntryFormScreen> with RecoverableForm<WorkEntryFormScreen> {
+  @override String get draftId => 'daily-work';
+  @override bool get draftBusy => _saving;
+  @override Map<String, TextEditingController> get draftFields => {
+    'group': _group, 'tasks': _tasks, 'landfill': _landfill, 'containers': _containers,
+    'locations': _locations, 'completed': _completed, 'problems': _problems, 'suggestions': _suggestions,
+  };
+  @override Map<String, dynamic> get draftValues => {
+    'date': _workDate.toIso8601String(), 'cycle': _cycleId, 'shift': _shift, 'groupName': _groupName,
+  };
+  @override void restoreDraftValues(Map<String, dynamic> v) {
+    _workDate = DateTime.tryParse('${v['date']}') ?? _workDate;
+    _cycleId = v['cycle'] as String? ?? '';
+    _shift = v['shift'] as String? ?? _shift;
+    _groupName = v['groupName'] as String? ?? _group.text;
+    _sources.bind(_group.text);
+  }
   final _group = TextEditingController();
   final _tasks = TextEditingController();
   final _landfill = TextEditingController();
@@ -245,6 +262,7 @@ class _WorkEntryFormScreenState extends State<WorkEntryFormScreen> {
         'create',
         record,
       );
+      await clearFormDraft();
       await context.read<DataService>().addActivity(
         'تقرير العمل اليومي',
         'حُفظ تقرير مجموعة ${_groupName} للمراجعة.',
@@ -268,7 +286,7 @@ class _WorkEntryFormScreenState extends State<WorkEntryFormScreen> {
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
+  Widget build(BuildContext context) => protectDraft(Scaffold(
     appBar: AppBar(
       bottom: const AppNavigationBar(),
       title: const AppText('تسجيل تقرير العمل اليومي'),
@@ -397,7 +415,7 @@ class _WorkEntryFormScreenState extends State<WorkEntryFormScreen> {
         ),
       ],
     ),
-  );
+  ));
   Widget _groupPicker() {
     final user = context.read<AuthService>().currentUser;
     if (user?.role != 'municipality_coordinator')

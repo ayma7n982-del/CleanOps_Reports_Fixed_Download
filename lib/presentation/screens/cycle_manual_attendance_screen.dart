@@ -1,3 +1,4 @@
+import '../widgets/recoverable_form.dart';
 import '../widgets/app_navigation_bar.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -13,7 +14,22 @@ class CycleManualAttendanceScreen extends StatefulWidget {
   State<CycleManualAttendanceScreen> createState() => _CycleManualAttendanceScreenState();
 }
 
-class _CycleManualAttendanceScreenState extends State<CycleManualAttendanceScreen> {
+class _CycleManualAttendanceScreenState extends State<CycleManualAttendanceScreen> with RecoverableForm<CycleManualAttendanceScreen> {
+  @override String get draftId => 'manual-attendance';
+  @override bool get draftBusy => saving;
+  @override Map<String, TextEditingController> get draftFields => {};
+  @override Map<String, dynamic> get draftValues => {
+    'start': start.toIso8601String(), 'end': end.toIso8601String(), 'edits': edits,
+  };
+  @override void restoreDraftValues(Map<String, dynamic> v) {
+    start = DateTime.tryParse('${v['start']}') ?? start;
+    end = DateTime.tryParse('${v['end']}') ?? end;
+    if (end.isBefore(start)) end = start;
+    final people = widget.people.map((p) => '${p['id'] ?? ''}').toSet();
+    for (final e in Map<String, dynamic>.from(v['edits'] as Map? ?? {}).entries) {
+      if (people.contains(e.key.split('|').first) && statuses.containsKey(e.value)) edits[e.key] = e.value as String;
+    }
+  }
   DateTime start = DateTime(DateTime.now().year, DateTime.now().month, 1);
   DateTime end = DateTime.now();
   bool saving = false;
@@ -24,9 +40,14 @@ class _CycleManualAttendanceScreenState extends State<CycleManualAttendanceScree
 
   String _date(DateTime d) => '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
   DateTime _day(int offset) => DateTime(start.year, start.month, start.day + offset);
-  int get dayCount => end.difference(start).inDays + 1;
+  int get dayCount => DateTime.utc(end.year, end.month, end.day)
+      .difference(DateTime.utc(start.year, start.month, start.day)).inDays + 1;
 
   Future<void> _pick(bool beginning) async {
+    if (edits.isNotEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('احفظ مدخلات الحضور الحالية قبل تغيير فترة الدورة.')));
+      return;
+    }
     final d = await showDatePicker(context: context, initialDate: beginning ? start : end,
       firstDate: DateTime(2020), lastDate: DateTime(2100));
     if (d == null || !mounted) return;
@@ -37,7 +58,7 @@ class _CycleManualAttendanceScreenState extends State<CycleManualAttendanceScree
       } else {
         end = d.isBefore(start) ? start : d;
       }
-      edits.clear();
+
     });
   }
 
@@ -76,6 +97,8 @@ class _CycleManualAttendanceScreenState extends State<CycleManualAttendanceScree
       }
       if (!mounted) return;
       setState(() => edits.clear());
+      await clearFormDraft();
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تمت إضافة المدخلات إلى قائمة المزامنة')));
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('تعذر الحفظ: $e')));
@@ -94,7 +117,7 @@ class _CycleManualAttendanceScreenState extends State<CycleManualAttendanceScree
       final raw = '${row['date'] ?? row['createdAt'] ?? ''}';
       if (id.isNotEmpty && raw.length >= 10) existingByKey['$id|${raw.substring(0, 10)}'] = '${row['status'] ?? ''}';
     }
-    return Scaffold(
+    return protectDraft(Scaffold(
       appBar: AppBar(bottom: const AppNavigationBar(), title: const Text('الإدخال اليدوي لدورة الحضور')),
       body: Directionality(textDirection: TextDirection.rtl, child: Column(children: [
         Padding(padding: const EdgeInsets.all(12), child: Wrap(spacing: 8, runSpacing: 8, children: [
@@ -149,6 +172,6 @@ class _CycleManualAttendanceScreenState extends State<CycleManualAttendanceScree
             )),
           )),
       ])),
-    );
+    ));
   }
 }

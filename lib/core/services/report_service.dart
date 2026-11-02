@@ -20,8 +20,8 @@ class ReportPeriodRange {
   const ReportPeriodRange({required this.startDate, required this.endDate});
 
   int get inclusiveDays =>
-      DateTime(endDate.year, endDate.month, endDate.day)
-          .difference(DateTime(startDate.year, startDate.month, startDate.day))
+      DateTime.utc(endDate.year, endDate.month, endDate.day)
+          .difference(DateTime.utc(startDate.year, startDate.month, startDate.day))
           .inDays +
       1;
 }
@@ -35,7 +35,7 @@ class ReportPeriodPresets {
   static ReportPeriodRange weekly(DateTime now) {
     final end = DateTime(now.year, now.month, now.day);
     return ReportPeriodRange(
-      startDate: end.subtract(const Duration(days: 6)),
+      startDate: DateTime(end.year, end.month, end.day - 6),
       endDate: end,
     );
   }

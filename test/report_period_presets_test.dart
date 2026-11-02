@@ -35,4 +35,16 @@ void main() {
     expect(range.endDate, DateTime(2026, 10, 28));
     expect(range.inclusiveDays, 9);
   });
+  test('calendar day counts survive spring and autumn clock changes', () {
+    for (final period in [
+      ReportPeriodPresets.custom(DateTime(2026, 3, 25), DateTime(2026, 3, 31)),
+      ReportPeriodPresets.custom(DateTime(2026, 10, 22), DateTime(2026, 10, 28)),
+    ]) {
+      expect(period.inclusiveDays, 7);
+    }
+    final springWeek = ReportPeriodPresets.weekly(DateTime(2026, 3, 31));
+    expect(springWeek.startDate, DateTime(2026, 3, 25));
+    expect(springWeek.inclusiveDays, 7);
+  });
+
 }

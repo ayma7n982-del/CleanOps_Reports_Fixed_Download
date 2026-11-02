@@ -1,3 +1,4 @@
+import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
@@ -40,6 +41,7 @@ void main() {
   late AttendanceEntryService service;
   final day = DateTime(2026, 11, 2);
   setUp(() async {
+    SharedPreferences.setMockInitialValues({});
     dir = await Directory.systemTemp.createTemp('cleanops_leave_');
     Hive.init(dir.path);
     box = await Hive.openBox('leave');
