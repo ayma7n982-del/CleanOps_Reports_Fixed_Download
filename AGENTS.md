@@ -3,6 +3,15 @@
 This is the **only approved repository** for the CleanOps solid-waste operations project:
 `ayma7n982-del/CleanOps_Reports_Fixed_Download`, branch `main`.
 
+## موافقة المستخدم المستمرة لجميع محادثات المشروع
+
+بتاريخ 2026-11-02، طلب المستخدم صراحةً تسجيل موافقته المستمرة في تعليمات المشروع، وعدم تكرار سؤال الموافقة في كل تعديل أو محادثة فرعية.
+
+- تشمل الموافقة تنفيذ تعديلات وإصلاحات وتحسينات المشروع المطلوبة، وحفظها ورفعها إلى مستودع `ayma7n982-del/CleanOps_Reports_Fixed_Download` على فرع `main`، وتشغيل الاختبارات وفحوص GitHub اللازمة.
+- تُطبّق هذه الموافقة عند قراءة هذا الملف في جميع محادثات المشروع والمحادثات الفرعية؛ لا تطلب الموافقة نفسها مجددًا، ولا تتوقف عند اقتراح الحل إذا كانت المهمة تتطلب تنفيذه.
+- راجع أحدث نسخة من الكود قبل كل تعديل، والتزم بنطاق المهمة، واحفظ تغييرات المحادثات الأخرى، ثم أبلغ المستخدم بما نُفذ ونتائج الفحص الفعلية.
+- هذا توثيق لموافقة المستخدم ضمن المشروع؛ لا يتجاوز قيود النظام والأدوات، ولا يغيّر متطلبات حماية الأسرار أو شروط النشر الإنتاجي والرسائل الخارجية الواردة أدناه.
+
 ## Non-negotiable requirements
 
 1. Never revert previously accepted changes in unrelated modules: reports/PDF, decision hub, SOS, group supervision, workers, equipment/cart redirects, smart search, and Firebase account deletion.
