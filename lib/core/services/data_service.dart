@@ -173,9 +173,10 @@ class DataService extends ChangeNotifier {
     super.dispose();
   }
 
-  Future<void> addActivity(String title, String detail, {String level = 'info'}) async {
+  Future<void> addActivity(String title, String detail, {String level = 'info', String? sourceEntity, String? sourceId}) async {
     final a = ActivityItem(
       id: uuid.v4(),
+      sourceEntity: sourceEntity, sourceId: sourceId,
       title: title,
       detail: detail,
       createdAt: DateTime.now().toIso8601String(),
@@ -231,9 +232,10 @@ class DataService extends ChangeNotifier {
     await enqueue('audit', 'create', payload);
   }
 
-  Future<void> notifyUser(String title, String body, {String level = 'info'}) async {
+  Future<void> notifyUser(String title, String body, {String level = 'info', String? sourceEntity, String? sourceId}) async {
     final n = NotificationItem(
       id: uuid.v4(),
+      sourceEntity: sourceEntity, sourceId: sourceId,
       title: title,
       body: body,
       level: level,
@@ -270,6 +272,8 @@ class DataService extends ChangeNotifier {
             (sourceId.isNotEmpty && n.id == 'sos-emergency-$sourceId'))) continue;
         notifications = [NotificationItem(
           id: document.id,
+          sourceEntity: 'emergency', sourceId: sourceId,
+          targetUserId: current.uid, targetRole: role,
           title: '${item['title'] ?? 'SOS'}',
           body: '${item['body'] ?? ''}',
           level: 'urgent',
@@ -298,6 +302,8 @@ class DataService extends ChangeNotifier {
             ? ' • GPS: $latitude, $longitude' : '';
         notifications = [NotificationItem(
           id: inboxId,
+          sourceEntity: 'emergency', sourceId: doc.id,
+          targetUserId: current.uid, targetRole: role,
           title: 'بلاغ SOS عاجل',
           body: 'الموقع: $location$gps • ${item['status'] ?? 'urgent'}',
           level: 'urgent',

@@ -281,41 +281,43 @@ class AppUser {
 class NotificationItem {
   final String id, title, body, level, createdAt;
   final bool read;
+  final String? sourceEntity, sourceId, targetUserId, targetRole;
   const NotificationItem({
-    required this.id,
-    required this.title,
-    required this.body,
-    required this.level,
-    required this.createdAt,
-    this.read = false,
+    required this.id, required this.title, required this.body,
+    required this.level, required this.createdAt, this.read = false,
+    this.sourceEntity, this.sourceId, this.targetUserId, this.targetRole,
   });
 
   NotificationItem copyWith({bool? read}) => NotificationItem(
-    id: id,
-    title: title,
-    body: body,
-    level: level,
-    createdAt: createdAt,
-    read: read ?? this.read,
+    id: id, title: title, body: body, level: level, createdAt: createdAt,
+    read: read ?? this.read, sourceEntity: sourceEntity, sourceId: sourceId,
+    targetUserId: targetUserId, targetRole: targetRole,
   );
 
   Map<String, dynamic> toJson() => {
-    'id': id,
-    'title': title,
-    'body': body,
-    'level': level,
-    'createdAt': createdAt,
-    'read': read,
+    'id': id, 'title': title, 'body': body, 'level': level,
+    'createdAt': createdAt, 'read': read,
+    if (sourceEntity != null) 'sourceEntity': sourceEntity,
+    if (sourceId != null) 'sourceId': sourceId,
+    if (targetUserId != null) 'targetUserId': targetUserId,
+    if (targetRole != null) 'targetRole': targetRole,
   };
 
-  factory NotificationItem.fromJson(Map<String, dynamic> j) => NotificationItem(
-    id: '${j['id']}',
-    title: '${j['title']}',
-    body: '${j['body']}',
-    level: '${j['level']}',
-    createdAt: '${j['createdAt']}',
-    read: j['read'] == true,
-  );
+  factory NotificationItem.fromJson(Map<String, dynamic> j) {
+    final id = '${j['id'] ?? ''}';
+    // Recover SOS links created before source metadata was persisted locally.
+    final legacy = RegExp(r'^(.+)_(L2|L3|UNICEF)$').firstMatch(id);
+    final legacyId = id.startsWith('sos-emergency-')
+        ? id.substring('sos-emergency-'.length) : legacy?.group(1);
+    return NotificationItem(
+      id: id, title: '${j['title'] ?? ''}', body: '${j['body'] ?? ''}',
+      level: '${j['level'] ?? 'info'}', createdAt: '${j['createdAt'] ?? ''}',
+      read: j['read'] == true,
+      sourceEntity: j['sourceEntity']?.toString() ?? (legacyId == null ? null : 'emergency'),
+      sourceId: j['sourceId']?.toString() ?? legacyId,
+      targetUserId: j['targetUserId']?.toString(), targetRole: j['targetRole']?.toString(),
+    );
+  }
 }
 
 class ActivityItem {

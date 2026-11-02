@@ -1,3 +1,4 @@
+import '../notification_navigation.dart';
 import '../feature_navigation.dart';
 import '../widgets/app_navigation_bar.dart';
 import 'action_decision_hub.dart';
@@ -247,7 +248,9 @@ class _OperationTile extends StatelessWidget {
               fontWeight: overdue ? FontWeight.w700 : FontWeight.normal)),
       trailing: Icon(overdue ? Icons.warning_amber_rounded : Icons.chevron_left_rounded,
           size: 18, color: overdue ? Colors.orange : null),
-      onTap: () => showDialog<void>(
+      onTap: entity == 'notification'
+          ? () => openAppNotification(context, NotificationItem.fromJson({...record, 'id': doc.id}))
+          : () => showDialog<void>(
         context: context,
         builder: (_) => AlertDialog(
           title: AppText(title),

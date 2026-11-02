@@ -1,5 +1,7 @@
 import 'presentation/widgets/app_navigation_bar.dart';
 import 'presentation/screens/notifications_screen.dart';
+import 'presentation/notification_navigation.dart';
+import 'core/services/notification_target_policy.dart';
 import 'presentation/feature_navigation.dart';
 import 'core/services/feature_route_policy.dart';
 import 'core/localization.dart';
@@ -716,12 +718,16 @@ class NotificationsPreview extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final data = context.watch<DataService>();
-    final child = data.notifications.isEmpty
+    final user = context.watch<AuthService>().currentUser;
+    final notices = data.notifications.where((n) => user != null &&
+        NotificationTargetPolicy.addressedTo(user, n)).toList();
+    final child = notices.isEmpty
         ? const AppText('لا توجد إشعارات جديدة')
         : Column(
-            children: data.notifications.take(4).map((n) {
+            children: notices.take(4).map((n) {
               return ListTile(
                 contentPadding: EdgeInsets.zero,
+                onTap: () => openAppNotification(context, n),
                 leading: StatusDot(level: n.level),
                 title: AppText(n.title, style: const TextStyle(fontWeight: FontWeight.w700)),
                 subtitle: AppText(n.body),
