@@ -110,13 +110,23 @@ void main() {
         final notifications = find.byKey(
           const ValueKey('field-tool-notifications'),
         );
-        await tester.ensureVisible(notifications);
+        await tester.dragUntilVisible(
+          notifications.hitTestable(),
+          find.byType(Scrollable).first,
+          const Offset(0, -250),
+        );
+        await tester.pumpAndSettle();
         await tester.tap(notifications);
         await tester.pumpAndSettle();
         expect(find.byType(NotificationsPage), findsOneWidget);
         expect(find.text('لا توجد إشعارات جديدة'), findsOneWidget);
         await tester.pageBack();
         await tester.pumpAndSettle();
+        await tester.dragUntilVisible(
+          find.byTooltip('إيقاف وضع التركيز').hitTestable(),
+          find.byType(Scrollable).first,
+          const Offset(0, 300),
+        );
         expect(find.byTooltip('إيقاف وضع التركيز'), findsOneWidget);
         await tester.scrollUntilVisible(
           find.text('عمال مجموعتي'),
@@ -142,14 +152,17 @@ void main() {
         },
       );
       await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: SingleChildScrollView(
-              child: Column(
-                children: [
-                  FieldTaskShortcuts(user: user),
-                  FieldSupportShortcuts(user: user),
-                ],
+        ChangeNotifierProvider<LocaleController>(
+          create: (_) => LocaleController(),
+          child: MaterialApp(
+            home: Scaffold(
+              body: SingleChildScrollView(
+                child: Column(
+                  children: [
+                    FieldTaskShortcuts(user: user),
+                    FieldSupportShortcuts(user: user),
+                  ],
+                ),
               ),
             ),
           ),

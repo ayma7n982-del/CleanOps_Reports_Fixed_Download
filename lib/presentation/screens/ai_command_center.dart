@@ -255,7 +255,8 @@ class _FocusModeKpis extends StatelessWidget {
                   crossAxisCount: columns,
                   mainAxisSpacing: 12,
                   crossAxisSpacing: 12,
-                  childAspectRatio: columns == 1 ? 2.1 : 1.28,
+                  mainAxisExtent: 160 +
+                      (MediaQuery.textScalerOf(context).scale(14) - 14).clamp(0.0, 36.0) * 4,
                   children: [
                     _FocusKpi(icon: Icons.autorenew_rounded, title: 'الدورة الحالية', value: cycle, color: aiCyan),
                     _FocusKpi(icon: Icons.groups_rounded, title: isManagement ? 'العمال ضمن نطاقك' : 'عمال مجموعتي', value: '$workers', color: aiGreen),
@@ -415,7 +416,8 @@ class _Status extends StatelessWidget {
       children: [
         Icon(icon, size: 13, color: color),
         const SizedBox(width: 5),
-        AppText(text, style: TextStyle(color: color, fontSize: 9, fontWeight: FontWeight.w800)),
+        Flexible(child: AppText(text, maxLines: 1, overflow: TextOverflow.ellipsis,
+            style: TextStyle(color: color, fontSize: 9, fontWeight: FontWeight.w800))),
       ],
     ),
   );
@@ -855,7 +857,7 @@ class _Panel extends StatelessWidget {
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(children: [AiFeatureIcon(feature, size: 16), const SizedBox(width: 9), AppText(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: cleanOpsText))]),
+        Row(children: [AiFeatureIcon(feature, size: 16), const SizedBox(width: 9), Expanded(child: AppText(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: cleanOpsText)))]),
         const SizedBox(height: 12),
         const Divider(height: 1, color: cleanOpsBorder),
         const SizedBox(height: 8),
