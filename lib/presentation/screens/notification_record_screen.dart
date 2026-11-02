@@ -184,7 +184,10 @@ class _NotificationRecordScreenState extends State<NotificationRecordScreen> {
                           AppText(message, textAlign: TextAlign.center),
                           const SizedBox(height: 12),
                           FilledButton(
-                            onPressed: () => setState(() => _record = _load()),
+                            onPressed: () {
+                              final next = _load();
+                              setState(() { _record = next; });
+                            },
                             child: const AppText('إعادة المحاولة'),
                           ),
                         ],
