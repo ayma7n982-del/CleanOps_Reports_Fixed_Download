@@ -12,11 +12,13 @@ snapshot replaces the scoped cached roster, including an empty snapshot after
 a worker leaves. Cache keys include both the account and group. Temporary
 coverage decisions remain an overlay and do not change permanent assignments.
 
-Each online municipality refresh repairs older workforce projections from the
+The first successful online refresh of each municipality session repairs older
+workforce projections from the
 latest profile, read again within a transaction. It resolves imported group
 numbers only when unambiguous within that municipality, and retires duplicate
 import rows only with an explicit unique employee ID. It never matches people
-by name. Repeated repairs leave matching documents untouched.
+by name. Failed repairs retry automatically; a successful session does not repeatedly
+scan all workers. Matching documents remain untouched.
 
 ## Validation
 
