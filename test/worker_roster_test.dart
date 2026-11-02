@@ -116,4 +116,13 @@ void main() {
       expect(WorkerRoster.forGroup([], 'group-a'), isEmpty);
     },
   );
+  test('legacy casing and empty account links do not hide workers or revive frozen ones', () {
+    final imported = <String, dynamic>{'_entity':'worker', 'id':'import-1',
+      'userId':'', 'name':'عامل', 'groupId':'group-a'};
+    expect(WorkerRoster.forGroup([imported], 'group-a').single['id'], 'import-1');
+    for (final status in ['FROZEN', 'Deleted', 'Deactivated']) {
+      expect(WorkerRoster.forGroup([{...imported, 'status':status}], 'group-a'), isEmpty);
+    }
+  });
+
 }

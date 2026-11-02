@@ -63,7 +63,8 @@ class WorkerRoster {
     }
     final result = <String, Map<String, String>>{};
     for (final record in all) {
-      final id = '${record['userId'] ?? record['id'] ?? ''}'.trim();
+      final accountId = '${record['userId'] ?? ''}'.trim();
+      final id = accountId.isNotEmpty ? accountId : '${record['id'] ?? ''}'.trim();
       if (id.isEmpty ||
           group.isEmpty ||
           groupId(record) != group ||
@@ -74,7 +75,7 @@ class WorkerRoster {
             'deleted',
             'deactivated',
             'pending_deletion',
-          ].contains('${record['status'] ?? ''}'))
+          ].contains('${record['status'] ?? ''}'.toLowerCase()))
         continue;
       if (record['rosterSource'] != 'users' &&
           (accountIds.contains(id) ||
