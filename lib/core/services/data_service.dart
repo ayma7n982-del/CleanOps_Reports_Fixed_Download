@@ -173,10 +173,9 @@ class DataService extends ChangeNotifier {
     super.dispose();
   }
 
-  Future<void> addActivity(String title, String detail, {String level = 'info', String? sourceEntity, String? sourceId}) async {
+  Future<void> addActivity(String title, String detail, {String level = 'info'}) async {
     final a = ActivityItem(
       id: uuid.v4(),
-      sourceEntity: sourceEntity, sourceId: sourceId,
       title: title,
       detail: detail,
       createdAt: DateTime.now().toIso8601String(),

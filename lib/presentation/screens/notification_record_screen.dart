@@ -110,8 +110,12 @@ class _NotificationRecordScreenState extends State<NotificationRecordScreen> {
           assignment['targetUserId'] == current.id &&
           assignment['targetRole'] == current.role;
     }
+    final active = context.read<AuthService>().currentUser;
+    if (active == null || active.id != widget.userId) {
+      throw StateError('تغير الحساب؛ افتح الإشعار من حسابك الحالي.');
+    }
     if (!NotificationTargetPolicy.canOpen(
-      current,
+      active,
       _notice,
       record,
       verifiedRecipient: _verifiedRecipient,
