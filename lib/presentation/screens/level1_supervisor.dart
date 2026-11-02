@@ -1,3 +1,7 @@
+import '../../core/models/core_models.dart';
+import 'package:firebase_core/firebase_core.dart';
+import '../../core/services/attendance_entry_service.dart';
+import '../widgets/worker_leave_form.dart';
 import '../../core/services/trip_dumpsite.dart';
 import '../widgets/trip_dumpsite_picker.dart';
 import '../../core/services/feature_route_policy.dart';
@@ -7,7 +11,6 @@ import '../widgets/app_navigation_bar.dart';
 import '../widgets/decision_directive_banner.dart';
 import '../../core/services/decision_route_policy.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_core/firebase_core.dart';
 import '../../core/services/worker_roster.dart';
 import '../../core/localization.dart';
 import 'dart:async';
@@ -80,6 +83,8 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
   final WorkerPpeChecklist ppe = WorkerPpeChecklist();
   final Map<String, String> attendanceStatus = {};
   bool savingAttendance = false;
+  String attendanceSession = '';
+
   bool savingTrip = false;
   bool sendingEmergency = false;
   String emergencyStatus = '';
@@ -96,10 +101,10 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
   void initState() {
     super.initState();
     _watchWorkers();
-    _watchTripDumpsites();
+    if (widget.initialAction == null || widget.initialAction == 'trips') _watchTripDumpsites();
     WidgetsBinding.instance.addPostFrameCallback((_) => _restoreEmergency());
     final groupId = context.read<AuthService>().currentUser?.groupId?.trim() ?? '';
-    if (groupId.isNotEmpty) sosUpdates = FirebaseFirestore.instance.collection('operations')
+    if (groupId.isNotEmpty && Firebase.apps.isNotEmpty) sosUpdates = FirebaseFirestore.instance.collection('operations')
         .where('groupId', isEqualTo: groupId).snapshots().listen((_) async {
       if (!mounted || activeEmergencyId == null) return;
       final data = context.read<DataService>();
@@ -231,6 +236,10 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
       }
     }
     if (!mounted || generation != _rosterLoad) return;
+    if (user != null && widget.initialAction != 'leave') {
+      await _restoreAttendance(user, loaded.values.toList(), generation);
+    }
+    if (!mounted || generation != _rosterLoad) return;
     setState(() {
       workers = loaded.values.toList()
         ..sort((a, b) => (a['name'] ?? '').compareTo(b['name'] ?? ''));
@@ -239,6 +248,71 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
       ppe.retainWorkers(ids);
       loadingWorkers = false;
     });
+  }
+
+  Future<void> _restoreAttendance(AppUser user, List<Map<String, String>> roster, int generation) async {
+    final service = AttendanceEntryService(context.read<DataService>());
+    final day = DateTime.now();
+    final shift = context.read<ConfigService>().shift;
+    final session = '${AttendanceEntryService.dayKey(day)}|$shift';
+    if (attendanceSession != session) {
+      attendanceStatus.clear();
+      ppe.retainWorkers(<String>{});
+    }
+    attendanceSession = session;
+    // Bound concurrent direct reads when a group has a large roster.
+    for (var start = 0; start < roster.length; start += 10) {
+      await Future.wait(roster.skip(start).take(10).map((worker) async {
+        if (attendanceStatus.containsKey(worker['id'])) return;
+        try {
+          final record = await service.record(actor: user, workerId: worker['id']!, day: day);
+          if (record == null || !mounted || generation != _rosterLoad ||
+              attendanceStatus.containsKey(worker['id'])) return;
+          attendanceStatus[worker['id']!] = '${record['status']}';
+          final checks = record['ppe'];
+          if (checks is Map) {
+            final state = ppe.forWorker(worker['id']!);
+            for (final key in WorkerPpeChecklist.requiredItems) {
+              state[key] = checks[key] == true;
+            }
+          }
+        } catch (error) {
+          debugPrint('Attendance restoration deferred: $error');
+        }
+      }));
+    }
+  }
+
+  Future<bool> _confirmAttendanceChange(Map<String, dynamic> previous) async {
+    if (!mounted) return false;
+    final label = const {'present': 'حضور', 'absent': 'غياب', 'leave': 'إجازة',
+      'permission': 'إذن خاص', 'excused_absence': 'غياب بعذر',
+      'unexcused_absence': 'غياب بدون عذر', 'external_task': 'مهمة خارج المجموعة'}['${previous['status']}'] ?? '${previous['status']}';
+    return await showDialog<bool>(context: context, builder: (ctx) => AlertDialog(
+      title: const AppText('تعديل حالة مسجلة'),
+      content: AppText('العامل ${previous['workerName'] ?? ''} مسجل بحالة «$label» لهذا اليوم والوردية. هل تريد استبدالها؟'),
+      actions: [TextButton(onPressed: () => Navigator.pop(ctx, false), child: const AppText('إلغاء')),
+        FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const AppText('تأكيد التعديل'))],
+    )) ?? false;
+  }
+
+  Future<bool> _saveWorkerLeave(WorkerLeaveSelection selection) async {
+    final auth = context.read<AuthService>();
+    final user = auth.currentUser;
+    if (user == null || emergencyLock) return false;
+    final service = AttendanceEntryService(context.read<DataService>());
+    final saved = await service.saveLeave(actor: user, worker: selection.worker,
+      day: selection.day, status: selection.status, reason: selection.reason,
+      fromMinute: selection.fromMinute, toMinute: selection.toMinute,
+      confirmReplacement: _confirmAttendanceChange,
+      canContinue: () => mounted && !emergencyLock && auth.currentUser?.id == user.id && auth.currentUser?.groupId == user.groupId &&
+        auth.currentUser?.role == 'group_supervisor' &&
+        auth.currentUser!.can('leave', 'create') && auth.currentUser!.can('attendance', 'create'));
+    if (saved && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:
+        AppText('حُفظت حالة العامل محليًا؛ تتم المزامنة تلقائيًا عند توفر الاتصال.')));
+    }
+    return saved;
   }
 
   Future<void> _call(String phone) async {
@@ -658,7 +732,13 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
       final taskBody = !permitted
           ? const Center(child: AppText('هذه المهمة غير متاحة ضمن صلاحيات حسابك.'))
           : switch (action) {
-              'attendance' || 'leave' => _attendance(config),
+              'attendance' => _attendance(config),
+              'leave' => loadingWorkers
+                  ? const Center(child: CircularProgressIndicator())
+                  : WorkerLeaveForm(workers: workers, shift: config.shift,
+                      locked: emergencyLock || config.stageFrozen, onSave: _saveWorkerLeave,
+                      onLoad: (worker, day) => AttendanceEntryService(data).record(
+                        actor: user, workerId: worker['id']!, day: day)),
               'trips' => _trips(config),
               'streets' => _streets(config),
               'emergency' => _emergency(config),
@@ -739,8 +819,8 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
         AiHero(
           user: context.read<AuthService>().currentUser!,
           eyebrow: 'الحضور والسلامة',
-          title: widget.initialAction == 'leave' ? 'الإجازات والأذونات' : 'حضور مجموعتي',
-          subtitle: widget.initialAction == 'leave' ? 'اختر العامل ثم حدد إجازة أو إذنًا خاصًا من قائمة الحالة، واحفظ كشف الحضور.' : 'حدد حالة كل عامل قبل حفظ كشف الوردية، ثم افحص معدات الوقاية للحاضرين.',
+          title: 'حضور مجموعتي',
+          subtitle: 'تُستعاد الحالات المسجلة لهذا اليوم والوردية. أكمل بقية العمال ثم افحص معدات الوقاية للحاضرين.',
         ),
         const SizedBox(height: 14),
         Wrap(
@@ -821,53 +901,80 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: AppText('المرحلة مجمّدة — التعديلات التشغيلية مقفلة')));
       return;
     }
-    if (u == null || !u.can('attendance', 'create') || savingAttendance) return;
-    final missing = workers.where((w) => !attendanceStatus.containsKey(w['id'])).length;
+    if (u == null || u.role != 'group_supervisor' || (u.groupId ?? '').trim().isEmpty ||
+        !u.can('attendance', 'create') || savingAttendance || emergencyLock) return;
+    final day = DateTime.now();
+    if (attendanceSession != '${AttendanceEntryService.dayKey(day)}|${config.shift}') {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: AppText('تغيّر اليوم أو الوردية؛ أعد فتح الكشف لاستعادة الحالات الصحيحة.')));
+      return;
+    }
+    final missing = workers.where((w) => (attendanceStatus[w['id']] ?? 'unset') == 'unset').length;
     if (missing > 0) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: AppText('حدد حالة جميع العمال أولًا. المتبقي: $missing')));
       return;
     }
-    if (config.ppeEnabled) {
-      final incomplete = workers.where((w) => (attendanceStatus[w['id'] ?? ''] ?? 'unset') == 'present').where((w) {
-        return !ppe.isComplete(w['id'] ?? '');
-      }).toList();
-      if (incomplete.isNotEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: AppText('اعتمد البوت والقفازات والكمامة والقبعة والصديري لكل عامل حاضر قبل حفظ الكشف.')));
-        return;
-      }
+    if (config.ppeEnabled && workers.any((w) => attendanceStatus[w['id']] == 'present' && !ppe.isComplete(w['id']!))) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: AppText('اعتمد البوت والقفازات والكمامة والقبعة والصديري لكل عامل حاضر قبل حفظ الكشف.')));
+      return;
     }
     setState(() => savingAttendance = true);
     try {
-    final d = context.read<DataService>();
-    final day = DateTime.now().toIso8601String().substring(0, 10);
-    final rosterToSave = List<Map<String, String>>.from(workers);
-    for (final w in rosterToSave) {
-      final name = w['name'] ?? '';
-      final workerId = w['id'] ?? '';
-      final state = ppe.snapshot(workerId);
-      final id = 'attendance_${u.groupId}_${config.shift.replaceAll(RegExp(r'[^0-9]'), '')}_${day}_${w['id']}';
-      await d.enqueue('attendance', 'create', {
-        'id': id,
-        'workerId': w['id'],
-        if (w['temporaryDecisionId'] != null) 'temporaryDecisionId': w['temporaryDecisionId'],
-        'workerName': name,
-        'workerRole': w['role'] ?? 'worker',
-        'groupId': u.groupId ?? w['groupId'] ?? '',
-        'groupName': w['groupName'] ?? u.groupId ?? '',
-        'municipalityName': u.scope == 'assigned_only' ? (w['municipalityName'] ?? '') : u.scope,
-        'municipalityCoordinatorId': u.municipalityCoordinatorId ?? '',
-        'status': attendanceStatus[w['id'] ?? ''] ?? 'unset',
-        if ((attendanceStatus[w['id'] ?? ''] ?? 'unset') == 'present') 'checkInAt': DateTime.now().toIso8601String(),
-        'ppeComplete': ppe.isComplete(workerId),
-        'ppe': state,
-        'reportedBy': u.id,
-        'shift': config.shift,
-        'createdAt': DateTime.now().toIso8601String(),
-        'isDeleted': false,
-      });
-    }
-    await d.addActivity('الحضور وPPE', 'تم حفظ كشف الحضور وفحص معدات الوقاية للمجموعة.', level: 'success');
-    if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: AppText('تم حفظ الكشف محليًا وإضافته لقائمة المزامنة؛ تأكيد الخادم لاحقًا.')));
+      final d = context.read<DataService>();
+      final service = AttendanceEntryService(d);
+      final rosterToSave = List<Map<String, String>>.from(workers);
+      final previousRecords = <String, Map<String, dynamic>?>{};
+      // Preflight every changed record before writing any part of the sheet.
+      for (final w in rosterToSave) {
+        final previous = await service.record(actor: u, workerId: w['id']!, day: day);
+        previousRecords[w['id']!] = previous;
+        if (previous != null && previous['reportedBy'] != u.id) {
+          throw StateError('سجل ${w['name']} مسجل بواسطة مشرف آخر؛ راجع منسق البلدية.');
+        }
+        if (previous != null && previous['status'] != attendanceStatus[w['id']] &&
+            !await _confirmAttendanceChange(previous)) return;
+      }
+      if (!mounted || emergencyLock || config.stageFrozen ||
+          context.read<AuthService>().currentUser?.id != u.id ||
+          !context.read<AuthService>().currentUser!.can('attendance', 'create')) return;
+      if ('${AttendanceEntryService.dayKey(DateTime.now())}|${config.shift}' != attendanceSession) {
+        throw StateError('تغيّر اليوم أو الوردية؛ أعد فتح الكشف.');
+      }
+      if (rosterToSave.length != workers.length ||
+          rosterToSave.any((w) => !workers.any((current) => current['id'] == w['id']))) {
+        throw StateError('تغيّر كشف العمال؛ راجع الحالات ثم احفظ مجددًا.');
+      }
+      for (final w in rosterToSave) {
+        final workerId = w['id']!;
+        final previous = previousRecords[workerId];
+        final status = attendanceStatus[workerId]!;
+        // Leave details and permission times belong to the quick form. An
+        // unchanged row must never erase them or create another queued write.
+        if (previous != null && previous['status'] == status &&
+            const ['leave', 'permission'].contains(status)) continue;
+        final payload = <String, dynamic>{
+          'id': AttendanceEntryService.recordId(u.groupId!, config.shift, day, workerId),
+          'workerId': workerId,
+          if (w['temporaryDecisionId'] != null) 'temporaryDecisionId': w['temporaryDecisionId'],
+          'workerName': w['name'] ?? '', 'workerRole': w['role'] ?? 'worker',
+          'groupId': u.groupId!, 'groupName': w['groupName'] ?? u.groupId!,
+          'municipalityName': u.scope == 'assigned_only' ? (w['municipalityName'] ?? '') : u.scope,
+          'municipalityCoordinatorId': u.municipalityCoordinatorId ?? '',
+          'status': status,
+          'checkInAt': status == 'present' ? previous?['checkInAt'] ?? DateTime.now().toIso8601String() : null,
+          'checkOutAt': status == 'present' ? (previous?['checkOutAt']) : null,
+          'checkInTime': status == 'present' ? (previous?['checkInTime']) : null,
+          'checkOutTime': status == 'present' ? (previous?['checkOutTime']) : null,
+          'leaveReason': null, 'permissionFromMinute': null, 'permissionToMinute': null,
+          'ppeComplete': status == 'present' && ppe.isComplete(workerId),
+          'ppe': status == 'present' ? ppe.snapshot(workerId) : <String, bool>{},
+          'reportedBy': u.id, 'shift': config.shift,
+          'createdAt': previous?['createdAt'] ?? DateTime.now().toIso8601String(),
+          'isDeleted': false,
+        };
+        await d.enqueue('attendance', previous == null ? 'create' : 'update', payload);
+      }
+      await d.addActivity('الحضور وPPE', 'تم حفظ كشف الحضور وفحص معدات الوقاية للمجموعة.', level: 'success');
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: AppText('تم حفظ الكشف محليًا وإضافته لقائمة المزامنة؛ تأكيد الخادم لاحقًا.')));
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: AppText('تعذر حفظ الكشف: $e')));
     } finally {
