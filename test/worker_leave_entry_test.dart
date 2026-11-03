@@ -460,6 +460,9 @@ void main() {
       expect(pending['b']?['status'], 'absent');
       debugPrint('leave integration: queue checked');
       expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump();
+      debugPrint('leave integration: screen disposed');
     },
     timeout: const Timeout(Duration(minutes: 1)),
   );
