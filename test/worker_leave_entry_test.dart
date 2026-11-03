@@ -52,14 +52,10 @@ void main() {
     service = AttendanceEntryService(data);
   });
   tearDown(() async {
-    debugPrint('leave teardown: begin');
     data.dispose();
     config.dispose();
-    debugPrint('leave teardown: services disposed');
-    await box.close();
-    debugPrint('leave teardown: box closed');
+    if (box.isOpen) await box.close();
     await dir.delete(recursive: true);
-    debugPrint('leave teardown: directory removed');
   });
   Future<bool> save({
     Map<String, String> worker = workerA,
@@ -419,7 +415,6 @@ void main() {
       );
       await tester.pumpWidget(const SizedBox());
       await tester.pumpAndSettle();
-      debugPrint('leave integration: opening full sheet');
       await mount(
         tester,
         const Level1SupervisorScreen(initialAction: 'attendance'),
@@ -446,10 +441,8 @@ void main() {
       await tester.tap(find.text('غياب').last);
       await tester.pumpAndSettle();
       await tester.ensureVisible(find.text('حفظ كشف حضور مجموعتي'));
-      debugPrint('leave integration: saving full sheet');
       await tester.tap(find.text('حفظ كشف حضور مجموعتي'));
       await tester.pumpAndSettle();
-      debugPrint('leave integration: full sheet submitted');
       expect(data.queue.where((item) => item.entity == 'attendance'),
           hasLength(2));
       // The queue stays durable even if a worker refresh replaces the
@@ -462,11 +455,12 @@ void main() {
       expect(pending['a']?['status'], 'leave');
       expect(pending['a']?['leaveReason'], 'إجازة طبية');
       expect(pending['b']?['status'], 'absent');
-      debugPrint('leave integration: queue checked');
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox());
       await tester.pump();
-      debugPrint('leave integration: screen disposed');
+      // Hive disk writes started by the local queue need real async time
+      // before the widget test's fake clock tears down the temporary box.
+      await tester.runAsync(() => box.close());
     },
     timeout: const Timeout(Duration(minutes: 1)),
   );
