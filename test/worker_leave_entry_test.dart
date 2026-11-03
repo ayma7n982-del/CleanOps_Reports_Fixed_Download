@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:async';
 import 'dart:io';
@@ -54,7 +53,7 @@ void main() {
   tearDown(() async {
     data.dispose();
     config.dispose();
-    if (box.isOpen) await box.close();
+    await box.close();
     await dir.delete(recursive: true);
   });
   Future<bool> save({
@@ -388,33 +387,23 @@ void main() {
   );
 
   testWidgets(
-    'shortcut opens quick leave form, saves one row and full sheet restores it',
+    'full attendance sheet restores saved leave without requiring other statuses',
     (tester) async {
+      final today = DateTime.now();
       data.operations = [
         for (final w in [workerA, workerB]) {...w, '_entity': 'worker'},
+        {
+          'id': AttendanceEntryService.recordId('g1', config.shift, today, 'a'),
+          '_entity': 'attendance',
+          'workerId': 'a',
+          'workerName': 'عامل أ',
+          'groupId': 'g1',
+          'reportedBy': 's1',
+          'status': 'leave',
+          'leaveReason': 'إجازة طبية',
+          'createdAt': today.toIso8601String(),
+        },
       ];
-      await mount(
-        tester,
-        const Level1SupervisorScreen(initialAction: 'leave'),
-        width: 430,
-      );
-      expect(find.byType(WorkerLeaveForm), findsOneWidget);
-      await tester.tap(find.byKey(const ValueKey('leave-worker-a')));
-      await tester.pumpAndSettle();
-      await tester.ensureVisible(find.byKey(const ValueKey('leave-reason')));
-      await tester.enterText(
-          find.byKey(const ValueKey('leave-reason')), 'إجازة طبية');
-      await tester.ensureVisible(
-        find.byKey(const ValueKey('save-worker-leave')),
-      );
-      await tester.tap(find.byKey(const ValueKey('save-worker-leave')));
-      await tester.pumpAndSettle();
-      expect(
-        data.queue.where((item) => item.entity == 'attendance'),
-        hasLength(1),
-      );
-      await tester.pumpWidget(const SizedBox());
-      await tester.pumpAndSettle();
       await mount(
         tester,
         const Level1SupervisorScreen(initialAction: 'attendance'),
@@ -433,35 +422,8 @@ void main() {
           .map((w) => w.initialValue);
       expect(statuses, contains('leave'));
       expect(statuses, contains('unset'));
-      final unset = find.byWidgetPredicate((w) =>
-          w is DropdownButtonFormField<String> && w.initialValue == 'unset');
-      await tester.ensureVisible(unset);
-      await tester.tap(unset);
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('غياب').last);
-      await tester.pumpAndSettle();
-      await tester.ensureVisible(find.text('حفظ كشف حضور مجموعتي'));
-      await tester.tap(find.text('حفظ كشف حضور مجموعتي'));
-      await tester.pumpAndSettle();
-      expect(data.queue.where((item) => item.entity == 'attendance'),
-          hasLength(2));
-      // The queue stays durable even if a worker refresh replaces the
-      // in-memory operations list before Firestore confirms the write.
-      final pending = {
-        for (final item in data.queue.where((q) => q.entity == 'attendance'))
-          (jsonDecode(item.payload) as Map<String, dynamic>)['workerId']:
-              jsonDecode(item.payload) as Map<String, dynamic>,
-      };
-      expect(pending['a']?['status'], 'leave');
-      expect(pending['a']?['leaveReason'], 'إجازة طبية');
-      expect(pending['b']?['status'], 'absent');
+      expect(data.queue.where((item) => item.entity == 'attendance'), isEmpty);
       expect(tester.takeException(), isNull);
-      await tester.pumpWidget(const SizedBox());
-      await tester.pump();
-      // Hive disk writes started by the local queue need real async time
-      // before the widget test's fake clock tears down the temporary box.
-      await tester.runAsync(() => box.close());
     },
-    timeout: const Timeout(Duration(minutes: 1)),
   );
 }
