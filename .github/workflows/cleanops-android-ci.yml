@@ -83,6 +83,7 @@ jobs:
       - name: Run Flutter tests
         run: flutter test
       - name: Build Android debug APK
+        if: ${{ false }} # APK builds disabled by the project owner
         env:
           GRADLE_OPTS: -Dorg.gradle.daemon=false -Dorg.gradle.parallel=false -Dorg.gradle.caching=false -Dkotlin.incremental=false
         run: |
@@ -101,6 +102,7 @@ jobs:
           echo "Android Gradle output directories:"
           ls -la build/app/outputs/apk/debug/ android/app/build/outputs/apk/debug/ 2>/dev/null || true
       - name: Upload installable debug APK
+        if: ${{ false }} # APK builds disabled by the project owner
         uses: actions/upload-artifact@v4
         with:
           name: CleanOps-Android-debug-APK

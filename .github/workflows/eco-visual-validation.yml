@@ -78,6 +78,7 @@ jobs:
       - name: Complete Flutter test suite including all visual contracts
         run: flutter test
       - name: Build and verify installable debug APK
+        if: ${{ false }} # APK builds disabled by the project owner
         env:
           GRADLE_OPTS: -Dorg.gradle.daemon=false -Dorg.gradle.parallel=false -Dorg.gradle.caching=false -Dkotlin.incremental=false
         run: |
@@ -85,6 +86,7 @@ jobs:
           test -s build/app/outputs/flutter-apk/app-debug.apk
           ls -lh build/app/outputs/flutter-apk/app-debug.apk
       - name: Upload tested branded debug APK
+        if: ${{ false }} # APK builds disabled by the project owner
         uses: actions/upload-artifact@v4
         with:
           name: CleanOps-Eco-Visual-Verified-APK

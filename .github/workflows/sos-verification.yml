@@ -53,10 +53,10 @@ jobs:
       - name: Run Flutter tests
         run: flutter test
       - name: Build Android APK
-        if: github.event_name != 'push'
+        if: ${{ false }} # APK builds disabled by the project owner
         run: flutter build apk --debug
       - name: Upload debug APK
-        if: github.event_name != 'push' && success()
+        if: ${{ false }} # APK builds disabled by the project owner
         uses: actions/upload-artifact@v4
         with:
           name: cleanops-sos-debug-apk

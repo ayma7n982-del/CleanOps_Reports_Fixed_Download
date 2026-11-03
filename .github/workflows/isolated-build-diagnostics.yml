@@ -34,15 +34,12 @@ jobs:
             analyze_status=$?
             flutter test > diagnostics/test.log 2>&1
             test_status=$?
-            flutter build apk --debug > diagnostics/apk-build.log 2>&1
-            apk_status=$?
           else
             analyze_status=99
             test_status=99
-            apk_status=99
           fi
-          printf 'pub=%s\nanalyze=%s\ntests=%s\napk=%s\n' "$pub_status" "$analyze_status" "$test_status" "$apk_status" | tee diagnostics/status.txt
-          if [ "$pub_status" -ne 0 ] || [ "$analyze_status" -ne 0 ] || [ "$test_status" -ne 0 ] || [ "$apk_status" -ne 0 ]; then exit 1; fi
+          printf 'pub=%s\nanalyze=%s\ntests=%s\n' "$pub_status" "$analyze_status" "$test_status" | tee diagnostics/status.txt
+          if [ "$pub_status" -ne 0 ] || [ "$analyze_status" -ne 0 ] || [ "$test_status" -ne 0 ]; then exit 1; fi
       - name: Upload diagnostics even on failure
         if: always()
         uses: actions/upload-artifact@v4
@@ -52,7 +49,7 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
       - name: Upload debug APK on success
-        if: success()
+        if: ${{ false }} # APK builds disabled by the project owner
         uses: actions/upload-artifact@v4
         with:
           name: cleanops-isolated-debug-apk
