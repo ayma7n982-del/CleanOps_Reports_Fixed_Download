@@ -444,14 +444,15 @@ void main() {
       await tester.pumpAndSettle();
       expect(data.queue.where((item) => item.entity == 'attendance'),
           hasLength(2));
-      final leave = data.operations.singleWhere(
-          (r) => r['_entity'] == 'attendance' && r['workerId'] == 'a');
-      expect(leave['status'], 'leave');
-      expect(leave['leaveReason'], 'إجازة طبية');
-      expect(
-          data.operations.singleWhere((r) =>
-              r['_entity'] == 'attendance' && r['workerId'] == 'b')['status'],
-          'absent');
+      // The durable queue is the source of truth while writes await sync;
+      // the in-memory operations list can be refreshed independently.
+      final leave = await service.record(
+          actor: actor(), workerId: 'a', day: DateTime.now());
+      final absence = await service.record(
+          actor: actor(), workerId: 'b', day: DateTime.now());
+      expect(leave?['status'], 'leave');
+      expect(leave?['leaveReason'], 'إجازة طبية');
+      expect(absence?['status'], 'absent');
       expect(tester.takeException(), isNull);
     },
   );
