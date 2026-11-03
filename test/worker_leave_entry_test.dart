@@ -52,10 +52,14 @@ void main() {
     service = AttendanceEntryService(data);
   });
   tearDown(() async {
+    debugPrint('leave teardown: begin');
     data.dispose();
     config.dispose();
+    debugPrint('leave teardown: services disposed');
     await box.close();
+    debugPrint('leave teardown: box closed');
     await dir.delete(recursive: true);
+    debugPrint('leave teardown: directory removed');
   });
   Future<bool> save({
     Map<String, String> worker = workerA,
