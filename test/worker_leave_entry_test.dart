@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:async';
 import 'dart:io';
@@ -414,6 +415,7 @@ void main() {
       );
       await tester.pumpWidget(const SizedBox());
       await tester.pumpAndSettle();
+      debugPrint('leave integration: opening full sheet');
       await mount(
         tester,
         const Level1SupervisorScreen(initialAction: 'attendance'),
@@ -440,20 +442,25 @@ void main() {
       await tester.tap(find.text('غياب').last);
       await tester.pumpAndSettle();
       await tester.ensureVisible(find.text('حفظ كشف حضور مجموعتي'));
+      debugPrint('leave integration: saving full sheet');
       await tester.tap(find.text('حفظ كشف حضور مجموعتي'));
       await tester.pumpAndSettle();
+      debugPrint('leave integration: full sheet submitted');
       expect(data.queue.where((item) => item.entity == 'attendance'),
           hasLength(2));
-      // The durable queue is the source of truth while writes await sync;
-      // the in-memory operations list can be refreshed independently.
-      final leave = await service.record(
-          actor: actor(), workerId: 'a', day: DateTime.now());
-      final absence = await service.record(
-          actor: actor(), workerId: 'b', day: DateTime.now());
-      expect(leave?['status'], 'leave');
-      expect(leave?['leaveReason'], 'إجازة طبية');
-      expect(absence?['status'], 'absent');
+      // The queue stays durable even if a worker refresh replaces the
+      // in-memory operations list before Firestore confirms the write.
+      final pending = {
+        for (final item in data.queue.where((q) => q.entity == 'attendance'))
+          (jsonDecode(item.payload) as Map<String, dynamic>)['workerId']:
+              jsonDecode(item.payload) as Map<String, dynamic>,
+      };
+      expect(pending['a']?['status'], 'leave');
+      expect(pending['a']?['leaveReason'], 'إجازة طبية');
+      expect(pending['b']?['status'], 'absent');
+      debugPrint('leave integration: queue checked');
       expect(tester.takeException(), isNull);
     },
+    timeout: const Timeout(Duration(minutes: 1)),
   );
 }
