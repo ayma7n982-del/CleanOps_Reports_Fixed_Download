@@ -31,7 +31,7 @@ class _ReportsCenterState extends State<ReportsCenterScreen> {
   int days = 30;
   DateTime startDate = DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day);
   DateTime endDate = DateTime.now();
-  String reportType = 'trips';
+  String reportType = 'all';
   String search = '', containerStatus = 'all';
   final searchController = TextEditingController();
   Timer? searchTimer;
@@ -130,11 +130,13 @@ class _ReportsCenterState extends State<ReportsCenterScreen> {
   @override Widget build(BuildContext context) {
     final rtl = context.watch<LocaleController>().isArabic;
     return Directionality(textDirection: rtl ? TextDirection.rtl : TextDirection.ltr, child: Scaffold(
-      appBar: widget.embedded ? null : AppBar(bottom: const AppNavigationBar(), title: const AppText('مركز التقارير والتحليلات')),
+      appBar: widget.embedded ? null : AppBar(bottom: const AppNavigationBar(), title: const AppText('التقارير')),
       body: RefreshIndicator(onRefresh: () async { _refresh(); await future; }, child: ListView(
         padding: const EdgeInsets.fromLTRB(14, 14, 14, 120), children: [
+          _hero(lastSnapshot),
+          const SizedBox(height: 12),
           _reportTabs(),
-          const SizedBox(height: 8),
+          const SizedBox(height: 12),
           _filters(lastSnapshot),
           const SizedBox(height: 12),
           FutureBuilder<ReportSnapshot>(future: future, builder: (context, snap) {
@@ -155,38 +157,76 @@ class _ReportsCenterState extends State<ReportsCenterScreen> {
     searchTimer?.cancel();
     setState(() {
       reportType = value; search = ''; searchController.clear();
-      containerStatus = 'all'; group = null; cycle = null;
-      if (value == 'trips') {
-        final day = ReportPeriodPresets.daily(DateTime.now());
-        startDate = day.startDate; endDate = day.endDate; periodPreset = 'daily';
-      }
+      if (value != 'containers') containerStatus = 'all';
       _reload();
     });
   }
 
-  Widget _reportTabs() => Wrap(spacing: 8, runSpacing: 8, children: [
-    ChoiceChip(label: const AppText('حالة الحاويات'), selected: reportType == 'containers', onSelected: (_) => _selectReport('containers')),
-    ChoiceChip(label: const AppText('عمليات الترحيل'), selected: reportType == 'trips', onSelected: (_) => _selectReport('trips')),
-    ChoiceChip(label: const AppText('تقارير أخرى'), selected: !['containers', 'trips'].contains(reportType), onSelected: (_) => _selectReport('all')),
-  ]);
+  Widget _reportTabs() {
+    const reports = <(String, String, IconData)>[
+      ('all', 'نظرة عامة', Icons.dashboard_customize_rounded),
+      ('trips', 'الترحيلات', Icons.local_shipping_outlined),
+      ('containers', 'الحاويات', Icons.delete_sweep_outlined),
+      ('absence', 'الحضور والغياب', Icons.fact_check_outlined),
+      ('work', 'العمل والتشغيل', Icons.assignment_turned_in_outlined),
+      ('municipalities', 'البلديات', Icons.location_city_outlined),
+      ('groups', 'المجموعات', Icons.groups_outlined),
+      ('cycles', 'دورات العمل', Icons.event_repeat_outlined),
+    ];
+    return AiSectionCard(
+      title: '1. اختر نوع التقرير',
+      subtitle: 'اختر تقريرًا واحدًا؛ ستتغير المؤشرات والنتائج تلقائيًا.',
+      feature: 'reports',
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          for (final item in reports)
+            ChoiceChip(
+              avatar: Icon(item.$3, size: 18),
+              label: AppText(item.$2),
+              selected: reportType == item.$1,
+              onSelected: (_) => _selectReport(item.$1),
+            ),
+        ],
+      ),
+    );
+  }
 
   Widget _body(ReportSnapshot s) {
     final u = context.read<AuthService>().currentUser!;
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      _hero(s),
       if (s.sourceMayBeIncomplete) const Card(child: ListTile(
         leading: Icon(Icons.warning_amber_rounded, color: Colors.orange),
         title: AppText('قد تكون بعض سجلات التقرير غير مكتملة'),
         subtitle: AppText('راجع الفترة والفلاتر قبل اعتماد التقرير.'),
       )),
+      if (s.sourceMayBeIncomplete) const SizedBox(height: 8),
+      _resultsHeader(s),
+      const SizedBox(height: 10),
+      _kpis(s),
       const SizedBox(height: 12),
-      if (!['containers', 'trips'].contains(reportType)) ...[_specializedReports(), const SizedBox(height: 12), _typeCards(), const SizedBox(height: 12)],
-      _kpis(s), const SizedBox(height: 12),
-      _selectedReport(s), const SizedBox(height: 12),
-      if (reportType == 'containers' || reportType == 'trips') _records(s),
-      _charts(s), const SizedBox(height: 12), _actions(s, u),
+      _selectedReport(s),
+      if (reportType == 'containers' || reportType == 'trips') ...[
+        const SizedBox(height: 12),
+        _records(s),
+      ],
+      _charts(s),
+      const SizedBox(height: 12),
+      _actions(s, u),
+      const SizedBox(height: 12),
+      _specializedReports(),
     ]);
   }
+
+  Widget _resultsHeader(ReportSnapshot s) => Row(children: [
+    Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      AppText('3. النتائج — ${_title()}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
+      const SizedBox(height: 3),
+      AppText(s.filterLabel(), style: const TextStyle(color: cleanOpsMuted, fontSize: 12)),
+    ])),
+    IconButton(tooltip: 'تحديث النتائج', onPressed: _refresh, icon: const Icon(Icons.refresh_rounded)),
+  ]);
 
   Widget _records(ReportSnapshot s) {
     final rows = reportType == 'containers' ? s.containerRecords : s.tripRecords;
@@ -203,25 +243,62 @@ class _ReportsCenterState extends State<ReportsCenterScreen> {
     ])));
   }
 
-  Widget _hero(ReportSnapshot s) => Card(color: navy, child: Padding(padding: const EdgeInsets.all(18), child: Row(children: [
+  Widget _hero(ReportSnapshot? s) => Card(color: navy, child: Padding(padding: const EdgeInsets.all(18), child: Row(children: [
     const Icon(Icons.analytics_rounded, color: gold, size: 42), const SizedBox(width: 12), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      const AppText('مركز التقارير والتحليلات', style: TextStyle(color: cleanOpsSurface, fontSize: 24, fontWeight: FontWeight.w900)),
-      AppText('بيانات فعلية من العمليات والحاويات والدورات', style: const TextStyle(color: cleanOpsMuted)),
-      const SizedBox(height: 5), AppText(s.periodLabel, style: const TextStyle(color: gold)),
-      const SizedBox(height: 3), AppText(_periodPresetLabel(), style: const TextStyle(color: Colors.white70, fontSize: 11)),
+      const AppText('التقارير التشغيلية', style: TextStyle(color: cleanOpsSurface, fontSize: 23, fontWeight: FontWeight.w900)),
+      const AppText('اختر التقرير والفترة، ثم راجع النتائج وصدّرها', style: TextStyle(color: cleanOpsMuted)),
+      const SizedBox(height: 5),
+      AppText(s?.periodLabel ?? _periodPresetLabel(), style: const TextStyle(color: gold)),
     ])),
     IconButton(onPressed: _refresh, icon: const Icon(Icons.refresh, color: cleanOpsSurface)),
   ])));
 
-  Widget _specializedReports() => Wrap(spacing: 8, runSpacing: 8, children: [
-    OutlinedButton.icon(onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AttendanceReportsHomeScreen())), icon: const Icon(Icons.fact_check_outlined), label: const AppText('تقارير الحضور')),
-    OutlinedButton.icon(onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const MonthlyAttendanceReportScreen())), icon: const Icon(Icons.calendar_month), label: const AppText('التقرير الشهري التقويمي')),
-    OutlinedButton.icon(onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const WorkReportsDashboard())), icon: const Icon(Icons.assignment_turned_in_outlined), label: const AppText('لوحة تقارير العمل')),
-    if (const ['jsc_coordinator','donor_manager'].contains(
-        context.read<AuthService>().currentUser?.role))
-      OutlinedButton.icon(onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ReportBrandingSettingsScreen())), icon: const Icon(Icons.branding_watermark_outlined), label: const AppText('شعارات وهوية التقرير')),
-    OutlinedButton.icon(onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ReportApprovalScreen())), icon: const Icon(Icons.fact_check_outlined), label: const AppText('اعتماد التقارير')),
-  ]);
+  Widget _specializedReports() {
+    final cards = <Widget>[
+      EcoShortcutCard(
+        title: 'سجل الحضور والإجازات',
+        subtitle: 'عرض السجلات اليومية والتفاصيل',
+        feature: 'attendance',
+        icon: Icons.fact_check_outlined,
+        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AttendanceReportsHomeScreen())),
+      ),
+      EcoShortcutCard(
+        title: 'التقرير الشهري',
+        subtitle: 'تقويم الحضور والغياب للشهر',
+        feature: 'attendance',
+        icon: Icons.calendar_month_outlined,
+        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const MonthlyAttendanceReportScreen())),
+      ),
+      EcoShortcutCard(
+        title: 'تقارير العمل اليومية',
+        subtitle: 'المسودات والتقارير المرسلة',
+        feature: 'reports',
+        icon: Icons.assignment_turned_in_outlined,
+        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const WorkReportsDashboard())),
+      ),
+      EcoShortcutCard(
+        title: 'اعتماد التقارير',
+        subtitle: 'المراجعة وحالة الموافقة',
+        feature: 'reports',
+        icon: Icons.verified_outlined,
+        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ReportApprovalScreen())),
+      ),
+      if (const ['jsc_coordinator','donor_manager'].contains(context.read<AuthService>().currentUser?.role))
+        EcoShortcutCard(
+          title: 'هوية التقرير',
+          subtitle: 'الشعارات وأسماء الجهات',
+          feature: 'settings',
+          icon: Icons.branding_watermark_outlined,
+          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ReportBrandingSettingsScreen())),
+        ),
+    ];
+    return AiSectionCard(
+      title: 'سجلات وتقارير متخصصة',
+      subtitle: 'أدوات تفصيلية مستقلة عند الحاجة.',
+      feature: 'reports',
+      child: EcoShortcutGrid(cards: cards, maxColumns: 3),
+    );
+  }
 
   void _resetFilters() {
     searchTimer?.cancel(); searchController.clear();
@@ -233,37 +310,154 @@ class _ReportsCenterState extends State<ReportsCenterScreen> {
     });
   }
 
-  Widget _filters(ReportSnapshot? s) => Card(child: Padding(padding: const EdgeInsets.all(12), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-    const AppText('اختر ما تريد عرضه', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900)),
-    const SizedBox(height: 8),
-    if (reportType != 'containers') Wrap(spacing: 8, runSpacing: 8, children: [
-      for (final entry in const {'daily':'اليوم', 'weekly':'آخر 7 أيام', 'monthly':'هذا الشهر'}.entries)
-        ChoiceChip(label: AppText(entry.value), selected: periodPreset == entry.key, onSelected: (_) => _applyPeriodPreset(entry.key)),
-      ActionChip(avatar: const Icon(Icons.date_range_rounded, size: 18), label: const AppText('فترة محددة'), onPressed: _pickCustomPeriod),
-    ]) else ...[
-      const AppText('آخر حالة مسجلة لكل حاوية، بصرف النظر عن تاريخ الإضافة.'),
-      Wrap(spacing: 6, runSpacing: 6, children: [
-        for (final entry in const {'all':'الكل', 'full':'ممتلئة', 'partial':'نصف ممتلئة', 'empty':'فارغة', 'stale':'لم تُحدّث اليوم'}.entries)
-          ChoiceChip(label: AppText(entry.value), selected: containerStatus == entry.key, onSelected: (_) { setState(() => containerStatus = entry.key); _refresh(); }),
+  int get _activeFilterCount {
+    var count = 0;
+    if (reportType != 'containers' && periodPreset != 'daily') count++;
+    if (municipality != null && municipality!.isNotEmpty) count++;
+    if (group != null && group!.isNotEmpty) count++;
+    if (reportType != 'containers' && cycle != null && cycle!.isNotEmpty) count++;
+    if (search.isNotEmpty) count++;
+    if (reportType == 'containers' && containerStatus != 'all') count++;
+    return count;
+  }
+
+  Widget _filters(ReportSnapshot? s) {
+    final filterCount = _activeFilterCount;
+    final advancedSelected = group != null || cycle != null;
+    return AiSectionCard(
+      title: '2. حدّد النطاق',
+      subtitle: reportType == 'containers'
+          ? 'تعرض الحاويات وفق آخر حالة مسجلة.'
+          : 'ابدأ بالفترة والموقع، واستخدم الخيارات الإضافية عند الحاجة.',
+      feature: 'reports',
+      trailing: filterCount == 0 ? null : Chip(label: AppText('$filterCount فلاتر نشطة')),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        AppText(
+          reportType == 'containers' ? 'حالة الحاوية' : 'الفترة الزمنية',
+          style: const TextStyle(fontWeight: FontWeight.w900),
+        ),
+        const SizedBox(height: 7),
+        if (reportType != 'containers')
+          Wrap(spacing: 8, runSpacing: 8, children: [
+            for (final entry in const {'daily':'اليوم', 'weekly':'آخر 7 أيام', 'monthly':'هذا الشهر'}.entries)
+              ChoiceChip(
+                label: AppText(entry.value),
+                selected: periodPreset == entry.key,
+                onSelected: (_) => _applyPeriodPreset(entry.key),
+              ),
+            ChoiceChip(
+              avatar: const Icon(Icons.date_range_rounded, size: 18),
+              label: AppText(periodPreset == 'custom' ? _periodPresetLabel() : 'فترة محددة'),
+              selected: periodPreset == 'custom',
+              onSelected: (_) => _pickCustomPeriod(),
+            ),
+          ])
+        else
+          Wrap(spacing: 6, runSpacing: 6, children: [
+            for (final entry in const {'all':'كل الحالات', 'full':'ممتلئة', 'partial':'نصف ممتلئة', 'empty':'فارغة', 'stale':'لم تُحدّث اليوم'}.entries)
+              ChoiceChip(
+                label: AppText(entry.value),
+                selected: containerStatus == entry.key,
+                onSelected: (_) {
+                  setState(() => containerStatus = entry.key);
+                  _refresh();
+                },
+              ),
+          ]),
+        const SizedBox(height: 12),
+        Wrap(spacing: 10, runSpacing: 10, crossAxisAlignment: WrapCrossAlignment.center, children: [
+          _drop<String>(
+            'الموقع',
+            municipality,
+            <String?,String>{
+              null:'كل المواقع المتاحة',
+              if (municipality != null) municipality!:municipality!,
+              ...{for(final x in s?.availableMunicipalities ?? <String>[]) x:x},
+            },
+            (v) {
+              setState(() { municipality = v; group = null; });
+              _refresh();
+            },
+          ),
+          SizedBox(
+            width: 310,
+            child: TextField(
+              controller: searchController,
+              onChanged: (v) {
+                searchTimer?.cancel();
+                searchTimer = Timer(const Duration(milliseconds: 350), () {
+                  if (!mounted) return;
+                  setState(() { search = v.trim(); _reload(); });
+                });
+              },
+              decoration: InputDecoration(
+                prefixIcon: const Icon(Icons.search),
+                suffixIcon: search.isEmpty ? null : IconButton(
+                  tooltip: 'مسح البحث',
+                  onPressed: () {
+                    searchController.clear();
+                    setState(() { search = ''; _reload(); });
+                  },
+                  icon: const Icon(Icons.close_rounded),
+                ),
+                labelText: tr(reportType == 'containers'
+                    ? 'ابحث برقم الحاوية أو اسم الموقع'
+                    : 'ابحث في نتائج التقرير'),
+              ),
+            ),
+          ),
+        ]),
+        const SizedBox(height: 4),
+        ExpansionTile(
+          key: ValueKey('$reportType-$advancedSelected'),
+          initiallyExpanded: advancedSelected,
+          tilePadding: EdgeInsets.zero,
+          childrenPadding: const EdgeInsets.only(bottom: 8),
+          title: const AppText('تصفية حسب المجموعة والدورة'),
+          subtitle: const AppText('اختياري — اتركها كما هي لعرض الكل'),
+          children: [
+            Wrap(spacing: 8, runSpacing: 8, children: [
+              _drop<String>(
+                'المجموعة',
+                group,
+                <String?,String>{
+                  null:'كل المجموعات',
+                  if (group != null) group!:group!,
+                  ...{for(final x in _availableGroups()) x:x},
+                },
+                (v) { setState(() => group = v); _refresh(); },
+              ),
+              if (reportType != 'containers')
+                _drop<String>(
+                  'الدورة',
+                  cycle,
+                  <String?,String>{
+                    null:'كل الدورات',
+                    if (cycle != null) cycle!:cycle!,
+                    ...{for(final x in s?.cycles ?? <String>[]) x:x},
+                  },
+                  (v) { setState(() => cycle = v); _refresh(); },
+                ),
+            ]),
+          ],
+        ),
+        Row(children: [
+          Expanded(child: AppText(
+            reportType == 'containers'
+                ? 'النطاق الحالي: آخر حالة مسجلة للحاويات'
+                : 'النطاق الحالي: ${_periodPresetLabel()}',
+            style: const TextStyle(color: cleanOpsMuted, fontSize: 12),
+          )),
+          if (filterCount > 0)
+            TextButton.icon(
+              onPressed: _resetFilters,
+              icon: const Icon(Icons.filter_alt_off_outlined),
+              label: const AppText('إعادة الضبط'),
+            ),
+        ]),
       ]),
-    ],
-    const SizedBox(height: 10),
-    _drop<String>('الموقع', municipality, <String?,String>{null:'كل المواقع المتاحة', if (municipality != null) municipality!:municipality!, ...{for(final x in s?.availableMunicipalities ?? <String>[]) x:x}}, (v){setState(() { municipality=v; group=null; }); _refresh();}),
-    const SizedBox(height: 10),
-    TextField(controller: searchController, onChanged: (v) {
-      searchTimer?.cancel();
-      searchTimer = Timer(const Duration(milliseconds: 350), () { if (!mounted) return; setState(() {search = v.trim(); _reload();}); });
-    }, decoration: InputDecoration(prefixIcon: const Icon(Icons.search), labelText: tr(reportType == 'containers' ? 'ابحث برقم الحاوية أو اسم الموقع' : 'ابحث بالموقع أو رقم النقلة'))),
-    ExpansionTile(tilePadding: EdgeInsets.zero, title: const AppText('فلاتر إضافية'), children: [
-      Wrap(spacing: 8, runSpacing: 8, children: [
-        _drop<String>('المجموعة', group, <String?,String>{null:'كل المجموعات', if (group != null) group!:group!, ...{for(final x in _availableGroups()) x:x}}, (v){setState(()=>group=v); _refresh();}),
-        if (reportType != 'containers') _drop<String>('الدورة', cycle, <String?,String>{null:'كل الدورات', if (cycle != null) cycle!:cycle!, ...{for(final x in s?.cycles ?? <String>[]) x:x}}, (v){setState(()=>cycle=v); _refresh();}),
-      ]),
-    ]),
-    AppText(reportType == 'containers' ? 'تعرض الآن: آخر حالة للحاويات' : 'تعرض الآن: ${_periodPresetLabel()}'),
-    if (s != null) AppText(s.filterLabel()),
-    TextButton.icon(onPressed: _resetFilters, icon: const Icon(Icons.filter_alt_off_outlined), label: const AppText('مسح الفلاتر')),
-  ])));
+    );
+  }
 
   List<String> _availableGroups() {
     final ops = context.read<DataService>().operations;
@@ -299,49 +493,59 @@ class _ReportsCenterState extends State<ReportsCenterScreen> {
 
   Widget _drop<T>(String label, T? value, Map<T?,String> items, ValueChanged<T?> onChanged) => SizedBox(width: 190, child: DropdownButtonFormField<T>(value: value, isExpanded: true, decoration: InputDecoration(labelText: label, isDense: true, contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12)), items: items.entries.map((e)=>DropdownMenuItem<T>(value:e.key, child: Text(e.value, maxLines: 1, overflow: TextOverflow.ellipsis))).toList(), onChanged: onChanged));
 
-  Widget _typeCards() {
-    final types = <(String, String, String, String, IconData)>[
-      ('all', 'كل التقارير', 'ملخص المؤشرات والبيانات', 'reports', Icons.dashboard_customize_rounded),
-      ('absence', 'الحضور والغياب', 'السجلات ونسب الالتزام', 'attendance', Icons.fact_check_rounded),
-      ('containers', 'تقارير الحاويات', 'الحالة والامتلاء', 'containers', Icons.delete_sweep_rounded),
-      ('work', 'تقارير العمل', 'توثيق الأنشطة اليومية', 'trips', Icons.local_shipping_rounded),
-      ('cycles', 'دورات العمل', 'المتابعة حسب الدورة', 'cycle', Icons.event_repeat_rounded),
-      ('municipalities', 'تقارير البلديات', 'حسب البلدية', 'dumpsite', Icons.location_city_rounded),
-      ('groups', 'تقارير المجموعات', 'حسب المجموعة', 'workers', Icons.groups_rounded),
-    ];
-    return EcoShortcutGrid(
-      cards: [
-        for (final item in types)
-          EcoShortcutCard(
-            title: item.$2,
-            subtitle: item.$3,
-            feature: item.$4,
-            icon: item.$5,
-            selected: reportType == item.$1,
-            onTap: () {
-              if (item.$1 == 'absence') {
-                Navigator.push(context, MaterialPageRoute(
-                  builder: (_) => const AttendanceReportsHomeScreen()));
-                return;
-              }
-              if (item.$1 == 'work') {
-                Navigator.push(context, MaterialPageRoute(
-                  builder: (_) => const WorkReportsDashboard()));
-                return;
-              }
-              setState(() => reportType = item.$1);
-              _refresh();
-            },
-          ),
-      ],
-    );
+  Widget _kpis(ReportSnapshot s) {
+    final cards = switch (reportType) {
+      'trips' => <Widget>[
+          _k('الترحيلات', '${s.trips}', navy, Icons.local_shipping_outlined),
+          _k('المجموعات', '${s.groups}', green, Icons.groups_outlined),
+          _k('البلديات', '${s.municipalities}', gold, Icons.location_city_outlined),
+        ],
+      'containers' => <Widget>[
+          _k('كل الحاويات', '${s.containersTotal}', navy, Icons.delete_outline),
+          _k('ممتلئة', '${s.containersFull}', red, Icons.warning_amber_rounded),
+          _k('نصف ممتلئة', '${s.containersPartial}', orange, Icons.hourglass_half_rounded),
+          _k('تحتاج متابعة', '${s.containerIssues}', red, Icons.build_circle_outlined),
+        ],
+      'absence' => <Widget>[
+          _k('نسبة الحضور', '${(s.attendanceRate * 100).toStringAsFixed(0)}%', green, Icons.how_to_reg),
+          _k('الحضور', '${s.attendance}', green, Icons.person_add_alt_1_outlined),
+          _k('الغياب', '${s.absence}', red, Icons.person_off_outlined),
+          _k('التزام السلامة', '${s.ppeCompliant}', aiCyan, Icons.health_and_safety_outlined),
+        ],
+      'work' => <Widget>[
+          _k('الترحيلات', '${s.trips}', navy, Icons.local_shipping_outlined),
+          _k('الحضور', '${s.attendance}', green, Icons.how_to_reg),
+          _k('المجموعات', '${s.groups}', green, Icons.groups_outlined),
+          _k('العمال', '${s.workers}', aiGreen, Icons.people_alt_outlined),
+        ],
+      'cycles' => <Widget>[
+          _k('الدورات', '${s.cycleCount}', aiCyan, Icons.event_repeat_outlined),
+          _k('الترحيلات', '${s.trips}', navy, Icons.local_shipping_outlined),
+          _k('الحضور', '${s.attendance}', green, Icons.how_to_reg),
+        ],
+      'municipalities' => <Widget>[
+          _k('البلديات', '${s.municipalities}', gold, Icons.location_city_outlined),
+          _k('الترحيلات', '${s.trips}', navy, Icons.local_shipping_outlined),
+          _k('الحضور', '${s.attendance}', green, Icons.how_to_reg),
+          _k('الحاويات', '${s.containersTotal}', aiCyan, Icons.delete_outline),
+        ],
+      'groups' => <Widget>[
+          _k('المجموعات', '${s.groups}', green, Icons.groups_outlined),
+          _k('الترحيلات', '${s.trips}', navy, Icons.local_shipping_outlined),
+          _k('الحضور', '${s.attendance}', green, Icons.how_to_reg),
+          _k('الغياب', '${s.absence}', red, Icons.person_off_outlined),
+        ],
+      _ => <Widget>[
+          _k('الترحيلات', '${s.trips}', navy, Icons.local_shipping_outlined),
+          _k('نسبة الحضور', '${(s.attendanceRate * 100).toStringAsFixed(0)}%', green, Icons.how_to_reg),
+          _k('الحاويات', '${s.containersTotal}', aiCyan, Icons.delete_outline),
+          _k('الحاويات الممتلئة', '${s.containersFull}', red, Icons.warning_amber_rounded),
+          _k('المجموعات', '${s.groups}', green, Icons.groups_outlined),
+          _k('العمال', '${s.workers}', aiGreen, Icons.people_alt_outlined),
+        ],
+    };
+    return Wrap(spacing: 8, runSpacing: 8, children: cards);
   }
-
-  Widget _kpis(ReportSnapshot s) => Wrap(spacing:8, runSpacing:8, children: [
-    if (reportType != 'containers') _k('الترحيلات', '${s.trips}', navy, Icons.local_shipping_outlined), if (!['containers', 'trips'].contains(reportType)) ...[_k('الحضور', '${(s.attendanceRate*100).toStringAsFixed(0)}%', green, Icons.how_to_reg), _k('الغياب','${s.absence}',red,Icons.person_off)],
-    if (reportType != 'trips') ...[_k('الحاويات','${s.containersTotal}',navy,Icons.delete_outline), _k('ممتلئة','${s.containersFull}',red,Icons.warning_amber), _k('مشكلات الحاويات','${s.containerIssues}',orange,Icons.build_circle_outlined)],
-    if (!['containers', 'trips'].contains(reportType)) ...[_k('المجموعات','${s.groups}',green,Icons.groups), _k('المشرفون','${s.supervisors}',aiCyan,Icons.supervisor_account), _k('العمال','${s.workers}',aiGreen,Icons.people_alt), _k('البلديات','${s.municipalities}',gold,Icons.location_city), _k('المكبات','${s.dumpsites}',orange,Icons.delete_sweep)],
-  ]);
   Widget _k(String a,String b,Color c,IconData icon)=>SizedBox(width:145,child:Card(child:Padding(padding:const EdgeInsets.all(12),child:Row(children:[Icon(icon,color:c),const SizedBox(width:8),Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[AppText(a,style:const TextStyle(fontSize:13)),AppText(b,style:TextStyle(fontSize:26,fontWeight:FontWeight.w900,color:c))]))]))));
 
   Widget _selectedReport(ReportSnapshot s) {
@@ -358,7 +562,12 @@ class _ReportsCenterState extends State<ReportsCenterScreen> {
   }
   Widget _section(String title,Widget child)=>AiSectionCard(title:title,feature:'reports',child:child);
 
-  Widget _charts(ReportSnapshot s)=>Column(children:[if(reportType=='all'||reportType=='municipalities'||reportType=='groups') _section('مقارنة الأداء',_bar(s)), if(reportType=='all') ...[_section('الحاويات',_containerStatus(s))]]);
+  Widget _charts(ReportSnapshot s) => Column(children: [
+    if (reportType == 'all' || reportType == 'municipalities' || reportType == 'groups') ...[
+      const SizedBox(height: 12),
+      _section('مقارنة الأداء', _bar(s)),
+    ],
+  ]);
 
   Widget _bar(ReportSnapshot s){final labels=s.tripsByGroup.keys.toList(); final vals=s.tripsByGroup.values.toList(); final data=vals.isEmpty?[0]:vals; final max=data.reduce((a,b)=>a>b?a:b); return SizedBox(height:220,child:BarChart(BarChartData(maxY:(max+2).toDouble(),barGroups:[for(var i=0;i<data.length;i++)BarChartGroupData(x:i,barRods:[BarChartRodData(toY:data[i].toDouble(),width:22,borderRadius:BorderRadius.circular(5))])],titlesData:FlTitlesData(bottomTitles:AxisTitles(sideTitles:SideTitles(showTitles:true,getTitlesWidget:(v,m)=>AppText(v.toInt()<labels.length?labels[v.toInt()]:'',style:const TextStyle(fontSize:9))))))));}
   Widget _lineTrips(ReportSnapshot s){final p=s.tripsByDay.entries.toList(); final spots=p.isEmpty?[const FlSpot(0,0)]:[for(var i=0;i<p.length;i++)FlSpot(i.toDouble(),p[i].value.toDouble())]; return SizedBox(height:210,child:LineChart(LineChartData(minY:0,lineBarsData:[LineChartBarData(spots:spots,isCurved:true,barWidth:3,dotData:const FlDotData(show:true))],titlesData:const FlTitlesData(bottomTitles:AxisTitles(sideTitles:SideTitles(showTitles:false)),rightTitles:AxisTitles(sideTitles:SideTitles(showTitles:false)),topTitles:AxisTitles(sideTitles:SideTitles(showTitles:false))))));}
@@ -390,13 +599,212 @@ class _ReportsCenterState extends State<ReportsCenterScreen> {
     }
   }
 
-  Widget _actions(ReportSnapshot s, AppUser u)=>_section('التصدير والاعتماد',Wrap(spacing:8,runSpacing:8,children:[
-_drop<String>('لغة التصدير', exportLanguage, const {'ar':'العربية','en':'English'}, (v){if(v!=null)setState(()=>exportLanguage=v);}),OutlinedButton.icon(
-  onPressed: u.can('reports', 'create')
-      ? () => _createSmartDraft(s, u)
-      : null,
-  icon: const Icon(Icons.auto_awesome_rounded),
-  label: const AppText('حفظ مسودة ذكية'),
-),OutlinedButton.icon(onPressed:()async{final bytes=await ReportService(context.read<DataService>()).buildOperationalPdfBytes(snapshot:s,user:u,title:'${_title()} — CleanOps', languageCode: exportLanguage);if(!mounted)return;Navigator.push(context,MaterialPageRoute(builder:(_)=>Scaffold(appBar:AppBar(bottom: const AppNavigationBar(), title:const AppText('معاينة التقرير')),body:PdfPreview(build:(_)=>Uint8List.fromList(bytes)))));},icon:const Icon(Icons.preview_outlined),label:const AppText('معاينة / طباعة')),FilledButton.icon(onPressed:_canExportOfficial(s,u)?()async{try{final path=await ReportService(context.read<DataService>()).exportOperationalPdf(snapshot:s,user:u,title:'${_title()} — CleanOps', languageCode: exportLanguage);if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:AppText(path==null?'تعذر إنشاء PDF':'تم إنشاء PDF: $path')));}catch(e){if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:AppText('فشل إنشاء PDF: $e')));}}:null,icon:const Icon(Icons.picture_as_pdf),label:const AppText('تصدير PDF')),OutlinedButton.icon(onPressed:_canExportOfficial(s,u)?()async{try{final path=await ReportService(context.read<DataService>()).exportOperationalExcel(snapshot:s,user:u,languageCode:exportLanguage);if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:AppText(path==null?'تعذر إنشاء Excel':'تم إنشاء Excel: $path')));}catch(e){if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:AppText('فشل تصدير Excel: $e')));}}:null,icon:const Icon(Icons.table_view_outlined),label:const AppText('تصدير Excel')),OutlinedButton.icon(onPressed:_canExportOfficial(s,u)?()async{try{final path=await ReportService(context.read<DataService>()).exportOperationalCsv(snapshot:s,user:u,languageCode:exportLanguage);if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:AppText(path==null?'تعذر إنشاء CSV':'تم إنشاء CSV: $path')));}catch(e){if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:AppText('فشل تصدير CSV: $e')));}}:null,icon:const Icon(Icons.file_download_outlined),label:const AppText('تصدير CSV')),OutlinedButton.icon(onPressed:u.role == 'municipality_coordinator' ? ()async{final now=DateTime.now().toIso8601String();await context.read<DataService>().enqueue('report_approval','create',{'id':s.reportId,'title':'${_periodPresetLabel()} — ${_title()}','reportType':reportType,'search':s.search,'containerStatus':s.containerStatus,'filterLabel':s.filterLabel(),'period':s.periodLabel,'municipality':municipality,'group':group,'cycle':cycle,'requestedBy':u.id,'municipalityCoordinatorId':u.id,'municipalityName': municipality ?? (u.scope != 'assigned_only' ? u.scope : ''),'councilName': _councilForReport(municipality ?? u.scope),'snapshot': {'trips': s.trips, 'attendance': s.attendance, 'absence': s.absence, 'workers': s.workers, 'supervisors': s.supervisors, 'groups': s.groups, 'containers': s.containersTotal, 'emergencies': s.emergencies},'createdAt':now,'status':'submitted','isDeleted':false});await context.read<DataService>().writeAudit(actorId:u.id,operation:'REQUEST_REPORT_APPROVAL',targetId:s.reportId,after:{'reportType':reportType,'search':s.search,'containerStatus':s.containerStatus,'filterLabel':s.filterLabel(),'period':s.periodLabel,'periodPreset':periodPreset,'status':'submitted','municipality':municipality,'group':group,'cycle':cycle});if(mounted){ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:AppText('تم إرسال التقرير إلى دورة المراجعة.')));Navigator.push(context,MaterialPageRoute(builder:(_)=>const ReportApprovalScreen()));}} : null,icon:const Icon(Icons.verified_outlined),label:const AppText('إرسال التقرير للمراجعة'))]));
+  Widget _actions(ReportSnapshot snapshot, AppUser user) {
+    final approved = _canExportOfficial(snapshot, user);
+    return AiSectionCard(
+      title: '4. المعاينة والتصدير',
+      subtitle: 'عاين التقرير أولًا، ثم أرسله للمراجعة أو صدّر النسخة المعتمدة.',
+      feature: 'reports',
+      trailing: Icon(
+        approved ? Icons.verified_rounded : Icons.pending_actions_rounded,
+        color: approved ? green : orange,
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
+          _drop<String>(
+            'لغة التقرير',
+            exportLanguage,
+            const {'ar':'العربية','en':'English'},
+            (value) {
+              if (value != null) setState(() => exportLanguage = value);
+            },
+          ),
+          OutlinedButton.icon(
+            onPressed: () => _previewReport(snapshot, user),
+            icon: const Icon(Icons.preview_outlined),
+            label: const AppText('معاينة وطباعة'),
+          ),
+          OutlinedButton.icon(
+            onPressed: user.can('reports', 'create')
+                ? () => _createSmartDraft(snapshot, user)
+                : null,
+            icon: const Icon(Icons.auto_awesome_rounded),
+            label: const AppText('حفظ مسودة'),
+          ),
+          if (user.role == 'municipality_coordinator')
+            FilledButton.tonalIcon(
+              onPressed: () => _requestApproval(snapshot, user),
+              icon: const Icon(Icons.send_rounded),
+              label: const AppText('إرسال للمراجعة'),
+            ),
+        ]),
+        const SizedBox(height: 12),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: approved ? green.withOpacity(.08) : orange.withOpacity(.08),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: (approved ? green : orange).withOpacity(.25)),
+          ),
+          child: Row(children: [
+            Icon(approved ? Icons.verified_outlined : Icons.info_outline_rounded,
+                color: approved ? green : orange),
+            const SizedBox(width: 8),
+            Expanded(child: AppText(
+              approved
+                  ? 'التقرير معتمد وجاهز للتصدير الرسمي.'
+                  : 'التصدير الرسمي يتاح بعد اعتماد التقرير. المعاينة والطباعة متاحتان الآن.',
+              style: const TextStyle(fontSize: 12),
+            )),
+          ]),
+        ),
+        const SizedBox(height: 10),
+        Wrap(spacing: 8, runSpacing: 8, children: [
+          FilledButton.icon(
+            onPressed: approved ? () => _exportPdf(snapshot, user) : null,
+            icon: const Icon(Icons.picture_as_pdf_outlined),
+            label: const AppText('PDF معتمد'),
+          ),
+          OutlinedButton.icon(
+            onPressed: approved ? () => _exportExcel(snapshot, user) : null,
+            icon: const Icon(Icons.table_view_outlined),
+            label: const AppText('Excel'),
+          ),
+          OutlinedButton.icon(
+            onPressed: approved ? () => _exportCsv(snapshot, user) : null,
+            icon: const Icon(Icons.file_download_outlined),
+            label: const AppText('CSV'),
+          ),
+        ]),
+      ]),
+    );
+  }
+
+  Future<void> _previewReport(ReportSnapshot snapshot, AppUser user) async {
+    try {
+      final bytes = await ReportService(context.read<DataService>()).buildOperationalPdfBytes(
+        snapshot: snapshot,
+        user: user,
+        title: '${_title()} — CleanOps',
+        languageCode: exportLanguage,
+      );
+      if (!mounted) return;
+      Navigator.push(context, MaterialPageRoute(builder: (_) => Scaffold(
+        appBar: AppBar(
+          bottom: const AppNavigationBar(),
+          title: const AppText('معاينة التقرير'),
+        ),
+        body: PdfPreview(build: (_) => Uint8List.fromList(bytes)),
+      )));
+    } catch (error) {
+      _showMessage('تعذرت معاينة التقرير: $error');
+    }
+  }
+
+  Future<void> _exportPdf(ReportSnapshot snapshot, AppUser user) async {
+    try {
+      final path = await ReportService(context.read<DataService>()).exportOperationalPdf(
+        snapshot: snapshot,
+        user: user,
+        title: '${_title()} — CleanOps',
+        languageCode: exportLanguage,
+      );
+      _showMessage(path == null ? 'تعذر إنشاء PDF.' : 'تم إنشاء ملف PDF: $path');
+    } catch (error) {
+      _showMessage('فشل إنشاء PDF: $error');
+    }
+  }
+
+  Future<void> _exportExcel(ReportSnapshot snapshot, AppUser user) async {
+    try {
+      final path = await ReportService(context.read<DataService>()).exportOperationalExcel(
+        snapshot: snapshot,
+        user: user,
+        languageCode: exportLanguage,
+      );
+      _showMessage(path == null ? 'تعذر إنشاء Excel.' : 'تم إنشاء ملف Excel: $path');
+    } catch (error) {
+      _showMessage('فشل إنشاء Excel: $error');
+    }
+  }
+
+  Future<void> _exportCsv(ReportSnapshot snapshot, AppUser user) async {
+    try {
+      final path = await ReportService(context.read<DataService>()).exportOperationalCsv(
+        snapshot: snapshot,
+        user: user,
+        languageCode: exportLanguage,
+      );
+      _showMessage(path == null ? 'تعذر إنشاء CSV.' : 'تم إنشاء ملف CSV: $path');
+    } catch (error) {
+      _showMessage('فشل إنشاء CSV: $error');
+    }
+  }
+
+  Future<void> _requestApproval(ReportSnapshot snapshot, AppUser user) async {
+    try {
+      final now = DateTime.now().toIso8601String();
+      final data = context.read<DataService>();
+      await data.enqueue('report_approval', 'create', {
+        'id': snapshot.reportId,
+        'title': '${_periodPresetLabel()} — ${_title()}',
+        'reportType': reportType,
+        'search': snapshot.search,
+        'containerStatus': snapshot.containerStatus,
+        'filterLabel': snapshot.filterLabel(),
+        'period': snapshot.periodLabel,
+        'municipality': municipality,
+        'group': group,
+        'cycle': cycle,
+        'requestedBy': user.id,
+        'municipalityCoordinatorId': user.id,
+        'municipalityName': municipality ?? (user.scope != 'assigned_only' ? user.scope : ''),
+        'councilName': _councilForReport(municipality ?? user.scope),
+        'snapshot': {
+          'trips': snapshot.trips,
+          'attendance': snapshot.attendance,
+          'absence': snapshot.absence,
+          'workers': snapshot.workers,
+          'supervisors': snapshot.supervisors,
+          'groups': snapshot.groups,
+          'containers': snapshot.containersTotal,
+          'emergencies': snapshot.emergencies,
+        },
+        'createdAt': now,
+        'status': 'submitted',
+        'isDeleted': false,
+      });
+      await data.writeAudit(
+        actorId: user.id,
+        operation: 'REQUEST_REPORT_APPROVAL',
+        targetId: snapshot.reportId,
+        after: {
+          'reportType': reportType,
+          'search': snapshot.search,
+          'containerStatus': snapshot.containerStatus,
+          'filterLabel': snapshot.filterLabel(),
+          'period': snapshot.periodLabel,
+          'periodPreset': periodPreset,
+          'status': 'submitted',
+          'municipality': municipality,
+          'group': group,
+          'cycle': cycle,
+        },
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: AppText('تم إرسال التقرير إلى دورة المراجعة.')),
+      );
+      Navigator.push(context, MaterialPageRoute(builder: (_) => const ReportApprovalScreen()));
+    } catch (error) {
+      _showMessage('تعذر إرسال التقرير للمراجعة: $error');
+    }
+  }
+
+  void _showMessage(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: AppText(message)));
+  }
   String _title()=>switch(reportType){'trips'=>'تقرير عمليات الترحيل','absence'=>'تقرير الغياب والحضور','containers'=>'تقرير الحاويات','work'=>'تقرير العمل والتشغيل','cycles'=>'تقرير الدورات','municipalities'=>'تقرير البلديات','groups'=>'تقرير المجموعات',_=>'التقرير التنفيذي الشامل'};
 }

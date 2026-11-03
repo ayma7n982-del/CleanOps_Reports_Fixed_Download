@@ -88,6 +88,23 @@ void main() {
     expect(source, contains("Expanded("));
   });
 
+  test('reports use one clear workflow without duplicate period controls', () {
+    final source = File('lib/presentation/screens/reports_center.dart')
+        .readAsStringSync();
+    expect(source, contains("title: '1. اختر نوع التقرير'"));
+    expect(source, contains("title: '2. حدّد النطاق'"));
+    expect(source, contains("'3. النتائج — \${_title()}'"));
+    expect(source, contains("title: '4. المعاينة والتصدير'"));
+    expect(
+      RegExp("for \\(final entry in const \\{'daily':'اليوم'")
+          .allMatches(source)
+          .length,
+      1,
+    );
+    expect(source, isNot(contains('تقارير أخرى')));
+    expect(source, isNot(contains('Widget _typeCards()')));
+  });
+
   test('obsolete brand shield is not used by any Flutter header', () {
     for (final file in [
       'lib/main.dart',

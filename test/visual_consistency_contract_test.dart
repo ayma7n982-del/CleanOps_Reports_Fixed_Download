@@ -57,8 +57,9 @@ void main() {
     expect(supervisor, isNot(contains('void _openAction(')));
 
     final reports = source('lib/presentation/screens/reports_center.dart');
-    expect(reports, contains("item.\$1 == 'absence'"));
-    expect(reports, contains("item.\$1 == 'work'"));
+    expect(reports, contains("title: 'سجل الحضور والإجازات'"));
+    expect(reports, contains("title: 'تقارير العمل اليومية'"));
+    expect(reports, contains('EcoShortcutGrid(cards: cards'));
   });
 
   test('native and Flutter splash use the same brand and keep auth routing',
