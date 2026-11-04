@@ -21,6 +21,7 @@ import '../widgets/app_design.dart';
 import 'monthly_attendance_report_screen.dart';
 import 'group_attendance_report_screen.dart';
 import 'municipality_attendance_report_screen.dart';
+import 'all_municipalities_attendance_report_screen.dart';
 
 class AttendanceReportsHomeScreen extends StatefulWidget {
   final bool leavesOnly;
@@ -97,6 +98,13 @@ class _AttendanceReportsHomeScreenState extends State<AttendanceReportsHomeScree
     return Directionality(textDirection: arabic ? ui.TextDirection.rtl : ui.TextDirection.ltr, child: Scaffold(
       appBar: AppBar(bottom: const AppNavigationBar(), title: AppText(widget.leavesOnly ? 'سجل الإجازات والأذونات' : 'تقارير الحضور'), actions: [IconButton(tooltip: 'التقرير الشهري التقويمي', onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const MonthlyAttendanceReportScreen())), icon: const Icon(Icons.calendar_month))]),
       body: ListView(padding: const EdgeInsets.all(14), children: [
+        if (currentUser?.role == 'jsc_coordinator' || currentUser?.role == 'donor_manager') Card(child: ListTile(
+          leading: const Icon(Icons.account_balance_outlined),
+          title: const AppText('تقرير حضور وغياب البلديات الشامل - 20 يومًا'),
+          subtitle: const AppText('ملخص البلديات والمجموعات بالأعداد، دون أسماء العمال أو المشرفين'),
+          trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AllMunicipalitiesAttendanceReportScreen())),
+        )),
         if (currentUser?.role == 'municipality_coordinator') Card(child: ListTile(
           leading: const Icon(Icons.location_city_outlined),
           title: const AppText('تقرير حضور وغياب البلدية - 20 يومًا'),

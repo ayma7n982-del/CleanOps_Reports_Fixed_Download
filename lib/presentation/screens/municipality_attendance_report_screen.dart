@@ -106,7 +106,7 @@ class _MunicipalityAttendanceReportScreenState extends State<MunicipalityAttenda
     if (['present', 'حضور', 'late', 'متأخر'].contains(status)) return 'ح';
     if (['absent', 'غياب', 'excused_absence', 'unexcused_absence'].contains(status)) return 'غ';
     if (['leave', 'on_leave', 'إجازة', 'permission', 'إذن خاص'].contains(status)) return 'إ';
-    if (['mission', 'on_duty', 'مهمة'].contains(status)) return 'م';
+    if (['mission', 'on_duty', 'external_task', 'مهمة', 'مهمة خارج المجموعة'].contains(status)) return 'م';
     return '—';
   }
 
