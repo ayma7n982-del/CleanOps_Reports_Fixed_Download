@@ -30,6 +30,7 @@ class _MunicipalityAttendanceReportScreenState extends State<MunicipalityAttenda
   List<Map<String, dynamic>> roster = [];
   bool loading = true;
   bool busy = false;
+  bool attendanceLoaded = false;
   String? loadError;
 
   @override
@@ -70,8 +71,10 @@ class _MunicipalityAttendanceReportScreenState extends State<MunicipalityAttenda
       if (mounted) setState(() { loading = false; loadError = 'تعذر الاتصال بقاعدة بيانات الأسماء.'; });
       return;
     }
-    if (mounted) setState(() { loading = true; loadError = null; });
+    if (mounted) setState(() { loading = true; attendanceLoaded = false; loadError = null; });
     try {
+      final data = context.read<DataService>();
+      if (!data.online) throw StateError('لا يوجد اتصال للتحقق من سجلات الفترة.');
       final people = <Map<String, dynamic>>[];
       for (final role in ['group_supervisor', 'worker', 'worker_with_cart']) {
         final query = await FirebaseFirestore.instance.collection('users')
@@ -84,12 +87,17 @@ class _MunicipalityAttendanceReportScreenState extends State<MunicipalityAttenda
           people.add({...data, 'id': doc.id, 'reportRole': role});
         }
       }
-      if (mounted) setState(() { roster = people; loading = false; });
+      final previousRefresh = data.lastDataRefresh;
+      await data.refreshOperations(limit: 10000);
+      if (data.operationsCapped || data.lastDataRefresh == previousRefresh) {
+        throw StateError('تعذر التأكد من اكتمال سجلات الحضور.');
+      }
+      if (mounted) setState(() { roster = people; attendanceLoaded = true; loading = false; });
     } catch (_) {
       if (mounted) setState(() {
         roster = [];
         loading = false;
-        loadError = 'تعذر تحميل أسماء البلدية. تحقق من الاتصال والصلاحية ثم أعد المحاولة.';
+        loadError = 'تعذر تحميل الأسماء أو سجلات الحضور كاملة. تحقق من الاتصال والصلاحية ثم أعد المحاولة.';
       });
     }
   }
@@ -125,7 +133,7 @@ class _MunicipalityAttendanceReportScreenState extends State<MunicipalityAttenda
     }
     final missingNames = roster.where((p) => !_hasRealName(p)).length;
     final missingGroups = roster.length - groups.values.fold<int>(0, (sum, people) => sum + people.length);
-    final ready = actor?.role == 'municipality_coordinator' && !loading && loadError == null &&
+    final ready = actor?.role == 'municipality_coordinator' && attendanceLoaded && !loading && loadError == null &&
         roster.isNotEmpty && groups.isNotEmpty && missingNames == 0 && missingGroups == 0 && entries.isNotEmpty;
     return Directionality(textDirection: TextDirection.rtl, child: Scaffold(
       appBar: AppBar(title: const AppText('حضور وغياب البلدية - 20 يومًا')),
