@@ -406,6 +406,21 @@ class _AllMunicipalitiesAttendanceReportScreenState
                   cell('${group.total.noEntry}'),
                 ]),
               ])),
+            pw.SizedBox(height: 17),
+            pw.Container(padding: const pw.EdgeInsets.all(13),
+                decoration: pw.BoxDecoration(color: PdfColors.teal50,
+                    borderRadius: pw.BorderRadius.circular(8)),
+                child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+                  txt('قراءة أعداد اليوم', strong: true, size: 10),
+                  pw.SizedBox(height: 5),
+                  txt('تكتب الخانة حضور/غياب. تشمل إجماليات الحضور والغياب والإجازة والمهمة وعدم التسجيل العمال والمشرفين، ولا يظهر اسم أي فرد.', size: 9),
+                ])),
+            pw.SizedBox(height: 18),
+            pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [
+              txt('إعداد التقرير: ____________________', size: 9),
+              txt('مراجعة مجلس الخدمات: ____________________', size: 9),
+              txt('تاريخ الاعتماد: ____________________', size: 9),
+            ]),
           ]));
     }
     return Uint8List.fromList(await doc.save());
