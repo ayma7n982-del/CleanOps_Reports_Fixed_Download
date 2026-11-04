@@ -19,6 +19,8 @@ import '../../core/models/core_models.dart';
 import '../../core/services/pdf_file_saver.dart';
 import '../widgets/app_design.dart';
 import 'monthly_attendance_report_screen.dart';
+import 'group_attendance_report_screen.dart';
+import 'municipality_attendance_report_screen.dart';
 
 class AttendanceReportsHomeScreen extends StatefulWidget {
   final bool leavesOnly;
@@ -95,6 +97,20 @@ class _AttendanceReportsHomeScreenState extends State<AttendanceReportsHomeScree
     return Directionality(textDirection: arabic ? ui.TextDirection.rtl : ui.TextDirection.ltr, child: Scaffold(
       appBar: AppBar(bottom: const AppNavigationBar(), title: AppText(widget.leavesOnly ? 'سجل الإجازات والأذونات' : 'تقارير الحضور'), actions: [IconButton(tooltip: 'التقرير الشهري التقويمي', onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const MonthlyAttendanceReportScreen())), icon: const Icon(Icons.calendar_month))]),
       body: ListView(padding: const EdgeInsets.all(14), children: [
+        if (currentUser?.role == 'municipality_coordinator') Card(child: ListTile(
+          leading: const Icon(Icons.location_city_outlined),
+          title: const AppText('تقرير حضور وغياب البلدية - 20 يومًا'),
+          subtitle: const AppText('ملخص المجموعات وكشوف المشرفين والعمال بالأسماء المسجلة'),
+          trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const MunicipalityAttendanceReportScreen())),
+        )),
+        Card(child: ListTile(
+          leading: const Icon(Icons.groups_outlined),
+          title: const AppText('تقرير حضور وغياب المجموعة - 20 يومًا'),
+          subtitle: const AppText('الكشف المعتمد للمشرفين والعمال مع هوية الجهات والدورة'),
+          trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const GroupAttendanceReportScreen())),
+        )),
         Card(child: Padding(padding: const EdgeInsets.all(12), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           const AppText('تقرير الحضور والغياب التفصيلي / Detailed Attendance Report', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: Color(0xFF07589B))),
           const SizedBox(height: 8),
@@ -180,7 +196,7 @@ class _AttendanceReportsHomeScreenState extends State<AttendanceReportsHomeScree
     final councilName = prefs.getString('report_council_name') ?? '';
     final projectName = prefs.getString('report_project_name') ?? '';
     final doc = pw.Document();
-    doc.addPage(pw.MultiPage(pageFormat: PdfPageFormat.a4.landscape, margin: const pw.EdgeInsets.all(28), theme: pw.ThemeData.withFont(base: regular, bold: bold), build: (_) => [
+    doc.addPage(pw.MultiPage(pageFormat: PdfPageFormat.a4.landscape, margin: const pw.EdgeInsets.all(28), textDirection: en ? pw.TextDirection.ltr : pw.TextDirection.rtl, theme: pw.ThemeData.withFont(base: regular, bold: bold), build: (_) => [
       pw.Row(children: [if (municipalityLogo != null) pw.Container(width: 36,height:36,child:pw.Image(municipalityLogo)), if (councilLogo != null) pw.Padding(padding: const pw.EdgeInsets.only(left:4),child:pw.Container(width:36,height:36,child:pw.Image(councilLogo))), if (unicefLogo != null) pw.Padding(padding: const pw.EdgeInsets.only(left:4),child:pw.Container(width:36,height:36,child:pw.Image(unicefLogo))), pw.SizedBox(width:8), pw.Expanded(child:pw.Column(crossAxisAlignment:pw.CrossAxisAlignment.start,children:[if(municipalityName.isNotEmpty) pw.Text(municipalityName,style:pw.TextStyle(font:bold,fontSize:10)),if(councilName.isNotEmpty) pw.Text(councilName,style:pw.TextStyle(font:bold,fontSize:10)),if(projectName.isNotEmpty) pw.Text('$projectLabel: $projectName',style:pw.TextStyle(font:regular,fontSize:8)),pw.Text(en ? 'UNICEF' : 'اليونيسف (UNICEF)',style:pw.TextStyle(font:bold,fontSize:9))]))]),
       pw.SizedBox(height: 8),
       pw.Text(en ? 'Detailed Attendance and Absence Report' : 'تقرير الحضور والغياب التفصيلي', style: pw.TextStyle(font: bold, fontSize: 16)),
