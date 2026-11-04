@@ -216,20 +216,55 @@ class _MunicipalityAttendanceReportScreenState extends State<MunicipalityAttenda
     pw.Widget cell(String value, {bool strong = false, PdfColor color = PdfColors.blueGrey900}) =>
         pw.Container(alignment: pw.Alignment.center, height: 28,
             padding: const pw.EdgeInsets.symmetric(horizontal: 3), child: txt(value, strong: strong, size: 7.5, color: color));
+    const weekdays = ['الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت', 'الأحد'];
+    pw.Widget dayHeading(DateTime day) => pw.Container(
+        height: 38, alignment: pw.Alignment.center,
+        color: day.weekday == DateTime.friday ? PdfColors.teal900 : PdfColors.teal700,
+        child: pw.Column(mainAxisAlignment: pw.MainAxisAlignment.center, children: [
+          txt(weekdays[day.weekday - 1], strong: true, size: 6.1, color: PdfColors.white),
+          pw.SizedBox(height: 2),
+          txt('${day.day}/${day.month}', strong: true, size: 7.4, color: PdfColors.white),
+        ]));
+    pw.Widget attendanceCell(String value, DateTime day) {
+      final background = switch (value) {
+        'ح' => PdfColors.green50,
+        'غ' => PdfColors.red50,
+        'إ' => PdfColors.orange50,
+        'م' => PdfColors.purple50,
+        _ => day.weekday == DateTime.friday ? PdfColors.teal50 : PdfColors.white,
+      };
+      final color = switch (value) {
+        'ح' => PdfColors.green700,
+        'غ' => PdfColors.red700,
+        'إ' => PdfColors.orange800,
+        'م' => PdfColors.purple700,
+        _ => PdfColors.grey500,
+      };
+      return pw.Container(height: 28, alignment: pw.Alignment.center, color: background,
+          child: txt(value, size: 8, strong: value != '—', color: color));
+    }
     pw.Widget heading(String title) => pw.Directionality(textDirection: pw.TextDirection.rtl,
         child: pw.Column(children: [
-          pw.Container(padding: const pw.EdgeInsets.all(7),
-              decoration: pw.BoxDecoration(border: pw.Border.all(color: PdfColors.teal100)),
+          pw.Container(padding: const pw.EdgeInsets.symmetric(horizontal: 11, vertical: 7),
+              decoration: pw.BoxDecoration(color: PdfColors.teal50,
+                  borderRadius: pw.BorderRadius.circular(9)),
               child: pw.Row(children: [
                 for (var i = 0; i < 3; i++) pw.Expanded(child: pw.Row(children: [
-                  if (logos[i] != null) pw.Container(width: 38, height: 38,
+                  if (logos[i] != null) pw.Container(width: 35, height: 35,
                       margin: const pw.EdgeInsets.only(left: 7), child: pw.Image(logos[i]!, fit: pw.BoxFit.contain)),
-                  pw.Expanded(child: txt([municipality, council, 'اليونيسف UNICEF'][i], strong: true)),
+                  pw.Expanded(child: txt([municipality, council, 'اليونيسف UNICEF'][i], strong: true, size: 9)),
                 ])),
               ])),
-          pw.SizedBox(height: 8), txt(title, strong: true, size: 16),
-          pw.SizedBox(height: 4), txt('الدورة: $cycle   •   الفترة: ${_day(start)} — ${_day(days.last)}', size: 9),
-          pw.SizedBox(height: 9),
+          pw.SizedBox(height: 8),
+          pw.Container(padding: const pw.EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              decoration: pw.BoxDecoration(color: PdfColors.teal800,
+                  borderRadius: pw.BorderRadius.circular(8)),
+              child: pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [
+                txt(title, strong: true, size: 16, color: PdfColors.white),
+                txt('الدورة: $cycle   |   ${_day(start)} - ${_day(days.last)}',
+                    size: 9, color: PdfColors.white),
+              ])),
+          pw.SizedBox(height: 11),
         ]));
     pw.Widget footer(pw.Context context) => pw.Directionality(textDirection: pw.TextDirection.rtl,
         child: pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [
@@ -245,13 +280,24 @@ class _MunicipalityAttendanceReportScreenState extends State<MunicipalityAttenda
         header: (_) => heading('تقرير حضور وغياب البلدية'), footer: footer,
         build: (_) => [
           pw.Directionality(textDirection: pw.TextDirection.rtl, child: pw.Row(children: [
-            for (final metric in ['${sorted.length} مجموعات', '${all.length} فردًا', '${count(all, 'ح')} حضور',
-              '${count(all, 'غ')} غياب', '${count(all, 'إ')} إجازة', '${count(all, 'م')} مهمة'])
-              pw.Expanded(child: pw.Container(padding: const pw.EdgeInsets.all(13),
-                  margin: const pw.EdgeInsets.only(left: 6), color: PdfColors.teal50,
-                  child: txt(metric, strong: true, size: 11))),
+            for (final metric in [
+              ('المجموعات', '${sorted.length}'), ('الأفراد', '${all.length}'),
+              ('حضور', '${count(all, 'ح')}'), ('غياب', '${count(all, 'غ')}'),
+              ('إجازة', '${count(all, 'إ')}'), ('مهمة', '${count(all, 'م')}')
+            ]) pw.Expanded(child: pw.Container(
+              padding: const pw.EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              margin: const pw.EdgeInsets.only(left: 7),
+              decoration: pw.BoxDecoration(color: PdfColors.teal50,
+                  borderRadius: pw.BorderRadius.circular(8)),
+              child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+                txt(metric.$1, size: 8, color: PdfColors.teal800),
+                pw.SizedBox(height: 3), txt(metric.$2, strong: true, size: 18),
+              ]),
+            )),
           ])),
-          pw.SizedBox(height: 15),
+          pw.SizedBox(height: 18),
+          txt('ملخص المجموعات', strong: true, size: 12),
+          pw.SizedBox(height: 8),
           pw.Directionality(textDirection: pw.TextDirection.rtl, child: pw.Table(
             border: pw.TableBorder.all(color: PdfColors.teal100, width: .5), children: [
               pw.TableRow(decoration: const pw.BoxDecoration(color: PdfColors.teal700),
@@ -266,7 +312,22 @@ class _MunicipalityAttendanceReportScreenState extends State<MunicipalityAttenda
               ]),
             ])),
           pw.SizedBox(height: 18),
-          txt('كل صفحة تالية تعرض أسماء مشرفي وعمال المجموعة وحالتهم في الأيام العشرين. الخانات الخالية من التسجيل محددة بشرطة.', size: 9),
+          pw.Container(padding: const pw.EdgeInsets.all(13),
+              decoration: pw.BoxDecoration(color: PdfColors.teal50,
+                  borderRadius: pw.BorderRadius.circular(8)),
+              child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+                txt('طريقة قراءة الكشف', strong: true, size: 10),
+                pw.SizedBox(height: 5),
+                txt('تُعرض أيام الفترة من اليمين إلى اليسار. اسم اليوم فوق التاريخ. تشير الشرطة إلى عدم وجود تسجيل، ولا تُحسب غيابًا.', size: 9),
+                pw.SizedBox(height: 3),
+                txt('الصف المظلل للمشرف؛ وتعرض الصفحات التالية الأسماء المسجلة في كل مجموعة على حدة.', size: 9),
+              ])),
+          pw.SizedBox(height: 18),
+          pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [
+            txt('إعداد منسق البلدية: ____________________', size: 9),
+            txt('مراجعة مجلس الخدمات: ____________________', size: 9),
+            txt('تاريخ الاعتماد: ____________________', size: 9),
+          ]),
         ]));
     for (final group in sorted) {
       final people = [...group.value]..sort((a, b) {
@@ -279,22 +340,28 @@ class _MunicipalityAttendanceReportScreenState extends State<MunicipalityAttenda
           theme: pw.ThemeData.withFont(base: regular, bold: bold),
           header: (_) => heading('كشف المجموعة: $name'), footer: footer,
           build: (_) => [
+            pw.Directionality(textDirection: pw.TextDirection.rtl, child: pw.Row(children: [
+              pw.Expanded(child: txt('المشرف: ${people.where((p) => p['reportRole'] == 'group_supervisor').map(_name).join('، ')}', strong: true, size: 10)),
+              txt('${people.where((p) => p['reportRole'] != 'group_supervisor').length} عاملًا   |   20 يومًا', size: 9),
+            ])),
+            pw.SizedBox(height: 9),
             pw.Directionality(textDirection: pw.TextDirection.rtl, child: pw.Table(
               border: pw.TableBorder.all(color: PdfColors.teal100, width: .5),
               columnWidths: {0: const pw.FixedColumnWidth(28), 1: const pw.FixedColumnWidth(160),
-                2: const pw.FixedColumnWidth(52), for (var i = 3; i < 23; i++) i: const pw.FixedColumnWidth(30),
+                2: const pw.FixedColumnWidth(52), for (var i = 3; i < 23; i++) i: const pw.FixedColumnWidth(34),
                 for (var i = 23; i < 28; i++) i: const pw.FixedColumnWidth(40)},
               children: [
                 pw.TableRow(decoration: const pw.BoxDecoration(color: PdfColors.teal700), children: [
-                  for (final h in ['#', 'الاسم', 'الصفة', ...days.map((d) => '${d.day}/${d.month}'),
-                    'حضور', 'غياب', 'إجازة', 'مهمة', 'بدون']) cell(h, strong: true, color: PdfColors.white),
+                  for (final h in ['#', 'الاسم', 'الصفة']) cell(h, strong: true, color: PdfColors.white),
+                  for (final day in days) dayHeading(day),
+                  for (final h in ['حضور', 'غياب', 'إجازة', 'مهمة', 'بدون']) cell(h, strong: true, color: PdfColors.white),
                 ]),
                 for (var i = 0; i < people.length; i++) pw.TableRow(
                   decoration: pw.BoxDecoration(color: people[i]['reportRole'] == 'group_supervisor'
                       ? PdfColors.teal50 : PdfColors.white), children: [
                     cell('${i + 1}'), cell(_name(people[i]), strong: true),
                     cell(people[i]['reportRole'] == 'group_supervisor' ? 'مشرف' : 'عامل'),
-                    for (final day in days) cell(mark(people[i], day)),
+                    for (final day in days) attendanceCell(mark(people[i], day), day),
                     for (final kind in ['ح', 'غ', 'إ', 'م', '—'])
                       cell('${days.where((day) => mark(people[i], day) == kind).length}'),
                   ]),
