@@ -3,10 +3,13 @@ import '../widgets/app_navigation_bar.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
+import 'package:printing/printing.dart';
 
 import '../../core/localization.dart';
 import '../../core/services/auth_service.dart';
 import '../../core/services/data_service.dart';
+import '../../core/services/daily_work_report_pdf.dart';
+import '../../core/services/pdf_file_saver.dart';
 import 'work_entry_form_screen.dart';
 import '../../core/services/work_report_sources.dart';
 import '../../core/services/work_report_summary.dart';
@@ -20,6 +23,7 @@ class WorkReportsDashboard extends StatefulWidget {
 
 class _WorkReportsDashboardState extends State<WorkReportsDashboard> {
   final Set<String> _submitting = {};
+  final Set<String> _printing = {};
   DateTime startDate = DateTime(DateTime.now().year, DateTime.now().month, 1);
   DateTime endDate = DateTime.now();
 
@@ -295,6 +299,22 @@ class _WorkReportsDashboardState extends State<WorkReportsDashboard> {
                     _line('العمل المكتمل', '${e['completedWork'] ?? '—'}'),
                     _line('المشكلات', '${e['problems'] ?? '—'}'),
                     _line('المقترحات', '${e['suggestions'] ?? '—'}'),
+                    if (e['recordType'] == 'daily_work' &&
+                        user?.can('reports', 'export') == true)
+                      Wrap(spacing: 8, children: [
+                        OutlinedButton.icon(
+                          onPressed: _printing.contains('${e['id']}')
+                              ? null : () => _outputPdf(e, preview: true),
+                          icon: const Icon(Icons.preview_outlined),
+                          label: const AppText('معاينة التقرير اليومي'),
+                        ),
+                        FilledButton.tonalIcon(
+                          onPressed: _printing.contains('${e['id']}')
+                              ? null : () => _outputPdf(e, preview: false),
+                          icon: const Icon(Icons.picture_as_pdf_outlined),
+                          label: const AppText('تصدير PDF'),
+                        ),
+                      ]),
                   ],
                 ),
               ),
@@ -323,6 +343,33 @@ class _WorkReportsDashboardState extends State<WorkReportsDashboard> {
       999,
     );
     return !date.isBefore(from) && !date.isAfter(until);
+  }
+
+  Future<void> _outputPdf(Map<String, dynamic> report,
+      {required bool preview}) async {
+    final user = context.read<AuthService>().currentUser;
+    if (user?.can('reports', 'export') != true) return;
+    final id = '${report['id'] ?? ''}';
+    if (id.isEmpty || _printing.contains(id)) return;
+    setState(() => _printing.add(id));
+    try {
+      final bytes = await DailyWorkReportPdf.build(report);
+      if (preview) {
+        if (mounted) await Printing.layoutPdf(onLayout: (_) async => bytes);
+      } else {
+        final date = '${report['workDate'] ?? report['createdAt'] ?? ''}';
+        final day = date.length >= 10 ? date.substring(0, 10).replaceAll('-', '') : 'undated';
+        final safeId = id.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '');
+        final path = await savePdfBytes(bytes, 'daily_work_${day}_$safeId.pdf');
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(path == null ? 'تعذر حفظ PDF' : 'تم إنشاء PDF: $path')));
+      }
+    } catch (error) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('تعذر إنشاء تقرير العمل اليومي: $error')));
+    } finally {
+      if (mounted) setState(() => _printing.remove(id));
+    }
   }
 
   Widget _dateButton(
