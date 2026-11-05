@@ -9,6 +9,7 @@ import '../../core/localization.dart';
 import '../../core/services/auth_service.dart';
 import '../../core/services/data_service.dart';
 import '../../core/services/daily_work_report_pdf.dart';
+import '../../core/services/daily_work_report_photo.dart';
 import '../../core/services/pdf_file_saver.dart';
 import 'work_entry_form_screen.dart';
 import '../../core/services/work_report_sources.dart';
@@ -314,6 +315,12 @@ class _WorkReportsDashboardState extends State<WorkReportsDashboard> {
                           icon: const Icon(Icons.picture_as_pdf_outlined),
                           label: const AppText('تصدير PDF'),
                         ),
+                        OutlinedButton.icon(
+                          onPressed: _printing.contains('${e['id']}')
+                              ? null : () => _outputPdf(e, preview: false, asImages: true),
+                          icon: const Icon(Icons.image_outlined),
+                          label: const AppText('تصدير صور التقرير'),
+                        ),
                       ]),
                   ],
                 ),
@@ -346,23 +353,39 @@ class _WorkReportsDashboardState extends State<WorkReportsDashboard> {
   }
 
   Future<void> _outputPdf(Map<String, dynamic> report,
-      {required bool preview}) async {
+      {required bool preview, bool asImages = false}) async {
     final user = context.read<AuthService>().currentUser;
     if (user?.can('reports', 'export') != true) return;
     final id = '${report['id'] ?? ''}';
     if (id.isEmpty || _printing.contains(id)) return;
     setState(() => _printing.add(id));
     try {
-      final bytes = await DailyWorkReportPdf.build(report);
+      final photo = await DailyWorkReportPhotoSelector.select(
+          report, context.read<DataService>());
+      final bytes = await DailyWorkReportPdf.build(report, fieldPhoto: photo);
       if (preview) {
         if (mounted) await Printing.layoutPdf(onLayout: (_) async => bytes);
       } else {
         final date = '${report['workDate'] ?? report['createdAt'] ?? ''}';
         final day = date.length >= 10 ? date.substring(0, 10).replaceAll('-', '') : 'undated';
         final safeId = id.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '');
-        final path = await savePdfBytes(bytes, 'daily_work_${day}_$safeId.pdf');
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text(path == null ? 'تعذر حفظ PDF' : 'تم إنشاء PDF: $path')));
+        if (asImages) {
+          var page = 0;
+          String? path;
+          await for (final raster in Printing.raster(bytes, dpi: 150)) {
+            page++;
+            path = await saveReportBytes(await raster.toPng(),
+                'daily_work_${day}_${safeId}_p$page.png', mimeType: 'image/png');
+            if (path == null) throw StateError('تعذر حفظ صورة الصفحة $page.');
+          }
+          if (page == 0) throw StateError('لم تُنشأ صفحات للتقرير.');
+          if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+              content: Text('تم حفظ $page صورة للتقرير. آخر ملف: $path')));
+        } else {
+          final path = await savePdfBytes(bytes, 'daily_work_${day}_$safeId.pdf');
+          if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+              content: Text(path == null ? 'تعذر حفظ PDF' : 'تم إنشاء PDF: $path')));
+        }
       }
     } catch (error) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(

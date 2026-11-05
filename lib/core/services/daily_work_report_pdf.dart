@@ -9,6 +9,7 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'work_report_summary.dart';
+import 'daily_work_report_photo.dart';
 
 /// Prints one saved daily group report. Every value comes from that report.
 class DailyWorkReportPdf {
@@ -35,7 +36,8 @@ class DailyWorkReportPdf {
     'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت', 'الأحد',
   ][date.weekday - 1];
 
-  static Future<Uint8List> build(Map<String, dynamic> report) async {
+  static Future<Uint8List> build(Map<String, dynamic> report,
+      {DailyWorkReportPhoto? fieldPhoto}) async {
     if (!WorkReportSummary.isWorkReport(report) || report['isDeleted'] == true) {
       throw StateError('هذا السجل ليس تقرير عمل يوميًا صالحًا للطباعة.');
     }
@@ -70,8 +72,9 @@ class DailyWorkReportPdf {
     final status = _value(report, 'status');
     final provisional = status == 'draft' || status == 'needs_edits' || !sourceConfirmed;
     String number(String key) => report[key] is num ? '${(report[key] as num).toInt()}' : '—';
+    int? count(dynamic value) => value is num && value >= 0 ? value.toInt() : null;
     final leaveValues = [report['specialLeave'], report['sickLeave'], report['otherAbsence']];
-    final leaves = leaveValues.every((v) => v is! num) ? '—' :
+    final leaves = !leaveValues.every((v) => v is num) ? '—' :
         '${leaveValues.whereType<num>().fold<int>(0, (n, v) => n + v.toInt())}';
     String content(String key) => _value(report, key).isEmpty ? 'لم يرد وصف.' : _value(report, key);
     pw.Widget text(String value, {double size = 9, bool strong = false,
@@ -137,6 +140,36 @@ class DailyWorkReportPdf {
           text(label, size: 8, color: PdfColors.blueGrey700),
           pw.SizedBox(height: 4), text(value, size: 18, strong: true, color: accent),
         ])));
+    pw.Widget distribution(String label, List<int?> values,
+        List<String> names, List<PdfColor> colors) {
+      final complete = values.every((v) => v != null);
+      final total = complete ? values.fold<int>(0, (sum, v) => sum + v!) : 0;
+      return pw.Expanded(child: pw.Container(
+        margin: const pw.EdgeInsets.only(left: 7),
+        padding: const pw.EdgeInsets.all(9),
+        decoration: pw.BoxDecoration(color: PdfColors.grey100,
+            borderRadius: pw.BorderRadius.circular(7)),
+        child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+          text(label, size: 8.5, strong: true),
+          pw.SizedBox(height: 6),
+          if (total > 0) pw.Row(children: [
+            for (var i = 0; i < values.length; i++)
+              if (values[i]! > 0) pw.Expanded(flex: values[i]!,
+                child: pw.Container(height: 11, color: colors[i])),
+          ]) else pw.Container(height: 11, alignment: pw.Alignment.center,
+              color: PdfColors.grey300,
+              child: text(complete ? 'جميع القيم صفر' : 'الأعداد غير مكتملة', size: 6.5)),
+          pw.SizedBox(height: 6),
+          pw.Wrap(spacing: 8, runSpacing: 3, children: [
+            for (var i = 0; i < values.length; i++)
+              pw.Row(mainAxisSize: pw.MainAxisSize.min, children: [
+                pw.Container(width: 5, height: 5, color: colors[i]),
+                pw.SizedBox(width: 3),
+                text('${names[i]} ${values[i] ?? '—'}', size: 7),
+              ]),
+          ]),
+        ])));
+    }
     pw.Widget sectionTitle(String index, String label) => pw.Container(
         margin: const pw.EdgeInsets.only(top: 13, bottom: 6),
         padding: const pw.EdgeInsets.symmetric(horizontal: 9, vertical: 6),
@@ -170,7 +203,18 @@ class DailyWorkReportPdf {
             metadata('البلدية', municipality),
             metadata('الحالة', _status(status)),
           ])),
-          pw.SizedBox(height: 10),
+          pw.SizedBox(height: 9),
+          pw.Container(height: 125,
+              decoration: pw.BoxDecoration(color: PdfColors.teal50,
+                  borderRadius: pw.BorderRadius.circular(7)),
+              child: fieldPhoto == null
+                  ? pw.Center(child: text('لا توجد صورة ميدانية موثقة لهذا اليوم',
+                      size: 10, color: PdfColors.blueGrey600))
+                  : pw.Image(pw.MemoryImage(fieldPhoto.bytes), fit: pw.BoxFit.cover)),
+          pw.SizedBox(height: 4),
+          text(fieldPhoto?.caption ?? 'تظهر هنا تلقائيًا أوضح صورة من النقلات المرتبطة بالتقرير عند توفرها.',
+              size: 7, color: PdfColors.blueGrey600),
+          pw.SizedBox(height: 9),
           pw.Container(padding: const pw.EdgeInsets.symmetric(horizontal: 10, vertical: 7),
               decoration: pw.BoxDecoration(color: provisional ? PdfColors.orange50 : PdfColors.green50,
                   borderRadius: pw.BorderRadius.circular(6)),
@@ -184,6 +228,21 @@ class DailyWorkReportPdf {
             metric('الغياب', number('absence'), PdfColors.red700),
             metric('النقلات المكتملة', number('trips'), PdfColors.teal800),
             metric('الإجازات وأسباب أخرى', leaves, PdfColors.orange800),
+          ])),
+          pw.SizedBox(height: 8),
+          pw.Directionality(textDirection: pw.TextDirection.rtl, child: pw.Row(children: [
+            distribution('توزيع حضور المجموعة', [
+              count(report['attendance']),
+              count(report['absence']),
+              leaves == '—' ? null : int.tryParse(leaves),
+            ], ['حضور', 'غياب', 'إجازات وأسباب أخرى'],
+                [PdfColors.green700, PdfColors.red700, PdfColors.orange700]),
+            distribution('حالة النقلات', [
+              count(report['trips']),
+              count(snapshot['activeTrips']),
+              count(snapshot['cancelledTrips']),
+            ], ['مكتملة', 'جارية', 'ملغاة'],
+                [PdfColors.teal800, PdfColors.blue700, PdfColors.grey600]),
           ])),
           pw.SizedBox(height: 8),
           text('إجازة خاصة: ${number('specialLeave')}    •    إجازة مرضية: ${number('sickLeave')}    •    أسباب أخرى: ${number('otherAbsence')}    •    نقلات جارية: ${snapshot['activeTrips'] is num ? snapshot['activeTrips'] : '—'}', size: 8),
