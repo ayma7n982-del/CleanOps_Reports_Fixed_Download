@@ -31,6 +31,10 @@ class DailyWorkReportPdf {
     _ => 'مسودة',
   };
 
+  static String _weekday(DateTime date) => const [
+    'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت', 'الأحد',
+  ][date.weekday - 1];
+
   static Future<Uint8List> build(Map<String, dynamic> report) async {
     if (!WorkReportSummary.isWorkReport(report) || report['isDeleted'] == true) {
       throw StateError('هذا السجل ليس تقرير عمل يوميًا صالحًا للطباعة.');
@@ -97,8 +101,12 @@ class DailyWorkReportPdf {
                   borderRadius: pw.BorderRadius.circular(8)),
               child: pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [
                 text('تقرير الأعمال اليومي', size: 17, strong: true, color: PdfColors.white),
-                text(DateFormat('yyyy-MM-dd').format(workDate), size: 10,
-                    strong: true, color: PdfColors.white),
+                pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+                  text(_weekday(workDate), size: 9,
+                      strong: true, color: PdfColors.white),
+                  text(DateFormat('yyyy-MM-dd').format(workDate), size: 10,
+                      strong: true, color: PdfColors.white),
+                ]),
               ])),
           pw.SizedBox(height: 7),
         ]));
