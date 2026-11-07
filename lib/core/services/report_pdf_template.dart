@@ -19,9 +19,49 @@ class ReportPdfTemplate {
   String t(String ar, String en) => english ? en : ar;
   ReportPdfTemplate({required this.regular, required this.bold, required this.user, required this.title, required this.snapshot, this.logo, this.municipalityLogo, this.councilLogo, this.unicefLogo, this.languageCode = 'ar', this.municipalityName = '', this.councilName = '', this.projectName = ''});
 
-  pw.Widget _kpi(String label, String value) => pw.Container(padding: const pw.EdgeInsets.all(8), decoration: pw.BoxDecoration(border: pw.Border.all(color: PdfColors.grey300), borderRadius: pw.BorderRadius.circular(6)), child: pw.Column(children:[pw.Text(label,style:pw.TextStyle(font:regular,fontSize:8)),pw.SizedBox(height:3),pw.Text(value,style:pw.TextStyle(font:bold,fontSize:15))]));
-  pw.Widget _bars(Map<String,int> values) { if(values.isEmpty)return pw.Text(t('لا توجد بيانات كافية للرسم.','Not enough data to chart.'),style:pw.TextStyle(font:regular,fontSize:8)); final max=values.values.fold<int>(1,(a,b)=>a>b?a:b); return pw.Column(children:values.entries.take(12).map((e)=>pw.Padding(padding:const pw.EdgeInsets.symmetric(vertical:2),child:pw.Row(children:[pw.SizedBox(width:65,child:pw.Text(e.key,style:pw.TextStyle(font:regular,fontSize:7))),pw.Expanded(child:pw.Container(height:11,color:PdfColors.grey200,child:pw.Align(alignment:pw.Alignment.centerLeft,child:pw.Container(width:120*e.value/max,height:11,color:PdfColors.blueGrey700)))),pw.SizedBox(width:28,child:pw.Text('${e.value}',style:pw.TextStyle(font:bold,fontSize:7)))]))).toList()); }
-  pw.Widget _section(String heading,List<pw.Widget> children)=>pw.Container(margin:const pw.EdgeInsets.only(top:12),padding:const pw.EdgeInsets.all(10),decoration:pw.BoxDecoration(border:pw.Border.all(color:PdfColors.grey300),borderRadius:pw.BorderRadius.circular(7)),child:pw.Column(crossAxisAlignment:pw.CrossAxisAlignment.start,children:[pw.Text(heading,style:pw.TextStyle(font:bold,fontSize:12)),pw.SizedBox(height:7),...children]));
+  pw.Widget _kpi(String label, String value) => pw.Container(
+    padding: const pw.EdgeInsets.all(9),
+    decoration: pw.BoxDecoration(color: PdfColors.teal50,
+        borderRadius: pw.BorderRadius.circular(7)),
+    child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+      pw.Text(label, style: pw.TextStyle(font: regular, fontSize: 8,
+          color: PdfColors.blueGrey700)),
+      pw.SizedBox(height: 5),
+      pw.Text(value, style: pw.TextStyle(font: bold, fontSize: 17,
+          color: PdfColors.teal800)),
+    ]));
+  pw.Widget _bars(Map<String,int> values) {
+    if (values.isEmpty) return pw.Text(t('لا توجد بيانات كافية للرسم.','Not enough data to chart.'),
+        style: pw.TextStyle(font:regular,fontSize:8));
+    final rows = values.entries.toList()..sort((a,b)=>b.value.compareTo(a.value));
+    final max = rows.first.value > 0 ? rows.first.value : 1;
+    return pw.Column(children: [for (final e in rows.take(8)) pw.Padding(
+      padding: const pw.EdgeInsets.symmetric(vertical: 3),
+      child: pw.Row(children: [
+        pw.SizedBox(width: 86, child: pw.Text(e.key, maxLines: 1,
+            style: pw.TextStyle(font:regular,fontSize:7))),
+        pw.Expanded(child: pw.Row(children: [
+          if (e.value > 0) pw.Expanded(flex: e.value,
+              child: pw.Container(height: 9, color: PdfColors.teal700)),
+          if (max - e.value > 0) pw.Expanded(flex: max - e.value,
+              child: pw.Container(height: 9, color: PdfColors.grey200)),
+        ])),
+        pw.SizedBox(width: 8),
+        pw.Text('${e.value}', style: pw.TextStyle(font:bold,fontSize:8)),
+      ]),
+    )]);
+  }
+  pw.Widget _section(String heading,List<pw.Widget> children)=>pw.Container(
+    margin:const pw.EdgeInsets.only(top:11),
+    padding:const pw.EdgeInsets.all(10),
+    decoration:pw.BoxDecoration(color:PdfColors.grey100,
+        borderRadius:pw.BorderRadius.circular(7)),
+    child:pw.Column(crossAxisAlignment:pw.CrossAxisAlignment.start,children:[
+      pw.Text(heading,style:pw.TextStyle(font:bold,fontSize:11,
+          color:PdfColors.teal800)),
+      pw.Divider(color: PdfColors.teal100),
+      ...children,
+    ]));
 
   List<pw.Widget> build() {
     final role=user?.role ?? 'donor_manager'; final roleTitle=english ? ({'donor_manager':'System Manager','jsc_coordinator':'JSC Coordinator','municipality_coordinator':'Municipality Coordinator','group_supervisor':'Group Supervisor','worker':'Worker'}[role] ?? 'Operational Report') : (roleNames[role] ?? 'التقرير التشغيلي');
@@ -78,5 +118,5 @@ class ReportPdfTemplate {
     );
   }
   pw.Widget footer(pw.Context context)=>pw.Container(padding:const pw.EdgeInsets.only(top:5),decoration:const pw.BoxDecoration(border:pw.Border(top:pw.BorderSide(color:PdfColors.grey300))),child:pw.Row(children:[pw.Expanded(child:pw.Text('${t('صادر عن: ','Issued by: ')}${user?.name ?? t('النظام','System')}',style:pw.TextStyle(font:regular,fontSize:7))),pw.Text(t('صفحة ${context.pageNumber} من ${context.pagesCount}','Page ${context.pageNumber} of ${context.pagesCount}'),style:pw.TextStyle(font:bold,fontSize:7))]));
-  pw.MultiPage page()=>pw.MultiPage(pageFormat:PdfPageFormat.a4,margin:const pw.EdgeInsets.fromLTRB(28,32,28,32),textDirection:english ? pw.TextDirection.ltr : pw.TextDirection.rtl,header:header,footer:footer,theme:pw.ThemeData.withFont(base:regular,bold:bold),build:(_)=>[pw.Column(children:build())]);
+  pw.MultiPage page()=>pw.MultiPage(pageFormat:PdfPageFormat.a4,margin:const pw.EdgeInsets.fromLTRB(28,32,28,32),textDirection:english ? pw.TextDirection.ltr : pw.TextDirection.rtl,header:header,footer:footer,theme:pw.ThemeData.withFont(base:regular,bold:bold),build:(_)=>build());
 }

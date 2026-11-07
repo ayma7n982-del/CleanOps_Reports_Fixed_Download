@@ -227,11 +227,19 @@ class ReportService {
         if (status == 'present' || status == 'حضور') { attendance++; attendanceByGroup[grp]=(attendanceByGroup[grp]??0)+1; attendanceByMunicipality[mun]=(attendanceByMunicipality[mun]??0)+1; if(m['ppeComplete']==true){ppe++; ppeByGroup[grp]=(ppeByGroup[grp]??0)+1;} }
         if (status == 'absent' || status == 'غياب' || status == 'excused_absence' || status == 'unexcused_absence') { absence++; absenceByGroup[grp]=(absenceByGroup[grp]??0)+1; }
       } else if (entity == 'work_report' && reportType == 'work') {
-        trips += (m['trips'] as num?)?.toInt() ?? 0;
+        final reportTrips = (m['trips'] as num?)?.toInt() ?? 0;
+        trips += reportTrips;
         attendance += (m['attendance'] as num?)?.toInt() ?? 0;
         absence += (m['absence'] as num?)?.toInt() ?? 0;
-        final reportTrips = (m['trips'] as num?)?.toInt() ?? 0;
-        if (reportTrips > 0) byGroup[grp] = (byGroup[grp] ?? 0) + reportTrips;
+        if (reportTrips > 0) {
+          byGroup[grp] = (byGroup[grp] ?? 0) + reportTrips;
+          tripsByMunicipality[mun] = (tripsByMunicipality[mun] ?? 0) + reportTrips;
+          final workDay = _dateValue(m['workDate'] ?? m['createdAt'] ?? m['date']);
+          if (workDay != null) {
+            final key = DateFormat('MM/dd').format(workDay);
+            byDay[key] = (byDay[key] ?? 0) + reportTrips;
+          }
+        }
         final reportAttendance = (m['attendance'] as num?)?.toInt() ?? 0;
         if (reportAttendance > 0) attendanceByGroup[grp] = (attendanceByGroup[grp] ?? 0) + reportAttendance;
         final reportAbsence = (m['absence'] as num?)?.toInt() ?? 0;

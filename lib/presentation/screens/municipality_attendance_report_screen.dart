@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:typed_data';
+import 'dart:ui' as ui;
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -13,6 +14,7 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/services/auth_service.dart';
+import '../../core/localization.dart';
 import '../../core/services/data_service.dart';
 import '../../core/services/pdf_file_saver.dart';
 import '../widgets/app_design.dart';
@@ -135,7 +137,7 @@ class _MunicipalityAttendanceReportScreenState extends State<MunicipalityAttenda
     final missingGroups = roster.length - groups.values.fold<int>(0, (sum, people) => sum + people.length);
     final ready = actor?.role == 'municipality_coordinator' && attendanceLoaded && !loading && loadError == null &&
         roster.isNotEmpty && groups.isNotEmpty && missingNames == 0 && missingGroups == 0 && entries.isNotEmpty;
-    return Directionality(textDirection: TextDirection.rtl, child: Scaffold(
+    return Directionality(textDirection: ui.TextDirection.rtl, child: Scaffold(
       appBar: AppBar(title: const AppText('حضور وغياب البلدية - 20 يومًا')),
       body: ListView(padding: const EdgeInsets.all(16), children: [
         const Text('ملخص البلدية ثم كشف مستقل لكل مجموعة، يشمل المشرفين والعمال بأسمائهم المسجلة.'),

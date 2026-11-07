@@ -113,7 +113,9 @@ class _ReportsCenterState extends State<ReportsCenterScreen> {
       ['approved', 'closed'].contains('${e['status'] ?? ''}'));
 
   bool _canExportOfficial(ReportSnapshot snapshot, AppUser user) =>
-      ['municipality_coordinator', 'jsc_coordinator', 'donor_manager'].contains(user.role) && _isApproved(snapshot);
+      user.can('reports', 'export') &&
+      ['municipality_coordinator', 'jsc_coordinator', 'donor_manager'].contains(user.role) &&
+      _isApproved(snapshot);
 
   String _councilForReport(String? municipalityName) {
     final requested = (municipalityName ?? '').trim();
@@ -243,15 +245,28 @@ class _ReportsCenterState extends State<ReportsCenterScreen> {
     ])));
   }
 
-  Widget _hero(ReportSnapshot? s) => Card(color: navy, child: Padding(padding: const EdgeInsets.all(18), child: Row(children: [
-    const Icon(Icons.analytics_rounded, color: gold, size: 42), const SizedBox(width: 12), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      const AppText('التقارير التشغيلية', style: TextStyle(color: cleanOpsSurface, fontSize: 23, fontWeight: FontWeight.w900)),
-      const AppText('اختر التقرير والفترة، ثم راجع النتائج وصدّرها', style: TextStyle(color: cleanOpsMuted)),
-      const SizedBox(height: 5),
-      AppText(s?.periodLabel ?? _periodPresetLabel(), style: const TextStyle(color: gold)),
-    ])),
-    IconButton(onPressed: _refresh, icon: const Icon(Icons.refresh, color: cleanOpsSurface)),
-  ])));
+  Widget _hero(ReportSnapshot? s) => Container(
+    padding: const EdgeInsets.all(20),
+    decoration: BoxDecoration(
+      borderRadius: BorderRadius.circular(22),
+      gradient: const LinearGradient(colors: [Color(0xFF123640), Color(0xFF087F78)]),
+    ),
+    child: Row(children: [
+      const Icon(Icons.auto_graph_rounded, color: Color(0xFFE1B660), size: 36),
+      const SizedBox(width: 14),
+      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const AppText('المشهد التشغيلي', style: TextStyle(
+            color: Colors.white, fontSize: 22, fontWeight: FontWeight.w900)),
+        const AppText('مؤشرات ورسوم من السجلات التي تسمح بها صلاحياتك',
+            style: TextStyle(color: Color(0xFFD0E8E1))),
+        const SizedBox(height: 6),
+        AppText(s?.periodLabel ?? _periodPresetLabel(),
+            style: const TextStyle(color: Color(0xFFFFDA90))),
+      ])),
+      IconButton(onPressed: _refresh,
+          icon: const Icon(Icons.refresh, color: Colors.white)),
+    ]),
+  );
 
   Widget _specializedReports() {
     final cards = <Widget>[
@@ -503,7 +518,7 @@ class _ReportsCenterState extends State<ReportsCenterScreen> {
       'containers' => <Widget>[
           _k('كل الحاويات', '${s.containersTotal}', navy, Icons.delete_outline),
           _k('ممتلئة', '${s.containersFull}', red, Icons.warning_amber_rounded),
-          _k('نصف ممتلئة', '${s.containersPartial}', orange, Icons.hourglass_half_rounded),
+          _k('نصف ممتلئة', '${s.containersPartial}', orange, Icons.timelapse_rounded),
           _k('تحتاج متابعة', '${s.containerIssues}', red, Icons.build_circle_outlined),
         ],
       'absence' => <Widget>[
@@ -546,7 +561,16 @@ class _ReportsCenterState extends State<ReportsCenterScreen> {
     };
     return Wrap(spacing: 8, runSpacing: 8, children: cards);
   }
-  Widget _k(String a,String b,Color c,IconData icon)=>SizedBox(width:145,child:Card(child:Padding(padding:const EdgeInsets.all(12),child:Row(children:[Icon(icon,color:c),const SizedBox(width:8),Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[AppText(a,style:const TextStyle(fontSize:13)),AppText(b,style:TextStyle(fontSize:26,fontWeight:FontWeight.w900,color:c))]))]))));
+  Widget _k(String a,String b,Color c,IconData icon)=>Container(
+    width: 155, padding: const EdgeInsets.all(13),
+    decoration: BoxDecoration(color: c.withOpacity(.09),
+        borderRadius: BorderRadius.circular(17),
+        border: BorderDirectional(start: BorderSide(color: c, width: 4))),
+    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Icon(icon, color: c, size: 20), const SizedBox(height: 7),
+      AppText(b, style: TextStyle(fontSize: 25, fontWeight: FontWeight.w900, color: c)),
+      AppText(a, style: const TextStyle(fontSize: 12)),
+    ]));
 
   Widget _selectedReport(ReportSnapshot s) {
     switch(reportType){
@@ -569,9 +593,45 @@ class _ReportsCenterState extends State<ReportsCenterScreen> {
     ],
   ]);
 
-  Widget _bar(ReportSnapshot s){final labels=s.tripsByGroup.keys.toList(); final vals=s.tripsByGroup.values.toList(); final data=vals.isEmpty?[0]:vals; final max=data.reduce((a,b)=>a>b?a:b); return SizedBox(height:220,child:BarChart(BarChartData(maxY:(max+2).toDouble(),barGroups:[for(var i=0;i<data.length;i++)BarChartGroupData(x:i,barRods:[BarChartRodData(toY:data[i].toDouble(),width:22,borderRadius:BorderRadius.circular(5))])],titlesData:FlTitlesData(bottomTitles:AxisTitles(sideTitles:SideTitles(showTitles:true,getTitlesWidget:(v,m)=>AppText(v.toInt()<labels.length?labels[v.toInt()]:'',style:const TextStyle(fontSize:9))))))));}
-  Widget _lineTrips(ReportSnapshot s){final p=s.tripsByDay.entries.toList(); final spots=p.isEmpty?[const FlSpot(0,0)]:[for(var i=0;i<p.length;i++)FlSpot(i.toDouble(),p[i].value.toDouble())]; return SizedBox(height:210,child:LineChart(LineChartData(minY:0,lineBarsData:[LineChartBarData(spots:spots,isCurved:true,barWidth:3,dotData:const FlDotData(show:true))],titlesData:const FlTitlesData(bottomTitles:AxisTitles(sideTitles:SideTitles(showTitles:false)),rightTitles:AxisTitles(sideTitles:SideTitles(showTitles:false)),topTitles:AxisTitles(sideTitles:SideTitles(showTitles:false))))));}
-  Widget _donut(ReportSnapshot s)=>SizedBox(height:220,child:PieChart(PieChartData(centerSpaceRadius:45,sections:[PieChartSectionData(value:s.attendance.toDouble().clamp(0.1,double.infinity).toDouble(),title:'حضور',radius:62),PieChartSectionData(value:s.absence.toDouble().clamp(0.1,double.infinity).toDouble(),title:'غياب',radius:62),PieChartSectionData(value:s.ppeCompliant.toDouble().clamp(0.1,double.infinity).toDouble(),title:'PPE',radius:62)])));
+  Widget _bar(ReportSnapshot s) {
+    final rows = s.tripsByGroup.entries.toList()..sort((a,b)=>b.value.compareTo(a.value));
+    if (rows.isEmpty) return const AppText('لا توجد ترحيلات كافية للمقارنة.');
+    final max = rows.first.value == 0 ? 1 : rows.first.value;
+    return Column(children: [for (final row in rows.take(6)) Padding(
+      padding: const EdgeInsets.symmetric(vertical: 5),
+      child: Row(children: [
+        SizedBox(width: 95, child: Text(row.key, maxLines: 1,
+            overflow: TextOverflow.ellipsis)),
+        Expanded(child: ClipRRect(borderRadius: BorderRadius.circular(7),
+          child: LinearProgressIndicator(value: row.value / max, minHeight: 10,
+              backgroundColor: const Color(0xFFE3EEEA), color: green))),
+        SizedBox(width: 38, child: Text('${row.value}', textAlign: TextAlign.end)),
+      ]),
+    )]);
+  }
+  Widget _lineTrips(ReportSnapshot s) {
+    final p=s.tripsByDay.entries.toList();
+    if (p.isEmpty) return const AppText('لا توجد نقلات في الفترة المحددة.');
+    final spots=[for(var i=0;i<p.length;i++) FlSpot(i.toDouble(),p[i].value.toDouble())];
+    return SizedBox(height:135,child:LineChart(LineChartData(minY:0,
+      lineBarsData:[LineChartBarData(spots:spots,isCurved:p.length>2,barWidth:3,
+          color:green,dotData:const FlDotData(show:true))],
+      titlesData:const FlTitlesData(
+          bottomTitles:AxisTitles(sideTitles:SideTitles(showTitles:false)),
+          rightTitles:AxisTitles(sideTitles:SideTitles(showTitles:false)),
+          topTitles:AxisTitles(sideTitles:SideTitles(showTitles:false))))));
+  }
+  Widget _donut(ReportSnapshot s) {
+    final total=s.attendance+s.absence;
+    if(total==0) return const AppText('لا توجد حالات حضور مكتملة للرسم.');
+    return SizedBox(height:150,child:PieChart(PieChartData(centerSpaceRadius:36,
+      sections:[
+        if(s.attendance>0) PieChartSectionData(value:s.attendance.toDouble(),
+            title:'حضور ${s.attendance}',color:green,radius:45),
+        if(s.absence>0) PieChartSectionData(value:s.absence.toDouble(),
+            title:'غياب ${s.absence}',color:red,radius:45),
+      ])));
+  }
   Widget _containerStatus(ReportSnapshot s)=>Wrap(spacing:8,runSpacing:8,children:[_mini('فارغة',s.containersEmpty,green),_mini('نصف ممتلئة',s.containersPartial,orange),_mini('ممتلئة',s.containersFull,red),_mini('مشكلات',s.containerIssues,red)]);
   Widget _mini(String t,int v,Color c)=>Container(width:125,padding:const EdgeInsets.all(12),decoration:BoxDecoration(borderRadius:BorderRadius.circular(14),border:Border.all(color:c.withOpacity(.3))),child:Column(children:[AppText(t),AppText('$v',style:TextStyle(fontSize:23,fontWeight:FontWeight.w900,color:c))]));
   Widget _rank(Map<String,int> map,String title,Color color){ final entries=map.entries.toList()..sort((a,b)=>b.value.compareTo(a.value)); return Padding(padding:const EdgeInsets.only(top:10),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[AppText(title,style:const TextStyle(fontWeight:FontWeight.w900)),...entries.take(7).map((e)=>ListTile(dense:true,leading:Icon(Icons.circle,size:10,color:color),title:AppText(e.key),trailing:AppText('${e.value}',style:TextStyle(fontWeight:FontWeight.w900,color:color))))])); }
@@ -631,7 +691,7 @@ class _ReportsCenterState extends State<ReportsCenterScreen> {
             icon: const Icon(Icons.auto_awesome_rounded),
             label: const AppText('حفظ مسودة'),
           ),
-          if (user.role == 'municipality_coordinator')
+          if (user.role == 'municipality_coordinator' && user.can('reports', 'create'))
             FilledButton.tonalIcon(
               onPressed: () => _requestApproval(snapshot, user),
               icon: const Icon(Icons.send_rounded),
@@ -703,6 +763,7 @@ class _ReportsCenterState extends State<ReportsCenterScreen> {
   }
 
   Future<void> _exportPdf(ReportSnapshot snapshot, AppUser user) async {
+    if (!_canExportOfficial(snapshot, user)) return;
     try {
       final path = await ReportService(context.read<DataService>()).exportOperationalPdf(
         snapshot: snapshot,
@@ -717,6 +778,7 @@ class _ReportsCenterState extends State<ReportsCenterScreen> {
   }
 
   Future<void> _exportExcel(ReportSnapshot snapshot, AppUser user) async {
+    if (!_canExportOfficial(snapshot, user)) return;
     try {
       final path = await ReportService(context.read<DataService>()).exportOperationalExcel(
         snapshot: snapshot,
@@ -730,6 +792,7 @@ class _ReportsCenterState extends State<ReportsCenterScreen> {
   }
 
   Future<void> _exportCsv(ReportSnapshot snapshot, AppUser user) async {
+    if (!_canExportOfficial(snapshot, user)) return;
     try {
       final path = await ReportService(context.read<DataService>()).exportOperationalCsv(
         snapshot: snapshot,
@@ -743,6 +806,7 @@ class _ReportsCenterState extends State<ReportsCenterScreen> {
   }
 
   Future<void> _requestApproval(ReportSnapshot snapshot, AppUser user) async {
+    if (user.role != 'municipality_coordinator' || !user.can('reports', 'create')) return;
     try {
       final now = DateTime.now().toIso8601String();
       final data = context.read<DataService>();

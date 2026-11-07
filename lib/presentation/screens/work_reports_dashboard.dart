@@ -168,40 +168,15 @@ class _WorkReportsDashboardState extends State<WorkReportsDashboard> {
                 ),
               ),
             ),
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(14),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const AppText(
-                      'ملخص الفترة',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        _kpi('تقارير الفترة', '${todayReports.length}'),
-                        _kpi('النقلات', '$trips'),
-                        _kpi('الحضور', '$present'),
-                        _kpi('الغياب', '$absent'),
-                        _kpi('إجازة خاصة', '$specialLeave'),
-                        _kpi('إجازة مرضية', '$sickLeave'),
-                        _kpi('أسباب أخرى', '$otherAbsence'),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            if (visible.any(
+            _visualSummary(todayReports.length, trips, present, absent,
+                specialLeave + sickLeave + otherAbsence,
+                partial: visible.any(
               (r) =>
                   r['sourceSnapshot'] is Map &&
+                  r['sourceSnapshot']['needsReview'] == true,
+            )),
+            if (visible.any(
+              (r) => r['sourceSnapshot'] is Map &&
                   r['sourceSnapshot']['needsReview'] == true,
             ))
               const AppText(
@@ -568,6 +543,52 @@ class _WorkReportsDashboardState extends State<WorkReportsDashboard> {
       );
     }).toList();
   }
+
+  static Widget _visualSummary(int reports, int trips, int present, int absent,
+      int leave, {required bool partial}) {
+    final total = present + absent + leave;
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(22),
+        gradient: const LinearGradient(colors: [Color(0xFF123640), Color(0xFF086F69)]),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const AppText('حكاية الفترة التشغيلية', style: TextStyle(
+            color: Colors.white, fontSize: 20, fontWeight: FontWeight.w900)),
+        const SizedBox(height: 4),
+        AppText('$reports تقرير مجموعة موثق  •  $trips نقلة مكتملة',
+            style: const TextStyle(color: Color(0xFFC2DFD7))),
+        if (partial) const AppText('مؤشرات جزئية — توجد مسودات تتطلب مراجعة',
+            style: TextStyle(color: Color(0xFFFFD99C), fontWeight: FontWeight.w700)),
+        const SizedBox(height: 15),
+        Wrap(spacing: 22, runSpacing: 12, children: [
+          _summaryNumber('الحضور', present, const Color(0xFFA9DEAF)),
+          _summaryNumber('الغياب', absent, const Color(0xFFFFB4AA)),
+          _summaryNumber('الإجازات وأسباب أخرى', leave, const Color(0xFFFFD99C)),
+        ]),
+        const SizedBox(height: 14),
+        if (total > 0 && !partial) ClipRRect(borderRadius: BorderRadius.circular(8),
+            child: Row(children: [
+              if (present > 0) Expanded(flex: present,
+                  child: Container(height: 10, color: const Color(0xFF67C48D))),
+              if (absent > 0) Expanded(flex: absent,
+                  child: Container(height: 10, color: const Color(0xFFE47F78))),
+              if (leave > 0) Expanded(flex: leave,
+                  child: Container(height: 10, color: const Color(0xFFF2BE69))),
+            ]))
+        else AppText(partial ? 'يظهر توزيع الحضور بعد اكتمال مراجعة المسودات.' : 'لا توجد أعداد مكتملة لرسم توزيع الفترة.',
+            style: TextStyle(color: Colors.white70)),
+      ]),
+    );
+  }
+
+  static Widget _summaryNumber(String label, int value, Color color) =>
+      Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text('$value', style: TextStyle(color: color, fontSize: 29,
+            fontWeight: FontWeight.w900)),
+        Text(label, style: const TextStyle(color: Colors.white, fontSize: 12)),
+      ]);
 
   static Widget _kpi(String label, String value) => SizedBox(
     width: 135,

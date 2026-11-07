@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:typed_data';
+import 'dart:ui' as ui;
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -13,6 +14,7 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/models/core_models.dart';
+import '../../core/localization.dart';
 import '../../core/services/auth_service.dart';
 import '../../core/services/data_service.dart';
 import '../../core/services/pdf_file_saver.dart';
@@ -202,7 +204,7 @@ class _AllMunicipalitiesAttendanceReportScreenState
     final operations = context.watch<DataService>().operations;
     final cities = ready ? _summaries(operations) : <_MunicipalitySummary>[];
     final end = start.add(const Duration(days: 19));
-    return Directionality(textDirection: TextDirection.rtl, child: Scaffold(
+    return Directionality(textDirection: ui.TextDirection.rtl, child: Scaffold(
       appBar: AppBar(title: const AppText('تقرير حضور وغياب البلديات الشامل')),
       body: ListView(padding: const EdgeInsets.all(16), children: [
         const Text('ملخص البلديات ثم كشف المجموعات والأيام. يعرض أعداد الحالات فقط من دون أسماء الأفراد.'),

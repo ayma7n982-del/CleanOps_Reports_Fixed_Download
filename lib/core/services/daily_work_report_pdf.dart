@@ -77,6 +77,9 @@ class DailyWorkReportPdf {
     final leaves = !leaveValues.every((v) => v is num) ? '—' :
         '${leaveValues.whereType<num>().fold<int>(0, (n, v) => n + v.toInt())}';
     String content(String key) => _value(report, key).isEmpty ? 'لم يرد وصف.' : _value(report, key);
+    final workOverview = content('completedWork');
+    final featuredWork = workOverview.length > 125
+        ? '${workOverview.substring(0, 125)}…' : workOverview;
     pw.Widget text(String value, {double size = 9, bool strong = false,
         PdfColor color = PdfColors.blueGrey900}) => pw.Text(value,
         textDirection: pw.TextDirection.rtl,
@@ -204,16 +207,33 @@ class DailyWorkReportPdf {
             metadata('الحالة', _status(status)),
           ])),
           pw.SizedBox(height: 9),
-          pw.Container(height: 125,
-              decoration: pw.BoxDecoration(color: PdfColors.teal50,
-                  borderRadius: pw.BorderRadius.circular(7)),
-              child: fieldPhoto == null
-                  ? pw.Center(child: text('لا توجد صورة ميدانية موثقة لهذا اليوم',
-                      size: 10, color: PdfColors.blueGrey600))
-                  : pw.Image(pw.MemoryImage(fieldPhoto.bytes), fit: pw.BoxFit.cover)),
-          pw.SizedBox(height: 4),
-          text(fieldPhoto?.caption ?? 'تظهر هنا تلقائيًا أوضح صورة من النقلات المرتبطة بالتقرير عند توفرها.',
-              size: 7, color: PdfColors.blueGrey600),
+          pw.Directionality(textDirection: pw.TextDirection.rtl, child: pw.Row(
+              crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+            pw.Expanded(flex: 3, child: pw.Container(height: 116,
+                padding: const pw.EdgeInsets.all(11),
+                decoration: pw.BoxDecoration(color: PdfColors.teal50,
+                    borderRadius: pw.BorderRadius.circular(7)),
+                child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start,
+                    mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [
+                  text('لمحة تنفيذية', size: 11, strong: true, color: PdfColors.teal800),
+                  text(featuredWork, size: 8),
+                  text('النقلات المكتملة: ${number('trips')}', size: 9,
+                      strong: true, color: PdfColors.teal800),
+                ]))),
+            pw.SizedBox(width: 8),
+            pw.Expanded(flex: 2, child: pw.Column(children: [
+              pw.Container(height: 96,
+                  decoration: pw.BoxDecoration(color: PdfColors.grey200,
+                      borderRadius: pw.BorderRadius.circular(7)),
+                  child: fieldPhoto == null
+                      ? pw.Center(child: text('لا توجد صورة ميدانية موثقة',
+                          size: 8, color: PdfColors.blueGrey600))
+                      : pw.Image(pw.MemoryImage(fieldPhoto.bytes), fit: pw.BoxFit.cover)),
+              pw.SizedBox(height: 3),
+              text(fieldPhoto?.caption ?? 'صورة من نقلات المجموعة عند توفرها',
+                  size: 6.5, color: PdfColors.blueGrey600),
+            ])),
+          ])),
           pw.SizedBox(height: 9),
           pw.Container(padding: const pw.EdgeInsets.symmetric(horizontal: 10, vertical: 7),
               decoration: pw.BoxDecoration(color: provisional ? PdfColors.orange50 : PdfColors.green50,
@@ -245,6 +265,21 @@ class DailyWorkReportPdf {
                 [PdfColors.teal800, PdfColors.blue700, PdfColors.grey600]),
           ])),
           pw.SizedBox(height: 8),
+          pw.Directionality(textDirection: pw.TextDirection.rtl, child: pw.Row(children: [
+            for (final stage in ['تسجيل الحضور', 'توثيق الأعمال', 'حركة النقلات', 'مراجعة التقرير'])
+              pw.Expanded(child: pw.Container(
+                margin: const pw.EdgeInsets.only(left: 5),
+                padding: const pw.EdgeInsets.symmetric(vertical: 5),
+                decoration: pw.BoxDecoration(color: PdfColors.teal50,
+                    borderRadius: pw.BorderRadius.circular(5)),
+                child: pw.Center(child: text(stage, size: 7, strong: true,
+                    color: PdfColors.teal800)),
+              )),
+          ])),
+          pw.SizedBox(height: 3),
+          text('تسلسل توثيق التقرير؛ لا يدل على اكتمال أي مرحلة غير مسجلة.',
+              size: 6.5, color: PdfColors.blueGrey600),
+          pw.SizedBox(height: 5),
           text('إجازة خاصة: ${number('specialLeave')}    •    إجازة مرضية: ${number('sickLeave')}    •    أسباب أخرى: ${number('otherAbsence')}    •    نقلات جارية: ${snapshot['activeTrips'] is num ? snapshot['activeTrips'] : '—'}', size: 8),
           sectionTitle('01', 'العمل المنفذ'),
           ...paragraph('المهام المنفذة / المخطط لها', 'workTasks'),

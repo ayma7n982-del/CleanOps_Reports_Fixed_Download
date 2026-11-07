@@ -13,8 +13,8 @@ class ReportApprovalScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final user = context.watch<AuthService>().currentUser;
     final data = context.watch<DataService>();
-    final canCouncilReview = user != null && user.role == 'jsc_coordinator';
-    final canManagerClose = user != null && user.role == 'donor_manager';
+    final canCouncilReview = user != null && user.role == 'jsc_coordinator' && user.can('reports', 'approve');
+    final canManagerClose = user != null && user.role == 'donor_manager' && user.can('reports', 'approve');
     final reports = data.operations.where((e) {
       if (!(e['_entity'] == 'work_report' || e['_entity'] == 'report_approval' || (e['_entity'] == 'report' && ['work_report', 'report_approval'].contains(e['reportKind']))) || e['isDeleted'] == true || user == null) return false;
       if (user.role == 'municipality_coordinator') {
@@ -33,9 +33,30 @@ class ReportApprovalScreen extends StatelessWidget {
       body: reports.isEmpty
         ? const Center(child: AppText('لا توجد تقارير في دورة الاعتماد حتى الآن.'))
         : ListView(padding: const EdgeInsets.all(12), children: [
-          const Card(child: Padding(padding: EdgeInsets.all(12), child: AppText('المراحل: مسودة ← مرسل للمراجعة ← معتمد أو بحاجة إلى تعديل ← مغلق. تُسجل الإجراءات في سجل التدقيق.'))),
-          for (final r in reports) Card(child: ListTile(
-            leading: Icon(_icon((r['status'] ?? 'draft').toString())),
+          Container(padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(color: const Color(0xFF123640),
+                borderRadius: BorderRadius.circular(18)),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const AppText('مسار الاعتماد', style: TextStyle(color: Colors.white,
+                  fontSize: 20, fontWeight: FontWeight.w900)),
+              const SizedBox(height: 10),
+              Wrap(spacing: 8, runSpacing: 8, children: [
+                for (final stage in ['مسودة', 'مرسل للمراجعة', 'معتمد', 'مغلق'])
+                  Chip(label: Text(stage), backgroundColor: const Color(0xFFE4F3EB)),
+              ]),
+              const AppText('تُسجل قرارات المراجعة في سجل التدقيق.',
+                  style: TextStyle(color: Colors.white70)),
+            ])),
+          const SizedBox(height: 10),
+          for (final r in reports) Container(
+            margin: const EdgeInsets.only(bottom: 9),
+            decoration: BoxDecoration(color: Theme.of(context).cardColor,
+                borderRadius: BorderRadius.circular(16),
+                border: BorderDirectional(start: BorderSide(
+                    color: _color((r['status'] ?? 'draft').toString()), width: 5))),
+            child: ListTile(
+            leading: Icon(_icon((r['status'] ?? 'draft').toString()),
+                color: _color((r['status'] ?? 'draft').toString())),
             title: Text((r['groupName'] ?? r['title'] ?? r['reportType'] ?? 'تقرير').toString()),
             subtitle: Text('الحالة: ${_label((r['status'] ?? 'draft').toString())}\nالتاريخ: ${r['createdAt'] ?? '—'}'),
             isThreeLine: true,
@@ -59,9 +80,9 @@ class ReportApprovalScreen extends StatelessWidget {
     final user = context.read<AuthService>().currentUser;
     if (user == null) return;
     final oldStatus = '${r['status'] ?? 'draft'}';
-    final allowed = user.role == 'jsc_coordinator'
+    final allowed = user.can('reports', 'approve') && (user.role == 'jsc_coordinator'
         ? (status == 'approved' || status == 'needs_edits') && oldStatus == 'submitted'
-        : user.role == 'donor_manager' && status == 'closed' && oldStatus == 'approved';
+        : user.role == 'donor_manager' && status == 'closed' && oldStatus == 'approved');
     if (!allowed) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: AppText('هذا الإجراء غير مسموح في مرحلة الاعتماد الحالية.')));
       return;
@@ -74,5 +95,12 @@ class ReportApprovalScreen extends StatelessWidget {
     if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: AppText('تم تحديث الحالة إلى ${_label(status)}.')));
   }
   static IconData _icon(String s) => switch(s) {'approved' => Icons.verified_outlined, 'submitted' => Icons.hourglass_top, 'needs_edits' => Icons.edit_note, 'closed' => Icons.lock_outline, _ => Icons.drafts_outlined};
+  static Color _color(String s) => switch(s) {
+    'approved' => const Color(0xFF218B68),
+    'submitted' => const Color(0xFF168CA0),
+    'needs_edits' => const Color(0xFFCE8E38),
+    'closed' => const Color(0xFF60747D),
+    _ => const Color(0xFF8F9BA0),
+  };
   static String _label(String s) => switch(s) {'approved' => 'معتمد', 'submitted' => 'مرسل للمراجعة', 'needs_edits' => 'بحاجة إلى تعديل', 'closed' => 'مغلق', _ => 'مسودة'};
 }
