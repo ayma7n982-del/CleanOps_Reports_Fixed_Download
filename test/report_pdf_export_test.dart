@@ -99,7 +99,7 @@ void main() {
           if (type == 'trips') expect(csv, contains('trip-1'));
           expect(csv, contains(english ? 'Data may be partial' : 'قد تكون البيانات جزئية'));
           for (final metric in ReportContent.metrics(selected)) {
-            expect(rows, contains([metric.label(english), metric.value]));
+            expect(rows.any((row) => row[0] == metric.label(english) && row[1] == metric.value), isTrue);
           }
           if (type == 'containers') expect(rows.any((row) => row[0] == (english ? 'Present records' : 'الحضور')), isFalse);
           final output = await reports.buildOperationalPdfBytes(snapshot: selected, user: user, languageCode: language);
