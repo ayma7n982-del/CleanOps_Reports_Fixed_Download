@@ -24,6 +24,7 @@ class WorkReportsDashboard extends StatefulWidget {
 
 class _WorkReportsDashboardState extends State<WorkReportsDashboard> {
   final Set<String> _submitting = {};
+  String _selectedStatus = 'all';
   final Set<String> _printing = {};
   DateTime startDate = DateTime(DateTime.now().year, DateTime.now().month, 1);
   DateTime endDate = DateTime.now();
@@ -82,6 +83,14 @@ class _WorkReportsDashboardState extends State<WorkReportsDashboard> {
             '${a['workDate'] ?? a['createdAt'] ?? ''}',
           ),
         );
+    final stageCounts = <String, int>{};
+    for (final report in visible) {
+      final status = '${report['status'] ?? 'draft'}';
+      stageCounts[status] = (stageCounts[status] ?? 0) + 1;
+    }
+    if (_selectedStatus != 'all') {
+      visible.removeWhere((report) => '${report['status'] ?? 'draft'}' != _selectedStatus);
+    }
     final todayReports = visible;
     final trips = todayReports.fold<int>(
       0,
@@ -168,6 +177,20 @@ class _WorkReportsDashboardState extends State<WorkReportsDashboard> {
                 ),
               ),
             ),
+            const SizedBox(height: 10),
+            const AppText('حالة التقارير', style: TextStyle(fontWeight: FontWeight.w800)),
+            const SizedBox(height: 6),
+            Wrap(spacing: 6, runSpacing: 6, children: [
+              for (final stage in const ['all', 'draft', 'needs_edits', 'submitted', 'approved', 'closed'])
+                ChoiceChip(
+                  label: AppText(stage == 'all'
+                      ? '${tr('الكل')} (${stageCounts.values.fold<int>(0, (a, b) => a + b)})'
+                      : '${tr(_status(stage))} (${stageCounts[stage] ?? 0})'),
+                  selected: _selectedStatus == stage,
+                  onSelected: (_) => setState(() => _selectedStatus = stage),
+                ),
+            ]),
+            const SizedBox(height: 12),
             _visualSummary(todayReports.length, trips, present, absent,
                 specialLeave + sickLeave + otherAbsence,
                 partial: visible.any(
@@ -209,7 +232,7 @@ class _WorkReportsDashboardState extends State<WorkReportsDashboard> {
             if (visible.isEmpty)
               const Padding(
                 padding: EdgeInsets.all(18),
-                child: AppText('لا توجد تقارير عمل مسجلة ضمن نطاق صلاحياتك.'),
+                child: AppText('لا توجد تقارير تطابق الفترة والحالة المختارتين. جرّب اختيار الكل أو تغيير الفترة.'),
               ),
             for (final e in visible)
               Card(

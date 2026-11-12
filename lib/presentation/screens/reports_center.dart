@@ -39,15 +39,19 @@ class _ReportsCenterState extends State<ReportsCenterScreen> {
   String exportLanguage = 'ar';
   String periodPreset = 'daily';
   String? municipality, group, cycle;
+  bool _loading = true, _previewing = false;
 
   @override void initState() { super.initState(); _reload(); }
   void _reload() {
     final data = context.read<DataService>(); final user = context.read<AuthService>().currentUser;
+    _loading = true;
     final request = ReportService(data).load(days: days, startDate: startDate, endDate: endDate, user: user, municipality: municipality, group: group, cycle: cycle, reportType: reportType, reportId: _stableReportId(data), search: search, containerStatus: reportType == 'containers' ? containerStatus : 'all');
     future = request;
     request.then((snapshot) {
-      if (mounted && identical(future, request)) setState(() => lastSnapshot = snapshot);
-    }, onError: (Object error, StackTrace stack) {});
+      if (mounted && identical(future, request)) setState(() { lastSnapshot = snapshot; _loading = false; });
+    }, onError: (Object error, StackTrace stack) {
+      if (mounted && identical(future, request)) setState(() { _loading = false; lastSnapshot = null; });
+    });
   }
   void _refresh() {
     if (!mounted) return;
@@ -58,7 +62,9 @@ class _ReportsCenterState extends State<ReportsCenterScreen> {
     final now = DateTime.now();
     final range = preset == 'daily'
         ? ReportPeriodPresets.daily(now)
-        : preset == 'monthly' ? ReportPeriodPresets.monthly(now) : ReportPeriodPresets.weekly(now);
+        : preset == 'monthly' ? ReportPeriodPresets.monthly(now)
+        : preset == 'twenty' ? ReportPeriodPresets.custom(DateTime(now.year, now.month, now.day).subtract(const Duration(days: 19)), now)
+        : ReportPeriodPresets.weekly(now);
     setState(() {
       periodPreset = preset;
       startDate = range.startDate;
@@ -90,7 +96,8 @@ class _ReportsCenterState extends State<ReportsCenterScreen> {
     if (reportType == 'containers') return 'آخر حالة مسجلة للحاويات';
     if (periodPreset == 'monthly') return 'هذا الشهر';
     if (periodPreset == 'daily') return 'اليوم';
-    if (periodPreset == 'weekly') return 'تقرير أسبوعي';
+    if (periodPreset == 'weekly') return 'آخر 7 أيام';
+    if (periodPreset == 'twenty') return 'آخر 20 يومًا';
     final range = ReportPeriodPresets.custom(startDate, endDate);
     return 'فترة مخصصة (${range.inclusiveDays} يوم)';
   }
@@ -107,7 +114,7 @@ class _ReportsCenterState extends State<ReportsCenterScreen> {
     return 'CO-${hash.toRadixString(16)}';
   }
 
-  bool _isApproved(ReportSnapshot snapshot) => context.watch<DataService>().operations.any((e) =>
+  bool _isApproved(ReportSnapshot snapshot) => context.read<DataService>().operations.any((e) =>
       '${e['id'] ?? ''}' == snapshot.reportId &&
       (e['reportKind'] == 'report_approval' || e['_entity'] == 'report_approval') &&
       ['approved', 'closed'].contains('${e['status'] ?? ''}'));
@@ -131,8 +138,10 @@ class _ReportsCenterState extends State<ReportsCenterScreen> {
 
   @override Widget build(BuildContext context) {
     final rtl = context.watch<LocaleController>().isArabic;
+    context.watch<DataService>();
     return Directionality(textDirection: rtl ? TextDirection.rtl : TextDirection.ltr, child: Scaffold(
       appBar: widget.embedded ? null : AppBar(bottom: const AppNavigationBar(), title: const AppText('التقارير')),
+      bottomNavigationBar: widget.embedded ? null : _quickPreview(),
       body: RefreshIndicator(onRefresh: () async { _refresh(); await future; }, child: ListView(
         padding: const EdgeInsets.fromLTRB(14, 14, 14, 120), children: [
           _hero(lastSnapshot),
@@ -160,6 +169,7 @@ class _ReportsCenterState extends State<ReportsCenterScreen> {
     setState(() {
       reportType = value; search = ''; searchController.clear();
       if (value != 'containers') containerStatus = 'all';
+      if (value == 'containers') cycle = null;
       _reload();
     });
   }
@@ -316,6 +326,57 @@ class _ReportsCenterState extends State<ReportsCenterScreen> {
     );
   }
 
+  Widget _quickPreview() {
+    final user = context.read<AuthService>().currentUser;
+    final snapshot = lastSnapshot;
+    return SafeArea(child: Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      child: FilledButton.icon(
+        onPressed: _loading || _previewing || snapshot == null || user == null
+            ? null : () => _previewReport(snapshot, user),
+        icon: _previewing
+            ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+            : const Icon(Icons.preview_outlined),
+        label: AppText(_loading ? 'تحديث نتائج التقرير…' : _previewing ? 'تجهيز المعاينة…' : 'معاينة التقرير الحالي'),
+      ),
+    ));
+  }
+
+  Widget _filterChips() {
+    void remove(String key) {
+      searchTimer?.cancel();
+      setState(() {
+        switch (key) {
+          case 'municipality': municipality = null; group = null; break;
+          case 'group': group = null; break;
+          case 'cycle': cycle = null; break;
+          case 'search': search = ''; searchController.clear(); break;
+          case 'status': containerStatus = 'all'; break;
+          case 'period':
+            final range = ReportPeriodPresets.daily(DateTime.now());
+            startDate = range.startDate; endDate = range.endDate; periodPreset = 'daily'; break;
+        }
+        _reload();
+      });
+    }
+    final labels = <String, String>{
+      if (reportType != 'containers' && periodPreset != 'daily') 'period': _periodPresetLabel(),
+      if (municipality != null) 'municipality': '${tr('البلدية')}: $municipality',
+      if (group != null) 'group': '${tr('المجموعة')}: $group',
+      if (reportType != 'containers' && cycle != null) 'cycle': '${tr('الدورة')}: $cycle',
+      if (search.isNotEmpty) 'search': '${tr('البحث')}: $search',
+      if (reportType == 'containers' && containerStatus != 'all') 'status':
+        '${tr('الحالة')}: ${tr(const {'full':'ممتلئة', 'partial':'نصف ممتلئة', 'empty':'فارغة', 'stale':'لم تُحدّث اليوم'}[containerStatus] ?? containerStatus)}',
+    };
+    return Wrap(spacing: 6, runSpacing: 6, children: [
+      for (final entry in labels.entries) InputChip(
+        label: AppText(entry.value, maxLines: 2, overflow: TextOverflow.ellipsis),
+        deleteButtonTooltipMessage: tr('إزالة هذا الفلتر'),
+        onDeleted: () => remove(entry.key),
+      ),
+    ]);
+  }
+
   void _resetFilters() {
     searchTimer?.cancel(); searchController.clear();
     setState(() {
@@ -355,7 +416,7 @@ class _ReportsCenterState extends State<ReportsCenterScreen> {
         const SizedBox(height: 7),
         if (reportType != 'containers')
           Wrap(spacing: 8, runSpacing: 8, children: [
-            for (final entry in const {'daily':'اليوم', 'weekly':'آخر 7 أيام', 'monthly':'هذا الشهر'}.entries)
+            for (final entry in const {'daily':'اليوم', 'weekly':'آخر 7 أيام', 'twenty':'آخر 20 يومًا', 'monthly':'هذا الشهر'}.entries)
               ChoiceChip(
                 label: AppText(entry.value),
                 selected: periodPreset == entry.key,
@@ -411,6 +472,7 @@ class _ReportsCenterState extends State<ReportsCenterScreen> {
                 suffixIcon: search.isEmpty ? null : IconButton(
                   tooltip: 'مسح البحث',
                   onPressed: () {
+                    searchTimer?.cancel();
                     searchController.clear();
                     setState(() { search = ''; _reload(); });
                   },
@@ -423,6 +485,7 @@ class _ReportsCenterState extends State<ReportsCenterScreen> {
             ),
           ),
         ]),
+        if (filterCount > 0) ...[const SizedBox(height: 12), _filterChips()],
         const SizedBox(height: 4),
         ExpansionTile(
           key: ValueKey('$reportType-$advancedSelected'),
@@ -781,7 +844,7 @@ class _ReportsCenterState extends State<ReportsCenterScreen> {
             },
           ),
           OutlinedButton.icon(
-            onPressed: () => _previewReport(snapshot, user),
+            onPressed: _previewing ? null : () => _previewReport(snapshot, user),
             icon: const Icon(Icons.preview_outlined),
             label: const AppText('معاينة وطباعة'),
           ),
@@ -815,7 +878,9 @@ class _ReportsCenterState extends State<ReportsCenterScreen> {
             Expanded(child: AppText(
               approved
                   ? 'التقرير معتمد وجاهز للتصدير الرسمي.'
-                  : 'التصدير الرسمي يتاح بعد اعتماد التقرير. المعاينة والطباعة متاحتان الآن.',
+                  : !user.can('reports', 'export')
+                      ? 'المعاينة متاحة. التصدير الرسمي غير متاح ضمن صلاحيات حسابك.'
+                      : 'التصدير الرسمي يتاح بعد اعتماد التقرير. يمكنك معاينته الآن.',
               style: const TextStyle(fontSize: 12),
             )),
           ]),
@@ -843,6 +908,8 @@ class _ReportsCenterState extends State<ReportsCenterScreen> {
   }
 
   Future<void> _previewReport(ReportSnapshot snapshot, AppUser user) async {
+    if (_previewing) return;
+    setState(() => _previewing = true);
     try {
       final bytes = await ReportService(context.read<DataService>()).buildOperationalPdfBytes(
         snapshot: snapshot,
@@ -860,6 +927,8 @@ class _ReportsCenterState extends State<ReportsCenterScreen> {
       )));
     } catch (error) {
       _showMessage('تعذرت معاينة التقرير: $error');
+    } finally {
+      if (mounted) setState(() => _previewing = false);
     }
   }
 

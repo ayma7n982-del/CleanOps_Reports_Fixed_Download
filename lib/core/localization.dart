@@ -76,6 +76,26 @@ class I18n {
   }
 
   static const Map<String, String> _en = {
+    'آخر 20 يومًا': 'Last 20 days',
+    'آخر 7 أيام': 'Last 7 days',
+    'تحديث نتائج التقرير…': 'Updating report results…',
+    'تجهيز المعاينة…': 'Preparing preview…',
+    'معاينة التقرير الحالي': 'Preview current report',
+    'إزالة هذا الفلتر': 'Remove this filter',
+    'حالة التقارير': 'Report status',
+    'المعاينة متاحة. التصدير الرسمي غير متاح ضمن صلاحيات حسابك.': 'Preview is available. Your account cannot export official reports.',
+    'التصدير الرسمي يتاح بعد اعتماد التقرير. يمكنك معاينته الآن.': 'Official export is available after approval. You can preview the report now.',
+    'لا توجد تقارير تطابق الفترة والحالة المختارتين. جرّب اختيار الكل أو تغيير الفترة.': 'No reports match this period and status. Select All or change the period.',
+    'البلدية': 'Municipality',
+    'الدورة': 'Cycle',
+    'البحث': 'Search',
+    'الكل': 'All',
+    'مسودة': 'Draft',
+    'بانتظار المراجعة': 'Pending review',
+    'بحاجة إلى تعديل': 'Needs correction',
+    'معتمد': 'Approved',
+    'مغلق': 'Closed',
+
     'اختر المكب / نقطة التجميع': 'Select dumpsite / collection point',
     'ابحث باسم المكب أو موقعه': 'Search by dumpsite name or location',
     'إعادة تحميل المكبات': 'Reload dumpsites',
