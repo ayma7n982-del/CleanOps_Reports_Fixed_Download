@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import '../constants/app_constants.dart';
 import '../models/core_models.dart';
 import 'report_service.dart';
+import 'report_content.dart';
 
 class ReportPdfTemplate {
   final pw.Font regular;
@@ -30,26 +31,25 @@ class ReportPdfTemplate {
       pw.Text(value, style: pw.TextStyle(font: bold, fontSize: 17,
           color: PdfColors.teal800)),
     ]));
-  pw.Widget _bars(Map<String,int> values) {
-    if (values.isEmpty) return pw.Text(t('لا توجد بيانات كافية للرسم.','Not enough data to chart.'),
-        style: pw.TextStyle(font:regular,fontSize:8));
-    final rows = values.entries.toList()..sort((a,b)=>b.value.compareTo(a.value));
-    final max = rows.first.value > 0 ? rows.first.value : 1;
-    return pw.Column(children: [for (final e in rows.take(8)) pw.Padding(
-      padding: const pw.EdgeInsets.symmetric(vertical: 3),
-      child: pw.Row(children: [
-        pw.SizedBox(width: 86, child: pw.Text(e.key, maxLines: 1,
-            style: pw.TextStyle(font:regular,fontSize:7))),
-        pw.Expanded(child: pw.Row(children: [
-          if (e.value > 0) pw.Expanded(flex: e.value,
-              child: pw.Container(height: 9, color: PdfColors.teal700)),
-          if (max - e.value > 0) pw.Expanded(flex: max - e.value,
-              child: pw.Container(height: 9, color: PdfColors.grey200)),
-        ])),
-        pw.SizedBox(width: 8),
-        pw.Text('${e.value}', style: pw.TextStyle(font:bold,fontSize:8)),
-      ]),
-    )]);
+  pw.Widget _breakdownTable(ReportBreakdown section) {
+    final entries = section.values.entries.toList();
+    final maximum = entries.fold<int>(1, (value, entry) => entry.value > value ? entry.value : value);
+    return pw.Table(
+      columnWidths: {0: const pw.FlexColumnWidth(3), 1: const pw.FlexColumnWidth(2), 2: const pw.FlexColumnWidth(1)},
+      children: [for (final entry in entries) pw.TableRow(children: [
+        pw.Padding(padding: const pw.EdgeInsets.all(5), child: pw.Text(entry.key,
+            style: pw.TextStyle(font: regular, fontSize: 8))),
+        pw.Padding(padding: const pw.EdgeInsets.symmetric(vertical: 7, horizontal: 5),
+          child: pw.Row(children: [
+            if (entry.value > 0) pw.Expanded(flex: entry.value,
+              child: pw.Container(height: 5, color: PdfColors.teal700)),
+            if (maximum - entry.value > 0) pw.Expanded(flex: maximum - entry.value,
+              child: pw.Container(height: 5, color: PdfColors.grey200)),
+          ])),
+        pw.Padding(padding: const pw.EdgeInsets.all(5), child: pw.Text('${entry.value}',
+            style: pw.TextStyle(font: bold, fontSize: 8))),
+      ])],
+    );
   }
   pw.Widget _section(String heading,List<pw.Widget> children)=>pw.Container(
     margin:const pw.EdgeInsets.only(top:11),
@@ -65,7 +65,8 @@ class ReportPdfTemplate {
 
   List<pw.Widget> build() {
     final role=user?.role ?? 'donor_manager'; final roleTitle=english ? ({'donor_manager':'System Manager','jsc_coordinator':'JSC Coordinator','municipality_coordinator':'Municipality Coordinator','group_supervisor':'Group Supervisor','worker':'Worker'}[role] ?? 'Operational Report') : (roleNames[role] ?? 'التقرير التشغيلي');
-    final summary=english ? '${snapshot.trips} trips recorded. Attendance rate ${(snapshot.attendanceRate*100).toStringAsFixed(1)}%, PPE compliance ${(snapshot.ppeRate*100).toStringAsFixed(1)}%, emergencies ${snapshot.emergencies}.' : 'تم تسجيل ${snapshot.trips} نقلة. معدل الحضور ${(snapshot.attendanceRate*100).toStringAsFixed(1)}%، والتزام معدات الوقاية ${(snapshot.ppeRate*100).toStringAsFixed(1)}%، والطوارئ ${snapshot.emergencies}.';
+    final metrics = ReportContent.metrics(snapshot);
+    final sections = ReportContent.breakdowns(snapshot, english: english);
     return [
       pw.Container(padding:const pw.EdgeInsets.all(14),decoration:pw.BoxDecoration(color:PdfColors.blueGrey900,borderRadius:pw.BorderRadius.circular(10)),child:pw.Column(crossAxisAlignment:pw.CrossAxisAlignment.start,children:[
         pw.Row(crossAxisAlignment:pw.CrossAxisAlignment.center,children:[
@@ -85,15 +86,44 @@ class ReportPdfTemplate {
         pw.Text(snapshot.filterLabel(english: english), style: pw.TextStyle(font: regular, fontSize: 8, color: PdfColors.white)),
         pw.Text('${t('تاريخ الإصدار: ','Generated: ')}${DateFormat('yyyy-MM-dd HH:mm').format(snapshot.generatedAt)}',style:pw.TextStyle(font:regular,fontSize:8,color:PdfColors.white)),
       ])),
-      pw.SizedBox(height:12),pw.Table(border:pw.TableBorder.all(color:PdfColors.grey300,width:.5),children:[pw.TableRow(children:[_kpi(t('الرحلات','Trips'),'${snapshot.trips}'),_kpi(t('الحضور','Attendance'),'${(snapshot.attendanceRate*100).toStringAsFixed(0)}%'),_kpi('PPE','${(snapshot.ppeRate*100).toStringAsFixed(0)}%'),_kpi(t('الطوارئ المفتوحة','Open emergencies'),'${snapshot.emergencyOpen}')])]),
-      _section(role=='municipality_coordinator'?t('مقارنة المجموعات','Group comparison'):role=='group_supervisor'?t('ملخص المجموعة','Group summary'):t('الملخص التشغيلي','Operational summary'),[if(role=='municipality_coordinator') ...[_comparisonTable()],_bars(snapshot.tripsByDay),pw.Text(summary,style:pw.TextStyle(font:regular,fontSize:9))]),
-      if(snapshot.containerByStatus.isNotEmpty)_section(t('حالة الحاويات','Container status'),[pw.Text(snapshot.containerByStatus.entries.map((e)=>'${_statusLabel(e.key)}: ${e.value}').join(' • '),style:pw.TextStyle(font:regular,fontSize:9))]),
-      _section(t('ملاحظات وتوصيات','Notes and recommendations'),[pw.Text(snapshot.emergencies>0?t('متابعة البلاغات المفتوحة وإغلاقها وفق إجراءات السلامة.','Follow up and close open incidents according to safety procedures.'):t('لا توجد طوارئ مفتوحة ضمن البيانات المتاحة.','No open emergencies in the available data.'),style:pw.TextStyle(font:regular,fontSize:9)),pw.Text(snapshot.ppeRate<.95?t('مراجعة الالتزام بمعدات الوقاية الشخصية.','Review personal protective equipment compliance.'):t('الالتزام بـ PPE ضمن المستوى الجيد.','PPE compliance is at a good level.'),style:pw.TextStyle(font:regular,fontSize:9))]),
+      pw.SizedBox(height: 12),
+      if (snapshot.sourceMayBeIncomplete) _section(t('تنبيه اكتمال البيانات', 'Data completeness warning'), [
+        pw.Text(t('قد تكون البيانات جزئية؛ راجع المصدر قبل الاعتماد.',
+            'Data may be partial; verify the source before approval.'),
+            style: pw.TextStyle(font: bold, fontSize: 9, color: PdfColors.orange800)),
+      ]),
+      for (var offset = 0; offset < metrics.length; offset += 3) ...[
+        pw.SizedBox(height: 6),
+        pw.Row(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+          for (final metric in metrics.skip(offset).take(3)) pw.Expanded(
+            child: _kpi(metric.label(english), metric.value)),
+        ]),
+      ],
+      pw.SizedBox(height: 10),
+      pw.Text(t('الأعداد من السجلات المتاحة ضمن الفلاتر. مقارنة النقلات وحدها لا تحدد الكفاءة.',
+          'Counts reflect available filtered records. Trip counts alone do not determine efficiency.'),
+          style: pw.TextStyle(font: regular, fontSize: 8)),
+      for (final section in sections) ...[
+        pw.SizedBox(height: 14),
+        pw.Text(section.title, style: pw.TextStyle(font: bold, fontSize: 11, color: PdfColors.teal800)),
+        pw.Divider(color: PdfColors.teal100),
+        if (section.values.isEmpty) pw.Text(t('لا توجد سجلات', 'No records'),
+            style: pw.TextStyle(font: regular, fontSize: 8))
+        else _breakdownTable(section),
+      ],
+      if (snapshot.reportType == 'containers' || snapshot.reportType == 'trips') ...[
+        pw.SizedBox(height: 14),
+        pw.Text(t('السجلات المطابقة للفلاتر', 'Records matching filters'),
+            style: pw.TextStyle(font: bold, fontSize: 11, color: PdfColors.teal800)),
+        pw.Table(columnWidths: {0: const pw.FlexColumnWidth(1), 1: const pw.FlexColumnWidth(3)},
+          children: [for (final row in ReportContent.recordRows(snapshot, english: english)) pw.TableRow(
+            children: [for (final value in row) pw.Padding(padding: const pw.EdgeInsets.all(4),
+              child: pw.Text(value, style: pw.TextStyle(font: regular, fontSize: 8)))],
+          )]),
+      ],
       _section(t('الاعتماد والتوقيع','Review and signatures'),[pw.Text('${t('معدّ التقرير: ','Prepared by: ')}${user?.name ?? t('النظام','System')}',style:pw.TextStyle(font:regular,fontSize:9)),pw.Text(t('المراجع: ____________________','Reviewer: ____________________'),style:pw.TextStyle(font:regular,fontSize:9)),pw.Text(t('المعتمد: ____________________    التاريخ: __________','Approved by: ____________________    Date: __________'),style:pw.TextStyle(font:regular,fontSize:9))]),
     ];
   }
-  String _statusLabel(String value) => english ? ({'full':'Full','partial':'Partial','empty':'Empty','unknown':'Unknown','ممتلئة':'Full','جزئية':'Partial','فارغة':'Empty'}[value] ?? value) : ({'full':'ممتلئة','partial':'نصف ممتلئة','empty':'فارغة','unknown':'غير محددة'}[value] ?? value);
-  pw.Widget _comparisonTable(){final rows=snapshot.tripsByGroup.entries.toList()..sort((a,b)=>b.value.compareTo(a.value)); return pw.Table(border:pw.TableBorder.all(color:PdfColors.grey300),children:[pw.TableRow(children:['#',t('المجموعة','Group'),t('الرحلات','Trips')].map((x)=>pw.Padding(padding:const pw.EdgeInsets.all(4),child:pw.Text(x,style:pw.TextStyle(font:bold,fontSize:8)))).toList()),...rows.asMap().entries.map((e)=>pw.TableRow(children:[pw.Text('${e.key+1}',style:pw.TextStyle(font:regular,fontSize:8)),pw.Text(e.value.key,style:pw.TextStyle(font:regular,fontSize:8)),pw.Text('${e.value.value}',style:pw.TextStyle(font:bold,fontSize:8))]))]);}
   pw.Widget header(pw.Context context){
     final municipalities = snapshot.municipalityNames.isEmpty ? (snapshot.selectedMunicipality ?? 'كل البلديات') : snapshot.municipalityNames.take(5).join(' • ');
     return pw.Container(
@@ -118,5 +148,5 @@ class ReportPdfTemplate {
     );
   }
   pw.Widget footer(pw.Context context)=>pw.Container(padding:const pw.EdgeInsets.only(top:5),decoration:const pw.BoxDecoration(border:pw.Border(top:pw.BorderSide(color:PdfColors.grey300))),child:pw.Row(children:[pw.Expanded(child:pw.Text('${t('صادر عن: ','Issued by: ')}${user?.name ?? t('النظام','System')}',style:pw.TextStyle(font:regular,fontSize:7))),pw.Text(t('صفحة ${context.pageNumber} من ${context.pagesCount}','Page ${context.pageNumber} of ${context.pagesCount}'),style:pw.TextStyle(font:bold,fontSize:7))]));
-  pw.MultiPage page()=>pw.MultiPage(pageFormat:PdfPageFormat.a4,margin:const pw.EdgeInsets.fromLTRB(28,32,28,32),textDirection:english ? pw.TextDirection.ltr : pw.TextDirection.rtl,header:header,footer:footer,theme:pw.ThemeData.withFont(base:regular,bold:bold),build:(_)=>build());
+  pw.MultiPage page()=>pw.MultiPage(maxPages:500,pageFormat:PdfPageFormat.a4,margin:const pw.EdgeInsets.fromLTRB(28,32,28,32),textDirection:english ? pw.TextDirection.ltr : pw.TextDirection.rtl,header:header,footer:footer,theme:pw.ThemeData.withFont(base:regular,bold:bold),build:(_)=>build());
 }

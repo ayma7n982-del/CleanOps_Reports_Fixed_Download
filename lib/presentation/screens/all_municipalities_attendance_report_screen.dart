@@ -11,7 +11,7 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:provider/provider.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import '../../core/services/report_branding_store.dart';
 
 import '../../core/models/core_models.dart';
 import '../../core/localization.dart';
@@ -253,7 +253,7 @@ class _AllMunicipalitiesAttendanceReportScreenState
   Future<Uint8List> _pdf(List<_MunicipalitySummary> cities, AppUser actor) async {
     final regular = pw.Font.ttf(await rootBundle.load('assets/fonts/NotoSansArabic-Regular.ttf'));
     final bold = pw.Font.ttf(await rootBundle.load('assets/fonts/NotoSansArabic-Bold.ttf'));
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await ReportBrandingStore.read(council: actor.role == 'jsc_coordinator' ? actor.scope : '', allowLocalMunicipality: false, allowLocalCouncil: false);
     pw.ImageProvider? logo(String key) {
       try {
         final raw = prefs.getString(key);

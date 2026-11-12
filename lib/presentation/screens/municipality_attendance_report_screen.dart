@@ -11,7 +11,7 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:provider/provider.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import '../../core/services/report_branding_store.dart';
 
 import '../../core/services/auth_service.dart';
 import '../../core/localization.dart';
@@ -192,7 +192,7 @@ class _MunicipalityAttendanceReportScreenState extends State<MunicipalityAttenda
       Map<String, String> entries) async {
     final regular = pw.Font.ttf(await rootBundle.load('assets/fonts/NotoSansArabic-Regular.ttf'));
     final bold = pw.Font.ttf(await rootBundle.load('assets/fonts/NotoSansArabic-Bold.ttf'));
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await ReportBrandingStore.read(municipality: _value(roster.first, ['municipalityName', 'municipality']), council: _value(roster.first, ['councilName']));
     pw.ImageProvider? logo(String key) {
       try {
         final raw = prefs.getString(key);

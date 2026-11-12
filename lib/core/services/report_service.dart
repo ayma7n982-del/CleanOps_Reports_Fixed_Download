@@ -4,7 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'report_branding_store.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:excel/excel.dart';
@@ -13,6 +13,7 @@ import '../models/core_models.dart';
 import 'data_service.dart';
 import 'pdf_file_saver.dart';
 import 'report_pdf_template.dart';
+import 'report_content.dart';
 
 class ReportPeriodRange {
   final DateTime startDate;
@@ -503,7 +504,10 @@ class ReportService {
     final s = snapshot ?? await load(user: user);
     final regular = pw.Font.ttf(await rootBundle.load('assets/fonts/NotoSansArabic-Regular.ttf'));
     final bold = pw.Font.ttf(await rootBundle.load('assets/fonts/NotoSansArabic-Bold.ttf'));
-    final prefs = await SharedPreferences.getInstance();
+    final selectedMunicipality = s.selectedMunicipality ?? (s.municipalityNames.length == 1 ? s.municipalityNames.first : '');
+    final prefs = await ReportBrandingStore.read(municipality: selectedMunicipality,
+        project: s.selectedCycle ?? '', allowLocalMunicipality: false,
+        allowLocalCouncil: selectedMunicipality.isNotEmpty);
     pw.ImageProvider? readLogo(String key) {
       final encoded = prefs.getString(key);
       if (encoded == null || encoded.isEmpty) return null;
@@ -513,7 +517,7 @@ class ReportService {
     final councilLogo = readLogo('report_council_logo_base64');
     final unicefLogo = readLogo('report_unicef_logo_base64');
     final configuredMunicipality = prefs.getString('report_municipality_name') ?? '';
-    final municipalityName = configuredMunicipality.isNotEmpty ? configuredMunicipality : (s.selectedMunicipality ?? (s.municipalityNames.length == 1 ? s.municipalityNames.first : ''));
+    final municipalityName = selectedMunicipality.isNotEmpty ? selectedMunicipality : configuredMunicipality;
     final councilName = prefs.getString('report_council_name') ?? '';
     final projectName = (s.selectedCycle != null && s.selectedCycle!.isNotEmpty) ? s.selectedCycle! : (prefs.getString('report_project_name') ?? '');
     final exportTitle = languageCode == 'en' ? _englishReportTitle(title) : title;
@@ -536,30 +540,7 @@ class ReportService {
 
   List<int> buildOperationalCsvBytes(ReportSnapshot s, {String languageCode = 'ar'}) {
     final en = languageCode == 'en';
-    final rows = <List<String>>[
-      [en ? 'Metric' : 'المؤشر', en ? 'Value' : 'القيمة'],
-      [en ? 'Report ID' : 'معرّف التقرير', s.reportId],
-      [en ? 'Period' : 'الفترة', s.periodLabel],
-      [en ? 'Filters' : 'الفلاتر', s.filterLabel(english: en)],
-      [en ? 'Municipality' : 'البلديات', s.selectedMunicipality ?? s.municipalityNames.join('، ')],
-      [en ? 'Groups' : 'المجموعات', '${s.groups}'],
-      [en ? 'Workers' : 'العمال', '${s.workers}'],
-      [en ? 'Supervisors' : 'المشرفون', '${s.supervisors}'],
-      [en ? 'Trips' : 'النقلات', '${s.trips}'],
-      [en ? 'Alternative trips' : 'النقلات البديلة', '${s.alternativeTrips}'],
-      [en ? 'Present records' : 'سجلات الحضور', '${s.attendance}'],
-      [en ? 'Absence records' : 'سجلات الغياب', '${s.absence}'],
-      [en ? 'Containers' : 'الحاويات', '${s.containersTotal}'],
-      [en ? 'Full containers' : 'حاويات ممتلئة', '${s.containersFull}'],
-      [en ? 'Partial containers' : 'حاويات نصف ممتلئة', '${s.containersPartial}'],
-      [en ? 'Empty containers' : 'حاويات فارغة', '${s.containersEmpty}'],
-      [en ? 'Container issues' : 'مشكلات الحاويات', '${s.containerIssues}'],
-      [en ? 'Emergencies' : 'الطوارئ', '${s.emergencies}'],
-      [en ? 'Open emergencies' : 'الطوارئ المفتوحة', '${s.emergencyOpen}'],
-      [en ? 'Secured emergencies' : 'الطوارئ المؤمنة', '${s.emergencySecured}'],
-      [en ? 'PPE compliance rate' : 'نسبة الالتزام بمعدات الوقاية', '${(s.ppeRate * 100).toStringAsFixed(1)}%'],
-      [en ? 'Attendance rate' : 'نسبة الحضور', '${(s.attendanceRate * 100).toStringAsFixed(1)}%'],
-    ];
+    final rows = ReportContent.rows(s, english: en);
     String quote(String value) { final q = String.fromCharCode(34); return q + value.replaceAll(q, q + q) + q; }
     final csv = rows.map((row) => row.map(quote).join(',')).join('\r\n');
     return <int>[0xEF, 0xBB, 0xBF, ...utf8.encode(csv)];
@@ -569,23 +550,7 @@ class ReportService {
     final en = languageCode == 'en';
     final excel = Excel.createExcel();
     final sheet = excel['Report'];
-    sheet.appendRow([TextCellValue(en ? 'Metric' : 'المؤشر'), TextCellValue(en ? 'Value' : 'القيمة')]);
-    final rows = <List<String>>[
-      [en ? 'Report ID' : 'معرّف التقرير', s.reportId],
-      [en ? 'Period' : 'الفترة', s.periodLabel],
-      [en ? 'Filters' : 'الفلاتر', s.filterLabel(english: en)],
-      [en ? 'Municipality' : 'البلديات', s.selectedMunicipality ?? s.municipalityNames.join('، ')],
-      [en ? 'Groups' : 'المجموعات', '${s.groups}'], [en ? 'Workers' : 'العمال', '${s.workers}'],
-      [en ? 'Supervisors' : 'المشرفون', '${s.supervisors}'], [en ? 'Trips' : 'النقلات', '${s.trips}'],
-      [en ? 'Alternative trips' : 'النقلات البديلة', '${s.alternativeTrips}'],
-      [en ? 'Present records' : 'سجلات الحضور', '${s.attendance}'], [en ? 'Absence records' : 'سجلات الغياب', '${s.absence}'],
-      [en ? 'Containers' : 'الحاويات', '${s.containersTotal}'], [en ? 'Full containers' : 'حاويات ممتلئة', '${s.containersFull}'],
-      [en ? 'Partial containers' : 'حاويات نصف ممتلئة', '${s.containersPartial}'], [en ? 'Empty containers' : 'حاويات فارغة', '${s.containersEmpty}'],
-      [en ? 'Container issues' : 'مشكلات الحاويات', '${s.containerIssues}'], [en ? 'Emergencies' : 'الطوارئ', '${s.emergencies}'],
-      [en ? 'Open emergencies' : 'الطوارئ المفتوحة', '${s.emergencyOpen}'], [en ? 'Secured emergencies' : 'الطوارئ المؤمنة', '${s.emergencySecured}'],
-      [en ? 'PPE compliance rate' : 'نسبة الالتزام بمعدات الوقاية', '${(s.ppeRate * 100).toStringAsFixed(1)}%'],
-      [en ? 'Attendance rate' : 'نسبة الحضور', '${(s.attendanceRate * 100).toStringAsFixed(1)}%'],
-    ];
+    final rows = ReportContent.rows(s, english: en);
     for (final row in rows) { sheet.appendRow(row.map((v) => TextCellValue(v)).toList()); }
     final bytes = excel.encode();
     if (bytes == null) throw StateError('تعذر إنشاء ملف Excel.');

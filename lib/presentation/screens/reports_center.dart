@@ -14,6 +14,7 @@ import '../../core/models/core_models.dart';
 import '../../core/services/auth_service.dart';
 import '../../core/services/data_service.dart';
 import '../../core/services/report_service.dart';
+import '../../core/services/report_content.dart';
 import 'monthly_attendance_report_screen.dart';
 import 'attendance_reports_home_screen.dart';
 import 'work_reports_dashboard.dart';
@@ -573,56 +574,19 @@ class _ReportsCenterState extends State<ReportsCenterScreen> {
   Widget _drop<T>(String label, T? value, Map<T?,String> items, ValueChanged<T?> onChanged) => SizedBox(width: 190, child: DropdownButtonFormField<T>(value: value, isExpanded: true, decoration: InputDecoration(labelText: label, isDense: true, contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12)), items: items.entries.map((e)=>DropdownMenuItem<T>(value:e.key, child: Text(e.value, maxLines: 1, overflow: TextOverflow.ellipsis))).toList(), onChanged: onChanged));
 
   Widget _kpis(ReportSnapshot s) {
-    final cards = switch (reportType) {
-      'trips' => <Widget>[
-          _k('الترحيلات', '${s.trips}', navy, Icons.local_shipping_outlined),
-          _k('المجموعات', '${s.groups}', green, Icons.groups_outlined),
-          _k('البلديات', '${s.municipalities}', gold, Icons.location_city_outlined),
-        ],
-      'containers' => <Widget>[
-          _k('كل الحاويات', '${s.containersTotal}', navy, Icons.delete_outline),
-          _k('ممتلئة', '${s.containersFull}', red, Icons.warning_amber_rounded),
-          _k('نصف ممتلئة', '${s.containersPartial}', orange, Icons.timelapse_rounded),
-          _k('تحتاج متابعة', '${s.containerIssues}', red, Icons.build_circle_outlined),
-        ],
-      'absence' => <Widget>[
-          _k('نسبة الحضور', '${(s.attendanceRate * 100).toStringAsFixed(0)}%', green, Icons.how_to_reg),
-          _k('الحضور', '${s.attendance}', green, Icons.person_add_alt_1_outlined),
-          _k('الغياب', '${s.absence}', red, Icons.person_off_outlined),
-          _k('التزام السلامة', '${s.ppeCompliant}', aiCyan, Icons.health_and_safety_outlined),
-        ],
-      'work' => <Widget>[
-          _k('الترحيلات', '${s.trips}', navy, Icons.local_shipping_outlined),
-          _k('الحضور', '${s.attendance}', green, Icons.how_to_reg),
-          _k('المجموعات', '${s.groups}', green, Icons.groups_outlined),
-          _k('العمال', '${s.workers}', aiGreen, Icons.people_alt_outlined),
-        ],
-      'cycles' => <Widget>[
-          _k('الدورات', '${s.cycleCount}', aiCyan, Icons.event_repeat_outlined),
-          _k('الترحيلات', '${s.trips}', navy, Icons.local_shipping_outlined),
-          _k('الحضور', '${s.attendance}', green, Icons.how_to_reg),
-        ],
-      'municipalities' => <Widget>[
-          _k('البلديات', '${s.municipalities}', gold, Icons.location_city_outlined),
-          _k('الترحيلات', '${s.trips}', navy, Icons.local_shipping_outlined),
-          _k('الحضور', '${s.attendance}', green, Icons.how_to_reg),
-          _k('الحاويات', '${s.containersTotal}', aiCyan, Icons.delete_outline),
-        ],
-      'groups' => <Widget>[
-          _k('المجموعات', '${s.groups}', green, Icons.groups_outlined),
-          _k('الترحيلات', '${s.trips}', navy, Icons.local_shipping_outlined),
-          _k('الحضور', '${s.attendance}', green, Icons.how_to_reg),
-          _k('الغياب', '${s.absence}', red, Icons.person_off_outlined),
-        ],
-      _ => <Widget>[
-          _k('الترحيلات', '${s.trips}', navy, Icons.local_shipping_outlined),
-          _k('نسبة الحضور', '${(s.attendanceRate * 100).toStringAsFixed(0)}%', green, Icons.how_to_reg),
-          _k('الحاويات', '${s.containersTotal}', aiCyan, Icons.delete_outline),
-          _k('الحاويات الممتلئة', '${s.containersFull}', red, Icons.warning_amber_rounded),
-          _k('المجموعات', '${s.groups}', green, Icons.groups_outlined),
-          _k('العمال', '${s.workers}', aiGreen, Icons.people_alt_outlined),
-        ],
-    };
+    final cards = [for (final metric in ReportContent.metrics(s))
+      _k(metric.label(context.read<LocaleController>().isArabic == false), metric.value,
+        switch (metric.id) { 'absence' || 'full' || 'issues' => red, 'municipalities' => gold, _ => green },
+        switch (metric.id) {
+          'trips' => Icons.local_shipping_outlined,
+          'groups' => Icons.groups_outlined,
+          'municipalities' => Icons.location_city_outlined,
+          'containers' || 'full' || 'partial' || 'issues' => Icons.delete_outline,
+          'cycles' => Icons.event_repeat_outlined,
+          'absence' => Icons.person_off_outlined,
+          _ => Icons.how_to_reg,
+        }),
+    ];
     return LayoutBuilder(builder: (context, constraints) {
       final columns = constraints.maxWidth >= 850 ? 4 : constraints.maxWidth >= 540 ? 3 : constraints.maxWidth >= 300 ? 2 : 1;
       final width = (constraints.maxWidth - 10 * (columns - 1)) / columns;

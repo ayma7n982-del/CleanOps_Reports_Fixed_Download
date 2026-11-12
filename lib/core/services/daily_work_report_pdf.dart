@@ -6,7 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
-import 'package:shared_preferences/shared_preferences.dart';
+import 'report_branding_store.dart';
 
 import 'work_report_summary.dart';
 import 'daily_work_report_photo.dart';
@@ -45,7 +45,9 @@ class DailyWorkReportPdf {
     if (workDate == null) throw StateError('تاريخ العمل غير مسجل.');
     final regular = pw.Font.ttf(await rootBundle.load('assets/fonts/NotoSansArabic-Regular.ttf'));
     final bold = pw.Font.ttf(await rootBundle.load('assets/fonts/NotoSansArabic-Bold.ttf'));
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await ReportBrandingStore.read(
+      municipality: _value(report, 'municipalityName'), council: _value(report, 'councilName'),
+      project: _value(report, 'cycleName'), allowLocalMunicipality: false);
     pw.ImageProvider? logo(String key) {
       try {
         final raw = prefs.getString(key);

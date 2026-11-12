@@ -6,7 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import '../../core/services/report_branding_store.dart';
 import 'package:provider/provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -273,7 +273,18 @@ class _MonthlyAttendanceReportScreenState extends State<MonthlyAttendanceReportS
       pw.Container(width: 90, padding: const pw.EdgeInsets.all(3), child: pw.Text(name, style: pw.TextStyle(font: regular, fontSize: 6))),
       for (var d = (periodMode == 'second' ? 16 : 1); d <= (periodMode == 'first' ? 15 : daysInMonth); d++) pw.Container(width: 22, padding: const pw.EdgeInsets.all(2), alignment: pw.Alignment.center, child: pw.Text(_pdfMark(statuses['$name|$d'], english), style: pw.TextStyle(font: bold, fontSize: 6, color: _pdfColor(statuses['$name|$d'])))),
     ])];
-    final prefs = await SharedPreferences.getInstance();
+    final municipalities = roster.map((row) => '${row['municipalityName'] ?? row['municipality'] ?? ''}'.trim())
+        .where((value) => value.isNotEmpty).toSet();
+    final councils = roster.map((row) => '${row['councilName'] ?? ''}'.trim())
+        .where((value) => value.isNotEmpty).toSet();
+    final projects = roster.map((row) => '${row['cycleName'] ?? row['cycleId'] ?? ''}'.trim())
+        .where((value) => value.isNotEmpty).toSet();
+    final prefs = await ReportBrandingStore.read(
+      municipality: municipalities.length == 1 ? municipalities.single : '',
+      council: councils.length == 1 ? councils.single : '',
+      project: projects.length == 1 ? projects.single : '',
+      allowLocalMunicipality: false, allowLocalCouncil: false);
+
     pw.ImageProvider? logo(String key) { final raw = prefs.getString(key); if (raw == null || raw.isEmpty) return null; try { return pw.MemoryImage(base64Decode(raw)); } catch (_) { return null; } }
     final municipalityLogo = logo('report_municipality_logo_base64');
     final councilLogo = logo('report_council_logo_base64');

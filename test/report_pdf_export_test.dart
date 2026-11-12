@@ -1,4 +1,7 @@
 import 'dart:io';
+import 'dart:convert';
+import 'package:excel/excel.dart';
+import 'package:solid_waste_operations/core/services/report_content.dart';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive_flutter/hive_flutter.dart';
@@ -29,7 +32,7 @@ void main() {
       scope: 'all',
       policies: const {},
     );
-    final snapshot = ReportSnapshot(
+    ReportSnapshot snapshotFor(String type, {bool partial = false}) => ReportSnapshot(
       trips: 12,
       alternativeTrips: 2,
       attendance: 18,
@@ -67,13 +70,42 @@ void main() {
       selectedMunicipality: 'Smoke Municipality',
       selectedGroup: null,
       selectedCycle: 'Cycle 1',
-      reportType: 'executive',
+      containerRecords: const [{'id':'container-1', 'locationName':'MAIN', 'status':'full'}],
+      tripRecords: const [{'id':'trip-1', 'locationName':'MAIN', 'groupName':'Group A'}],
+      reportType: type,
+      sourceMayBeIncomplete: partial,
+      search: 'MAIN',
       reportId: 'PDF-SMOKE-1',
       periodLabel: '2026-10-01 → 2026-10-28',
       generatedAt: DateTime.utc(2026, 10, 28, 9, 30),
     );
 
+    final snapshot = snapshotFor('executive');
     try {
+      for (final type in ['trips', 'containers', 'absence', 'work', 'cycles', 'municipalities', 'groups', 'all']) {
+        final selected = snapshotFor(type, partial: true);
+        for (final language in ['ar', 'en']) {
+          final english = language == 'en';
+          final rows = ReportContent.rows(selected, english: english);
+          final workbook = Excel.decodeBytes(reports.buildOperationalExcelBytes(selected, languageCode: language));
+          final sheetRows = workbook.tables['Report']!.rows;
+          expect(sheetRows.length, rows.length);
+          for (var index = 0; index < rows.length; index++) {
+            expect(sheetRows[index].map((cell) => cell?.value.toString() ?? '').toList(), rows[index]);
+          }
+          final csv = utf8.decode(reports.buildOperationalCsvBytes(selected, languageCode: language));
+          expect(csv, contains('MAIN'));
+          if (type == 'containers') expect(csv, contains('container-1'));
+          if (type == 'trips') expect(csv, contains('trip-1'));
+          expect(csv, contains(english ? 'Data may be partial' : 'قد تكون البيانات جزئية'));
+          for (final metric in ReportContent.metrics(selected)) {
+            expect(rows, contains([metric.label(english), metric.value]));
+          }
+          if (type == 'containers') expect(rows.any((row) => row[0] == (english ? 'Present records' : 'الحضور')), isFalse);
+          final output = await reports.buildOperationalPdfBytes(snapshot: selected, user: user, languageCode: language);
+          expect(output.take(5).toList(), [37, 80, 68, 70, 45]);
+        }
+      }
       final bytes = await reports.buildOperationalPdfBytes(
         snapshot: snapshot,
         user: user,
@@ -87,5 +119,5 @@ void main() {
       await box.close();
       await directory.delete(recursive: true);
     }
-  });
+  }, timeout: const Timeout(Duration(minutes: 2)));
 }

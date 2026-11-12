@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:provider/provider.dart';
 import '../../core/services/auth_service.dart';
 import '../../core/services/data_service.dart';
+import '../../core/services/report_branding_store.dart';
 import '../widgets/app_design.dart';
 import '../../core/localization.dart';
 
@@ -21,7 +22,7 @@ class _ReportBrandingSettingsScreenState extends State<ReportBrandingSettingsScr
   final _council = TextEditingController();
   final _project = TextEditingController();
   bool _hasMunicipalityLogo = false, _hasCouncilLogo = false, _hasUnicefLogo = false;
-  bool _busy = true;
+  bool _busy = true, _publishing = false;
 
   @override
   void initState() { super.initState(); _load(); }
@@ -46,6 +47,23 @@ class _ReportBrandingSettingsScreenState extends State<ReportBrandingSettingsScr
     }
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: AppText('تم حفظ إعدادات ترويسة التقارير على هذا الجهاز.')));
+  }
+  Future<void> _publish() async {
+    final user = context.read<AuthService>().currentUser;
+    if (user?.role != 'donor_manager' || _publishing) return;
+    setState(() => _publishing = true);
+    try {
+      await _save();
+      await ReportBrandingStore.publish();
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: AppText('نُشرت الهوية المشتركة. تسترجعها الأجهزة عند تصدير تقرير النطاق نفسه.'),
+      ));
+    } catch (error) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: AppText('تعذر نشر الهوية المشتركة: $error')));
+    } finally {
+      if (mounted) setState(() => _publishing = false);
+    }
   }
   Future<void> _pickLogo(String key) async {
     final result = await FilePicker.platform.pickFiles(type: FileType.image, allowMultiple: false, withData: true);
@@ -78,8 +96,12 @@ class _ReportBrandingSettingsScreenState extends State<ReportBrandingSettingsScr
       _logoPicker('شعار اليونيسيف', _hasUnicefLogo, () => _pickLogo('report_unicef_logo_base64')),
       const SizedBox(height: 16),
       FilledButton.icon(onPressed: _save, icon: const Icon(Icons.save_outlined), label: const AppText('حفظ الإعدادات')),
+      if (user.role == 'donor_manager') OutlinedButton.icon(
+        onPressed: _publishing ? null : _publish, icon: const Icon(Icons.cloud_upload_outlined),
+        label: AppText(_publishing ? 'جارٍ نشر الهوية…' : 'نشر الهوية على أجهزة النطاق نفسه'),
+      ),
       const SizedBox(height: 8),
-      const AppText('تُحفظ الشعارات المختارة محليًا على الجهاز وتُضمّن في PDF عند توفرها. عند عدم اختيار شعار، لن يتم اختراع صورة بديلة.', style: TextStyle(fontSize: 12, height: 1.4)),
+      const AppText('تُحفظ الشعارات المختارة محليًا على الجهاز وتُضمّن في PDF عند توفرها. يمكن لمدير اليونيسف نشر الهوية المشتركة للبلدية أو المجلس المحدد. تحتفظ الأجهزة بنسخة للعمل دون اتصال.', style: TextStyle(fontSize: 12, height: 1.4)),
     ]),
   );
   }

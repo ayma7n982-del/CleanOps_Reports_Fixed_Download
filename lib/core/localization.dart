@@ -76,6 +76,10 @@ class I18n {
   }
 
   static const Map<String, String> _en = {
+    'تُحفظ الشعارات المختارة محليًا على الجهاز وتُضمّن في PDF عند توفرها. يمكن لمدير اليونيسف نشر الهوية المشتركة للبلدية أو المجلس المحدد. تحتفظ الأجهزة بنسخة للعمل دون اتصال.': 'Logos are saved on this device and embedded in PDFs. The UNICEF manager can publish a shared identity for the selected municipality or council. Devices retain an offline copy.',
+    'نُشرت الهوية المشتركة. تسترجعها الأجهزة عند تصدير تقرير النطاق نفسه.': 'Shared identity published. Devices retrieve it when exporting a report in the same scope.',
+    'نشر الهوية على أجهزة النطاق نفسه': 'Publish identity to devices in this scope',
+    'جارٍ نشر الهوية…': 'Publishing identity…',
     'آخر 20 يومًا': 'Last 20 days',
     'آخر 7 أيام': 'Last 7 days',
     'تحديث نتائج التقرير…': 'Updating report results…',
