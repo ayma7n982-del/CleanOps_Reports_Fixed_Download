@@ -85,6 +85,9 @@ jobs:
       - name: TypeScript build
         working-directory: functions
         run: npm run build
+      - name: Verify report correction boundaries
+        working-directory: functions
+        run: node --test tests/report_edit_policy.test.cjs
 
   firebase-rules:
     runs-on: ubuntu-latest

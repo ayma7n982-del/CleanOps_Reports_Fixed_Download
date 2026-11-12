@@ -59,6 +59,28 @@ void main() {
       expect(snapshot.periodLabel, contains('2026-08-01'));
       expect(snapshot.periodLabel, contains('2026-10-28'));
       expect(snapshot.sourceMayBeIncomplete, isFalse);
+      // Cycle totals use source operations, not saved report snapshots as well.
+      data.operations = [
+        {'id': 'jan-2027', '_entity': 'trip', 'cycleId': 'c1', 'groupId': 'g1', 'createdAt': '2027-01-02'},
+        {'id': 'jan-2026', '_entity': 'trip', 'cycleId': 'c1', 'groupId': 'g1', 'createdAt': '2026-01-02'},
+        {'id': 'present', '_entity': 'attendance', 'cycleId': 'c1', 'groupId': 'g1', 'createdAt': '2026-01-02', 'status': 'present'},
+        {'id': 'absent', '_entity': 'attendance', 'cycleId': 'c1', 'groupId': 'g1', 'createdAt': '2026-01-02', 'status': 'absent'},
+        {'id': 'other-cycle', '_entity': 'trip', 'cycleId': 'c2', 'groupId': 'g1', 'createdAt': '2026-01-02'},
+        {'id': 'saved-summary', '_entity': 'report', 'reportKind': 'work_report', 'cycleId': 'c1', 'cycleName': 'Cycle One', 'workDate': '2026-01-02', 'trips': 2, 'attendance': 1},
+      ];
+      final cycle = await ReportService(data).load(
+        user: manager, reportType: 'cycles', cycle: 'c1',
+        startDate: DateTime(2026, 1, 1), endDate: DateTime(2027, 1, 31),
+      );
+      expect(cycle.trips, 2);
+      expect(cycle.attendance, 1);
+      expect(cycle.absence, 1);
+      expect(cycle.cycleCount, 1);
+      expect(cycle.tripsByDay.keys.toList(), ['2026-01-02', '2027-01-02']);
+      final byName = await ReportService(data).load(user: manager, reportType: 'cycles', cycle: 'Cycle One', startDate: DateTime(2026), endDate: DateTime(2027, 1, 31));
+      expect(byName.trips, cycle.trips);
+      expect(cycle.tripsByMunicipality.values.fold<int>(0, (a, b) => a + b), 2);
+
     } finally {
       data.dispose();
       await box.close();

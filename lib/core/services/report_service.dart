@@ -86,7 +86,7 @@ class ReportSnapshot {
   final String reportId;
   final String periodLabel;
   final DateTime generatedAt;
-  /// True when the online source reached its maximum fetch bound.
+  /// True when records were capped or cannot be attributed to a selected cycle.
   final bool sourceMayBeIncomplete;
 
   const ReportSnapshot({
@@ -163,6 +163,35 @@ class ReportService {
     final availableMunicipalities = <String>{};
     final groups = <String>{}, municipalities = <String>{}, workers = <String>{}, supervisors = <String>{};
 
+    final cached = await data.refreshOperations(limit: 10000);
+    var sourceMayBeIncomplete = data.online && data.operationsCapped;
+    final cycleKeys = <String>{};
+    final cycleIdsByName = <String, String>{};
+    final cycleAliases = <String>{if (cycle != null && cycle.isNotEmpty) cycle};
+    List<String> cycles = [];
+    int cycleCount = 0;
+    void addCycleAliases(String id, String name) {
+      if (id.isNotEmpty && name.isNotEmpty) cycleIdsByName[name] = id;
+      if (cycleAliases.contains(id) || cycleAliases.contains(name)) {
+        if (id.isNotEmpty) cycleAliases.add(id);
+        if (name.isNotEmpty) cycleAliases.add(name);
+      }
+    }
+    if (Firebase.apps.isNotEmpty) {
+      try {
+        final snap = await FirebaseFirestore.instance.collection('work_cycles')
+            .orderBy('startDate', descending: true).limit(50).get();
+        cycles = [for (final doc in snap.docs) '${doc.data()['name'] ?? doc.id}'];
+        cycleCount = snap.docs.length;
+        for (final doc in snap.docs) {
+          addCycleAliases(doc.id, '${doc.data()['name'] ?? ''}');
+        }
+      } catch (_) { /* Keep explicitly tagged cached records usable offline. */ }
+    }
+    for (final row in cached) {
+      if (_inScope(row, user)) addCycleAliases('${row['cycleId'] ?? ''}', '${row['cycleName'] ?? ''}');
+    }
+
     // Firestore permits user-list queries only to management, and restricts
     // municipality coordinators to workforce profiles under their own UID.
     if (Firebase.apps.isNotEmpty &&
@@ -183,7 +212,7 @@ class ReportService {
           final mun = '${m['municipalityName'] ?? m['municipality'] ?? m['scope'] ?? 'غير محددة'}';
           final grp = '${m['groupName'] ?? m['groupId'] ?? 'غير محددة'}';
           if (mun != 'غير محددة') availableMunicipalities.add(mun);
-          if (!_matchesFilters(m, municipality: municipality, group: group, cycle: cycle)) continue;
+          if (!_matchesFilters(m, municipality: municipality, group: group, cycle: cycle, cycleAliases: cycleAliases)) continue;
           if (mun != 'غير محددة') municipalities.add(mun);
           if (grp != 'غير محددة' && grp.isNotEmpty) groups.add(grp);
           final role = '${m['role'] ?? ''}';
@@ -194,21 +223,26 @@ class ReportService {
     }
 
     // Long custom cycles must not silently use only the first 1000 records.
-    final cached = await data.refreshOperations(limit: 10000);
-    final sourceMayBeIncomplete = data.online && data.operationsCapped;
     for (final m in cached) {
       if (m['isDeleted'] == true || !_inDateRange(m, start, end) || !_inScope(m, user)) continue;
       final location = '${m['municipalityName'] ?? m['municipality'] ?? m['municipalityId'] ?? ''}'.trim();
       if (location.isNotEmpty) availableMunicipalities.add(location);
       if (!ReportRecordFilters.matchesSearch(m, search)) continue;
-      if (!_matchesFilters(m, municipality: municipality, group: group, cycle: cycle)) continue;
+      if (cycleAliases.isNotEmpty && ['trip', 'trips', 'attendance'].contains(m['_entity']) &&
+          _matchesFilters(m, municipality: municipality, group: group) &&
+          '${m['cycleId'] ?? ''}'.isEmpty && '${m['cycleName'] ?? ''}'.isEmpty) {
+        sourceMayBeIncomplete = true;
+      }
+      if (!_matchesFilters(m, municipality: municipality, group: group, cycle: cycle, cycleAliases: cycleAliases)) continue;
       final rawEntity = '${m['_entity'] ?? ''}';
       final entity = rawEntity == 'report' ? '${m['reportKind'] ?? 'report'}' : rawEntity;
       if (reportType == 'trips' && entity != 'trip' && entity != 'trips') continue;
       if (reportType == 'absence' && entity != 'attendance') continue;
       if (reportType == 'containers' && entity != 'container' && entity != 'containers') continue;
       if (reportType == 'work' && !['work_report', 'heavy_machinery', 'landfill_status'].contains(entity)) continue;
-      if (reportType == 'cycles' && entity != 'work_cycle' && entity != 'cycle') continue;
+      if (reportType == 'cycles' && !['trip', 'trips', 'attendance', 'heavy_machinery', 'landfill_status'].contains(entity)) continue;
+      final cycleKey = '${m['cycleId'] ?? m['cycleName'] ?? ''}'.trim();
+      if (cycleKey.isNotEmpty) cycleKeys.add(cycleIdsByName[cycleKey] ?? cycleKey);
       if (reportType == 'municipalities' && !['municipality', 'trip', 'trips', 'attendance', 'work_report'].contains(entity)) continue;
       if (reportType == 'groups' && !['group', 'trip', 'trips', 'attendance', 'work_report'].contains(entity)) continue;
       final mun = '${m['municipalityName'] ?? m['municipality'] ?? m['municipalityId'] ?? 'غير محددة'}';
@@ -221,7 +255,7 @@ class ReportService {
         tripRecords.add(m);
         trips++; if (m['alternative'] == true || m['cartType'] == 'alternative') alternativeTrips++;
         byGroup[grp]=(byGroup[grp]??0)+1; tripsByMunicipality[mun]=(tripsByMunicipality[mun]??0)+1;
-        final created = _dateValue(m['createdAt'] ?? m['date'] ?? m['timestamp']) ?? now; final day=DateFormat('MM/dd').format(created); byDay[day]=(byDay[day]??0)+1;
+        final created = _dateValue(m['createdAt'] ?? m['date'] ?? m['timestamp']) ?? now; final day=DateFormat('yyyy-MM-dd').format(created); byDay[day]=(byDay[day]??0)+1;
       } else if (entity == 'attendance') {
         final status='${m['status']??''}';
         if (status == 'present' || status == 'حضور') { attendance++; attendanceByGroup[grp]=(attendanceByGroup[grp]??0)+1; attendanceByMunicipality[mun]=(attendanceByMunicipality[mun]??0)+1; if(m['ppeComplete']==true){ppe++; ppeByGroup[grp]=(ppeByGroup[grp]??0)+1;} }
@@ -236,7 +270,7 @@ class ReportService {
           tripsByMunicipality[mun] = (tripsByMunicipality[mun] ?? 0) + reportTrips;
           final workDay = _dateValue(m['workDate'] ?? m['createdAt'] ?? m['date']);
           if (workDay != null) {
-            final key = DateFormat('MM/dd').format(workDay);
+            final key = DateFormat('yyyy-MM-dd').format(workDay);
             byDay[key] = (byDay[key] ?? 0) + reportTrips;
           }
         }
@@ -333,9 +367,9 @@ class ReportService {
       } catch (_) {}
     }
 
-    List<String> cycles=[]; int cycleCount=0;
-    if (Firebase.apps.isNotEmpty) { try { final snap=await FirebaseFirestore.instance.collection('work_cycles').orderBy('startDate', descending:true).limit(50).get(); cycles=[for(final d in snap.docs) '${d.data()['name'] ?? d.id}']; cycleCount=snap.docs.length; } catch (_) {} }
     if (user?.role == 'municipality_coordinator' && user!.scope.trim().isNotEmpty && user.scope != 'assigned_only' && user.scope != 'all') municipalities.add(user.scope.trim());
+    if (reportType == 'cycles') cycleCount = cycleKeys.length;
+    final sortedDays = byDay.entries.toList()..sort((a, b) => a.key.compareTo(b.key));
     final municipalityNames = municipalities.toList()..sort();
     final locationOptions = availableMunicipalities.toList()..sort();
     if (municipality != null && municipality.isNotEmpty && !municipalityNames.contains(municipality)) municipalityNames.insert(0, municipality);
@@ -345,14 +379,15 @@ class ReportService {
     var filterHash = 0;
     for (final unit in filterKey.codeUnits) { filterHash = (filterHash * 31 + unit) & 0x7fffffff; }
     final snapshotId = reportId == null ? 'CO-${now.millisecondsSinceEpoch}' : '$reportId-${filterHash.toRadixString(16)}';
-    return ReportSnapshot(trips: trips, alternativeTrips: alternativeTrips, attendance: attendance, absence: absence, ppeCompliant: ppe, emergencies: emergencies, emergencyOpen: emergencyOpen, emergencySecured: emergencySecured, landfillCapacity: landfill, heavyMachineryHours: heavyMachineryHours, tripsByGroup: byGroup, tripsByDay: byDay, attendanceByGroup: attendanceByGroup, ppeByGroup: ppeByGroup, emergenciesByGroup: emergenciesByGroup, containerByStatus: containerByStatus, containersTotal: containersTotal, containersFull: containersFull, containersPartial: containersPartial, containersEmpty: containersEmpty, containerIssues: containerIssues, workers: workers.length, supervisors: supervisors.length, groups: groups.length, municipalities: municipalities.length, dumpsites: dumpsites, cycleCount: cycleCount, municipalityNames: municipalityNames, tripsByMunicipality: tripsByMunicipality, attendanceByMunicipality: attendanceByMunicipality, absenceByGroup: absenceByGroup, containersByMunicipality: containersByMunicipality, containersByGroup: containersByGroup, cycles: cycles, selectedMunicipality: municipality, selectedGroup: group, selectedCycle: cycle, reportType: reportType, reportId: snapshotId, sourceMayBeIncomplete: sourceMayBeIncomplete, availableMunicipalities: locationOptions, search: search, containerStatus: containerStatus, containerRecords: containerRecords, tripRecords: tripRecords, periodLabel: reportType == 'containers' ? 'آخر حالة مسجلة للحاويات' : '${DateFormat('yyyy-MM-dd').format(start)} → ${DateFormat('yyyy-MM-dd').format(end)}', generatedAt: now);
+    return ReportSnapshot(trips: trips, alternativeTrips: alternativeTrips, attendance: attendance, absence: absence, ppeCompliant: ppe, emergencies: emergencies, emergencyOpen: emergencyOpen, emergencySecured: emergencySecured, landfillCapacity: landfill, heavyMachineryHours: heavyMachineryHours, tripsByGroup: byGroup, tripsByDay: Map<String, int>.fromEntries(sortedDays), attendanceByGroup: attendanceByGroup, ppeByGroup: ppeByGroup, emergenciesByGroup: emergenciesByGroup, containerByStatus: containerByStatus, containersTotal: containersTotal, containersFull: containersFull, containersPartial: containersPartial, containersEmpty: containersEmpty, containerIssues: containerIssues, workers: workers.length, supervisors: supervisors.length, groups: groups.length, municipalities: municipalities.length, dumpsites: dumpsites, cycleCount: cycleCount, municipalityNames: municipalityNames, tripsByMunicipality: tripsByMunicipality, attendanceByMunicipality: attendanceByMunicipality, absenceByGroup: absenceByGroup, containersByMunicipality: containersByMunicipality, containersByGroup: containersByGroup, cycles: cycles, selectedMunicipality: municipality, selectedGroup: group, selectedCycle: cycle, reportType: reportType, reportId: snapshotId, sourceMayBeIncomplete: sourceMayBeIncomplete, availableMunicipalities: locationOptions, search: search, containerStatus: containerStatus, containerRecords: containerRecords, tripRecords: tripRecords, periodLabel: reportType == 'containers' ? 'آخر حالة مسجلة للحاويات' : '${DateFormat('yyyy-MM-dd').format(start)} → ${DateFormat('yyyy-MM-dd').format(end)}', generatedAt: now);
   }
 
-  bool _matchesFilters(Map<String,dynamic> m, {String? municipality, String? group, String? cycle}) {
+  bool _matchesFilters(Map<String,dynamic> m, {String? municipality, String? group, String? cycle, Set<String> cycleAliases = const {}}) {
     final mun='${m['municipalityName'] ?? m['municipality'] ?? m['municipalityId'] ?? ''}'; final grp='${m['groupName'] ?? m['groupId'] ?? ''}'; final cyc='${m['cycleName'] ?? m['cycleId'] ?? ''}';
     if(municipality != null && municipality.isNotEmpty && mun != municipality && '${m['municipalityId']}' != municipality) return false;
     if(group != null && group.isNotEmpty && grp != group && '${m['groupId']}' != group) return false;
-    if(cycle != null && cycle.isNotEmpty && cyc != cycle && '${m['cycleId']}' != cycle) return false;
+    if (cycle != null && cycle.isNotEmpty && cyc != cycle && '${m['cycleId']}' != cycle &&
+        !cycleAliases.contains(cyc) && !cycleAliases.contains('${m['cycleId'] ?? ''}')) return false;
     return true;
   }
 

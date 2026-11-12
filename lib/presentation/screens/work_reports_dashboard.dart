@@ -224,7 +224,8 @@ class _WorkReportsDashboardState extends State<WorkReportsDashboard> {
                   trailing:
                       ((user?.role == 'group_supervisor' ||
                               user?.role == 'municipality_coordinator') &&
-                          (e['status'] ?? 'draft').toString() == 'draft')
+                          ['draft', 'needs_edits'].contains((e['status'] ?? 'draft').toString()) &&
+                          e['reportedBy'] == user?.id)
                       ? IconButton(
                           tooltip: 'مراجعة السجلات وإرسال التقرير',
                           icon: _submitting.contains('${e['id']}')
@@ -243,6 +244,14 @@ class _WorkReportsDashboardState extends State<WorkReportsDashboard> {
                       : null,
                   childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
                   children: [
+                    if (e['reportedBy'] == user?.id &&
+                        user?.can('reports', 'edit') == true &&
+                        ['draft', 'needs_edits'].contains('${e['status'] ?? 'draft'}'))
+                      OutlinedButton.icon(
+                        onPressed: _submitting.contains('${e['id']}') ? null : () => _editReport(e),
+                        icon: const Icon(Icons.edit_outlined),
+                        label: const AppText('تعديل محتوى التقرير'),
+                      ),
                     if (e['countsMode'] == 'operational_sources_v1') ...[
                       _line(
                         'مصدر الأعداد',
@@ -390,6 +399,57 @@ class _WorkReportsDashboardState extends State<WorkReportsDashboard> {
     ),
   );
 
+  Future<void> _editReport(Map<String, dynamic> report) async {
+    final user = context.read<AuthService>().currentUser;
+    if (user == null || user.id != report['reportedBy'] ||
+        !user.can('reports', 'edit') ||
+        !['draft', 'needs_edits'].contains('${report['status'] ?? 'draft'}')) return;
+    const fields = {
+      'workTasks': 'المهام', 'completedWork': 'الأعمال المكتملة',
+      'workLocations': 'مواقع العمل', 'containerStatus': 'حالة الحاويات',
+      'landfillStatus': 'حالة المكب', 'problems': 'العوائق', 'suggestions': 'المقترحات',
+    };
+    final controllers = {for (final key in fields.keys)
+      key: TextEditingController(text: '${report[key] ?? ''}')};
+    final changes = await showDialog<Map<String, String>>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const AppText('تصحيح التقرير قبل إعادة الإرسال'),
+        content: SizedBox(width: 500, child: SingleChildScrollView(child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [for (final field in fields.entries) Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: TextField(controller: controllers[field.key], minLines: 1, maxLines: 4,
+              decoration: InputDecoration(labelText: field.value)),
+          )],
+        ))),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const AppText('إلغاء')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext,
+            {for (final entry in controllers.entries) entry.key: entry.value.text.trim()}),
+            child: const AppText('حفظ التصحيح')),
+        ],
+      ),
+    );
+    // Dispose after the dialog's closing animation has released its fields.
+    Future<void>.delayed(const Duration(milliseconds: 400), () {
+      for (final controller in controllers.values) { controller.dispose(); }
+    });
+    if (changes == null || !mounted) return;
+    try {
+      await context.read<DataService>().enqueue('work_report', 'update', {
+        ...report, ...changes,
+        'contentEditedAt': DateTime.now().toIso8601String(),
+      });
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: AppText('حُفظ التصحيح للمزامنة. راجع الأعداد ثم أعد إرسال التقرير.'),
+      ));
+    } catch (error) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: AppText('تعذر حفظ التصحيح: $error')));
+    }
+  }
+
   Future<void> _submitReport(
     BuildContext context,
     Map<String, dynamic> report,
@@ -397,7 +457,8 @@ class _WorkReportsDashboardState extends State<WorkReportsDashboard> {
     final user = context.read<AuthService>().currentUser;
     final data = context.read<DataService>();
     final id = '${report['id']}';
-    if (user == null || _submitting.contains(id)) return;
+    if (user == null || _submitting.contains(id) || !user.can('reports', 'edit') ||
+        !['draft', 'needs_edits'].contains('${report['status'] ?? 'draft'}')) return;
     if ('${report['reportedBy'] ?? ''}' != user.id ||
         !const [
           'group_supervisor',

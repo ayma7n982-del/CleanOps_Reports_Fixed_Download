@@ -1,3 +1,4 @@
+import { validOwnerReportUpdate } from './report_edit_policy';
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { readSmsCredentials, smsProviderStatus, configureTwilioCredentials } from './sms_provider';
 import { onDocumentWritten } from 'firebase-functions/v2/firestore';
@@ -403,7 +404,11 @@ export const saveOperationalReport = onCall({ region: 'us-central1', timeoutSeco
     const newStatus = String(report.status ?? oldStatus);
     const ownerId = String(current.reportedBy ?? current.requestedBy ?? '');
     if (sourceEntity === 'work_report' && (actorRole === 'group_supervisor' || actorRole === 'municipality_coordinator')
-      && ownerId === uid && oldStatus === 'draft' && newStatus === 'submitted') {
+      && ownerId === uid && ['draft', 'needs_edits'].includes(oldStatus)
+      && (newStatus === oldStatus || newStatus === 'submitted')) {
+      if (!validOwnerReportUpdate(current, report)) {
+        throw new HttpsError('permission-denied', 'لا يمكن تغيير هوية التقرير أو نطاقه أو حقول الاعتماد أثناء التصحيح.');
+      }
       if (actorRole === 'group_supervisor' && (!actorGroup || String(current.groupId ?? '') !== actorGroup)) {
         throw new HttpsError('permission-denied', 'لا يمكنك إرسال تقرير خارج مجموعتك.');
       }
@@ -433,6 +438,7 @@ export const saveOperationalReport = onCall({ region: 'us-central1', timeoutSeco
     reportKind: sourceEntity,
     updatedBy: uid,
     updatedAt: FieldValue.serverTimestamp(),
+    ...(operation === 'update' && report.status === 'submitted' ? { submittedBy: uid, submittedAt: now } : {}),
     ...(operation === 'create' ? { createdAt: report.createdAt ?? now, createdBy: uid } : {}),
     ...(operation === 'update' && report.status ? { statusChangedAt: now, statusChangedBy: uid, statusChangedByRole: actorRole } : {}),
   };
