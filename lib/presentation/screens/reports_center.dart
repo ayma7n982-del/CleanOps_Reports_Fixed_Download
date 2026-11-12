@@ -206,6 +206,8 @@ class _ReportsCenterState extends State<ReportsCenterScreen> {
       if (s.sourceMayBeIncomplete) const SizedBox(height: 8),
       _resultsHeader(s),
       const SizedBox(height: 10),
+      _readingGuide(s),
+      const SizedBox(height: 12),
       _kpis(s),
       const SizedBox(height: 12),
       _selectedReport(s),
@@ -213,7 +215,6 @@ class _ReportsCenterState extends State<ReportsCenterScreen> {
         const SizedBox(height: 12),
         _records(s),
       ],
-      _charts(s),
       const SizedBox(height: 12),
       _actions(s, u),
       const SizedBox(height: 12),
@@ -559,10 +560,15 @@ class _ReportsCenterState extends State<ReportsCenterScreen> {
           _k('العمال', '${s.workers}', aiGreen, Icons.people_alt_outlined),
         ],
     };
-    return Wrap(spacing: 8, runSpacing: 8, children: cards);
+    return LayoutBuilder(builder: (context, constraints) {
+      final columns = constraints.maxWidth >= 850 ? 4 : constraints.maxWidth >= 540 ? 3 : constraints.maxWidth >= 300 ? 2 : 1;
+      final width = (constraints.maxWidth - 10 * (columns - 1)) / columns;
+      return Wrap(spacing: 10, runSpacing: 10,
+          children: [for (final card in cards) SizedBox(width: width, child: card)]);
+    });
   }
   Widget _k(String a,String b,Color c,IconData icon)=>Container(
-    width: 155, padding: const EdgeInsets.all(13),
+    padding: const EdgeInsets.all(16),
     decoration: BoxDecoration(color: c.withOpacity(.09),
         borderRadius: BorderRadius.circular(17),
         border: BorderDirectional(start: BorderSide(color: c, width: 4))),
@@ -572,69 +578,164 @@ class _ReportsCenterState extends State<ReportsCenterScreen> {
       AppText(a, style: const TextStyle(fontSize: 12)),
     ]));
 
+  Widget _readingGuide(ReportSnapshot s) {
+    final attendanceTotal = s.attendance + s.absence;
+    final headline = switch (reportType) {
+      'containers' => '${s.containersFull} حاوية ممتلئة من ${s.containersTotal} حاوية مسجلة',
+      'absence' => attendanceTotal == 0 ? 'لا توجد سجلات حضور أو غياب في الفترة' : '${s.attendance} سجل حضور من $attendanceTotal سجل حضور وغياب',
+      'cycles' => 'الدورات المتاحة: ${s.cycleCount}',
+      _ => '${s.trips} نقلة مسجلة ضمن الفترة المختارة',
+    };
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 18),
+      decoration: BoxDecoration(
+        border: BorderDirectional(start: BorderSide(color: green, width: 3)),
+        color: Theme.of(context).colorScheme.surface,
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const AppText('قراءة سريعة', style: TextStyle(fontSize: 12, color: cleanOpsMuted)),
+        const SizedBox(height: 5),
+        AppText(headline, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
+        const SizedBox(height: 6),
+        const AppText('المؤشرات تصف السجلات المتاحة ضمن الفلاتر؛ مقارنة عدد النقلات لا تمثل وحدها كفاءة المجموعة أو البلدية.',
+            style: TextStyle(fontSize: 12, color: cleanOpsMuted)),
+      ]),
+    );
+  }
+
   Widget _selectedReport(ReportSnapshot s) {
-    switch(reportType){
-      case 'absence': return _section('تقرير الغياب والحضور', Column(children:[_donut(s),_rank(s.absenceByGroup,'أعلى مجموعات الغياب',red)]));
-      case 'trips': return _section('تقرير عمليات الترحيل', Column(children:[_lineTrips(s),_rank(s.tripsByGroup,'الترحيلات حسب المجموعة',green)]));
-      case 'containers': return _section('تقرير الحاويات', Column(children:[_containerStatus(s),_rank(s.containersByMunicipality,'توزيع الحاويات حسب البلدية',navy),_rank(s.containersByGroup,'توزيع الحاويات حسب المجموعة',green)]));
-      case 'work': return _section('تقرير العمل والتشغيل', Column(children:[_lineTrips(s),_rank(s.tripsByGroup,'الترحيلات حسب المجموعة',green),_rank(s.tripsByMunicipality,'الترحيلات حسب البلدية',navy)]));
-      case 'cycles': return _section('تقرير دورات العمل', Column(children:[_cycleSummary(s),_lineTrips(s)]));
-      case 'municipalities': return _section('تقرير البلديات', _rank(s.tripsByMunicipality,'الأداء حسب البلدية',gold));
-      case 'groups': return _section('تقرير المجموعات', Column(children:[_rank(s.tripsByGroup,'الترحيلات حسب المجموعة',green),_rank(s.absenceByGroup,'الغياب حسب المجموعة',red)]));
-      default: return _section('نظرة تنفيذية شاملة', Column(children:[_lineTrips(s),_donut(s),_containerStatus(s)]));
+    switch(reportType) {
+      case 'absence': return _section('الحضور والغياب', Column(children: [
+        _donut(s), _rank(s.absenceByGroup, 'سجلات الغياب حسب المجموعة', red)]));
+      case 'trips': return _section('حركة الترحيلات', Column(children: [
+        _lineTrips(s), _rank(s.tripsByGroup, 'عدد النقلات حسب المجموعة', green)]));
+      case 'containers': return _section('توزيع الحاويات', Column(children: [
+        _rank(s.containersByMunicipality, 'حسب البلدية', navy),
+        _rank(s.containersByGroup, 'حسب المجموعة', green)]));
+      case 'work': return _section('الأعمال خلال الفترة', Column(children: [
+        _lineTrips(s), _rank(s.tripsByGroup, 'عدد النقلات حسب المجموعة', green),
+        _rank(s.tripsByMunicipality, 'عدد النقلات حسب البلدية', navy)]));
+      case 'cycles': return _section('دورات العمل', _cycleSummary(s));
+      case 'municipalities': return _section('مقارنة البلديات',
+        _rank(s.tripsByMunicipality, 'عدد النقلات المسجلة', navy));
+      case 'groups': return _section('مقارنة المجموعات', Column(children: [
+        _rank(s.tripsByGroup, 'عدد النقلات', green),
+        _rank(s.absenceByGroup, 'سجلات الغياب', red)]));
+      default: return _section('تفاصيل المشهد التشغيلي', Column(children: [
+        _lineTrips(s), _rank(s.tripsByGroup, 'عدد النقلات حسب المجموعة', green),
+        const Divider(height: 30), _donut(s),
+        const Divider(height: 30), _containerStatus(s)]));
     }
   }
-  Widget _section(String title,Widget child)=>AiSectionCard(title:title,feature:'reports',child:child);
+  Widget _section(String title, Widget child) => AiSectionCard(title: title, feature: 'reports', child: child);
 
-  Widget _charts(ReportSnapshot s) => Column(children: [
-    if (reportType == 'all' || reportType == 'municipalities' || reportType == 'groups') ...[
-      const SizedBox(height: 12),
-      _section('مقارنة الأداء', _bar(s)),
-    ],
-  ]);
-
-  Widget _bar(ReportSnapshot s) {
-    final rows = s.tripsByGroup.entries.toList()..sort((a,b)=>b.value.compareTo(a.value));
-    if (rows.isEmpty) return const AppText('لا توجد ترحيلات كافية للمقارنة.');
-    final max = rows.first.value == 0 ? 1 : rows.first.value;
-    return Column(children: [for (final row in rows.take(6)) Padding(
-      padding: const EdgeInsets.symmetric(vertical: 5),
-      child: Row(children: [
-        SizedBox(width: 95, child: Text(row.key, maxLines: 1,
-            overflow: TextOverflow.ellipsis)),
-        Expanded(child: ClipRRect(borderRadius: BorderRadius.circular(7),
-          child: LinearProgressIndicator(value: row.value / max, minHeight: 10,
-              backgroundColor: const Color(0xFFE3EEEA), color: green))),
-        SizedBox(width: 38, child: Text('${row.value}', textAlign: TextAlign.end)),
-      ]),
-    )]);
-  }
   Widget _lineTrips(ReportSnapshot s) {
-    final p=s.tripsByDay.entries.toList();
-    if (p.isEmpty) return const AppText('لا توجد نقلات في الفترة المحددة.');
-    final spots=[for(var i=0;i<p.length;i++) FlSpot(i.toDouble(),p[i].value.toDouble())];
-    return SizedBox(height:135,child:LineChart(LineChartData(minY:0,
-      lineBarsData:[LineChartBarData(spots:spots,isCurved:p.length>2,barWidth:3,
-          color:green,dotData:const FlDotData(show:true))],
-      titlesData:const FlTitlesData(
-          bottomTitles:AxisTitles(sideTitles:SideTitles(showTitles:false)),
-          rightTitles:AxisTitles(sideTitles:SideTitles(showTitles:false)),
-          topTitles:AxisTitles(sideTitles:SideTitles(showTitles:false))))));
+    final points = s.tripsByDay.entries.toList();
+    DateTime date(String key) {
+      final full = DateTime.tryParse(key);
+      if (full != null) return full;
+      final parts = key.split('/');
+      if (parts.length != 2) return startDate;
+      final month = int.tryParse(parts[0]) ?? startDate.month;
+      final day = int.tryParse(parts[1]) ?? startDate.day;
+      return DateTime(startDate.year + (month < startDate.month ? 1 : 0), month, day);
+    }
+    points.sort((a, b) => date(a.key).compareTo(date(b.key)));
+    if (points.isEmpty) return const Padding(padding: EdgeInsets.all(16),
+        child: AppText('لا توجد نقلات مسجلة لرسم حركة الفترة.'));
+    final interval = points.length <= 5 ? 1.0 : ((points.length - 1) / 4).ceilToDouble();
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      const AppText('حركة النقلات حسب أيام التسجيل', style: TextStyle(fontWeight: FontWeight.w800)),
+      const SizedBox(height: 4),
+      const AppText('الأيام غير المسجلة لا تمثل صفرًا مؤكدًا.',
+          style: TextStyle(fontSize: 11, color: cleanOpsMuted)),
+      const SizedBox(height: 18),
+      SizedBox(height: 180, child: LineChart(LineChartData(
+        minY: 0, minX: 0, maxX: points.length == 1 ? 1 : (points.length - 1).toDouble(),
+        gridData: const FlGridData(drawVerticalLine: false),
+        borderData: FlBorderData(show: false),
+        lineBarsData: [LineChartBarData(
+          spots: [for (var i = 0; i < points.length; i++) FlSpot(i.toDouble(), points[i].value.toDouble())],
+          isCurved: false, barWidth: 3, color: green,
+          belowBarData: BarAreaData(show: true, color: green.withOpacity(.08)),
+          dotData: FlDotData(show: points.length <= 15))],
+        titlesData: FlTitlesData(
+          topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 38)),
+          bottomTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 30, interval: interval,
+            getTitlesWidget: (value, meta) {
+              final index = value.round();
+              if ((value - index).abs() > .01 || index < 0 || index >= points.length) return const SizedBox.shrink();
+              final day = date(points[index].key);
+              return Padding(padding: const EdgeInsets.only(top: 7),
+                child: Text('${day.day}/${day.month}', style: const TextStyle(fontSize: 10)));
+            })),
+        ),
+      ))),
+    ]);
   }
   Widget _donut(ReportSnapshot s) {
-    final total=s.attendance+s.absence;
-    if(total==0) return const AppText('لا توجد حالات حضور مكتملة للرسم.');
-    return SizedBox(height:150,child:PieChart(PieChartData(centerSpaceRadius:36,
-      sections:[
-        if(s.attendance>0) PieChartSectionData(value:s.attendance.toDouble(),
-            title:'حضور ${s.attendance}',color:green,radius:45),
-        if(s.absence>0) PieChartSectionData(value:s.absence.toDouble(),
-            title:'غياب ${s.absence}',color:red,radius:45),
-      ])));
+    final total = s.attendance + s.absence;
+    if (total == 0) return const Padding(padding: EdgeInsets.all(16),
+        child: AppText('لا توجد سجلات حضور وغياب متاحة للرسم.'));
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      const AppText('توزيع سجلات الحضور والغياب', style: TextStyle(fontWeight: FontWeight.w800)),
+      const SizedBox(height: 14),
+      Center(child: SizedBox(width: 150, height: 150, child: Stack(alignment: Alignment.center, children: [
+        PieChart(PieChartData(centerSpaceRadius: 49, sectionsSpace: 4, sections: [
+          if (s.attendance > 0) PieChartSectionData(value: s.attendance.toDouble(), showTitle: false, color: green, radius: 18),
+          if (s.absence > 0) PieChartSectionData(value: s.absence.toDouble(), showTitle: false, color: red, radius: 18),
+        ])),
+        Column(mainAxisSize: MainAxisSize.min, children: [
+          Text('${(s.attendance / total * 100).toStringAsFixed(0)}%',
+              style: TextStyle(fontSize: 25, fontWeight: FontWeight.w900, color: green)),
+          const AppText('حضور', style: TextStyle(fontSize: 12)),
+        ]),
+      ]))),
+      const SizedBox(height: 12),
+      Center(child: Wrap(spacing: 18, runSpacing: 8, children: [
+        Text('● حضور: ${s.attendance}', style: TextStyle(color: green)),
+        Text('● غياب: ${s.absence}', style: TextStyle(color: red)),
+      ])),
+      const SizedBox(height: 8),
+      const AppText('النسبة من سجلات الحضور والغياب فقط؛ لا تشمل الإجازات أو الأيام غير المسجلة.',
+          style: TextStyle(fontSize: 11, color: cleanOpsMuted)),
+    ]);
   }
   Widget _containerStatus(ReportSnapshot s)=>Wrap(spacing:8,runSpacing:8,children:[_mini('فارغة',s.containersEmpty,green),_mini('نصف ممتلئة',s.containersPartial,orange),_mini('ممتلئة',s.containersFull,red),_mini('مشكلات',s.containerIssues,red)]);
   Widget _mini(String t,int v,Color c)=>Container(width:125,padding:const EdgeInsets.all(12),decoration:BoxDecoration(borderRadius:BorderRadius.circular(14),border:Border.all(color:c.withOpacity(.3))),child:Column(children:[AppText(t),AppText('$v',style:TextStyle(fontSize:23,fontWeight:FontWeight.w900,color:c))]));
-  Widget _rank(Map<String,int> map,String title,Color color){ final entries=map.entries.toList()..sort((a,b)=>b.value.compareTo(a.value)); return Padding(padding:const EdgeInsets.only(top:10),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[AppText(title,style:const TextStyle(fontWeight:FontWeight.w900)),...entries.take(7).map((e)=>ListTile(dense:true,leading:Icon(Icons.circle,size:10,color:color),title:AppText(e.key),trailing:AppText('${e.value}',style:TextStyle(fontWeight:FontWeight.w900,color:color))))])); }
+  Widget _rank(Map<String, int> map, String title, Color color) {
+    final entries = map.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
+    final maximum = entries.isEmpty || entries.first.value <= 0 ? 1 : entries.first.value;
+    Widget row(MapEntry<String, int> entry, int index) => Padding(
+      padding: const EdgeInsets.symmetric(vertical: 9),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('${index + 1}'.padLeft(2, '0'), style: TextStyle(color: color, fontWeight: FontWeight.w700)),
+          const SizedBox(width: 10),
+          Expanded(child: Text(entry.key)),
+          const SizedBox(width: 12),
+          Text('${entry.value}', style: TextStyle(color: color, fontWeight: FontWeight.w900, fontSize: 17)),
+        ]),
+        const SizedBox(height: 7),
+        ClipRRect(borderRadius: BorderRadius.circular(3), child: LinearProgressIndicator(
+          value: (entry.value / maximum).clamp(0.0, 1.0), minHeight: 6,
+          color: color, backgroundColor: color.withOpacity(.08))),
+      ]),
+    );
+    return Padding(padding: const EdgeInsets.only(top: 20),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        AppText(title, style: const TextStyle(fontWeight: FontWeight.w900)),
+        if (entries.isEmpty) const Padding(padding: EdgeInsets.symmetric(vertical: 14),
+          child: AppText('لا توجد سجلات متاحة لهذه المقارنة.')),
+        for (var i = 0; i < entries.length && i < 6; i++) row(entries[i], i),
+        if (entries.length > 6) ExpansionTile(
+          tilePadding: EdgeInsets.zero,
+          title: AppText('عرض البقية (${entries.length - 6})'),
+          children: [for (var i = 6; i < entries.length; i++) row(entries[i], i)]),
+      ]));
+  }
   Widget _cycleSummary(ReportSnapshot s)=>ListTile(leading:const Icon(Icons.event_repeat),title:AppText('الدورات المتاحة: ${s.cycleCount}'),subtitle:AppText(s.cycles.isEmpty?'لا توجد بيانات دورات متاحة':'آخر دورة: ${s.cycles.first}'));
 
   Future<void> _createSmartDraft(ReportSnapshot snapshot, AppUser user) async {
