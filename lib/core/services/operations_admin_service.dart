@@ -421,47 +421,34 @@ class OperationsAdminService {
     });
   }
 
-  /// Soft-delete on Spark: no Cloud Functions or GitHub during the action.
-  /// Keep the Auth account for audit; Security Rules block inactive accounts.
+  /// Delete through the trusted server path and require its confirmed result.
   Future<void> deleteManagedUser(String userId, {required String actorId}) async {
     final uid = userId.trim();
     if (uid.isEmpty || actorId.trim().isEmpty || uid == actorId ||
         FirebaseAuth.instance.currentUser?.uid != actorId) {
       throw const UserProvisionException('لا توجد صلاحية لحذف هذا الحساب.');
     }
-    final actorSnap = await _users.doc(actorId).get(const GetOptions(source: Source.server));
-    final actorRole = actorSnap.data()?['role'];
-    if (actorSnap.data()?['isActive'] == false ||
-        !const ['donor_manager', 'municipality_coordinator'].contains(actorRole)) {
-      throw const UserProvisionException('حساب المدير غير نشط أو لا يملك صلاحية الحذف.');
-    }
-    final ref = _users.doc(uid);
-    final before = await ref.get(const GetOptions(source: Source.server));
-    final target = before.data();
-    if (target == null) throw const UserProvisionException('المستخدم غير موجود.');
-    if (target['status'] == 'deleted' && target['isActive'] == false) return;
-    if (actorRole == 'municipality_coordinator' &&
-        (target['municipalityCoordinatorId'] != actorId ||
-         !const ['worker', 'group_supervisor'].contains(target['role']))) {
-      throw const UserProvisionException('لا يمكن حذف مستخدم خارج نطاق البلدية.');
-    }
-    await _updateWorkforceProfile(uid, {
-      'isActive': false,
-      'status': 'deleted',
-      'updatedBy': actorId,
-      'updatedAt': FieldValue.serverTimestamp(),
-    });
-    final verified = await ref.get(const GetOptions(source: Source.server));
-    if (verified.data()?['isActive'] != false ||
-        verified.data()?['status'] != 'deleted') {
-      throw const UserProvisionException('لم يؤكد Firebase إخفاء المستخدم وتعطيله.');
+    try {
+      final result = await FirebaseFunctions.instanceFor(region: 'us-central1')
+          .httpsCallable('deleteManagedUser', options: HttpsCallableOptions(timeout: const Duration(minutes: 2)))
+          .call(<String, dynamic>{'userId': uid});
+      final value = result.data;
+      if (value is! Map || value['ok'] != true || value['userId'] != uid ||
+          value['deletedAuth'] != true || value['deletedProfile'] != true) {
+        throw const UserProvisionException('لم يؤكد الخادم اكتمال الحذف النهائي.');
+      }
+    } on FirebaseFunctionsException catch (error) {
+      if (error.code == 'not-found' || error.code == 'unimplemented') {
+        throw const UserProvisionException('خدمة الحذف النهائي غير مفعلة على Firebase. لم نستخدم التعطيل بديلًا عنها.');
+      }
+      throw UserProvisionException(error.message ?? 'تعذر إكمال الحذف النهائي. تحقق من الاتصال ثم أعد المحاولة.');
     }
   }
 
   /// Level 4 only: activate / deactivate any account (blocks its next login).
   Future<void> setUserActive(String userId, bool active, {required String actorId}) async {
     final existing = await _users.doc(userId).get(const GetOptions(source: Source.server));
-    if (!existing.exists || existing.data()?['status'] == 'deleted') {
+    if (!existing.exists || ['deleted', 'pending_deletion'].contains(existing.data()?['status'])) {
       throw const UserProvisionException('لا يمكن إعادة تفعيل حساب محذوف إداريًا.');
     }
     await _updateWorkforceProfile(userId, {

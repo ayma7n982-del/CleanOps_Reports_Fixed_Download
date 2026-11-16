@@ -1,3 +1,4 @@
+import { deleteManagedAccount } from './managed_user_deletion';
 import { validOwnerReportUpdate } from './report_edit_policy';
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { readSmsCredentials, smsProviderStatus, configureTwilioCredentials } from './sms_provider';
@@ -231,77 +232,9 @@ async function createUserAccount({
 
 
 
-export const deleteManagedUser = onCall({ region: 'us-central1', timeoutSeconds: 60 }, async (request) => {
+export const deleteManagedUser = onCall({ region: 'us-central1', timeoutSeconds: 120 }, async (request) => {
   if (!request.auth) throw new HttpsError('unauthenticated', 'Authentication is required.');
-  const actorUid = request.auth.uid;
-  const actor = await requireActor(actorUid);
-  const userId = String(request.data?.userId ?? '').trim();
-  if (!userId) throw new HttpsError('invalid-argument', 'userId is required.');
-  if (userId === actorUid) throw new HttpsError('failed-precondition', 'لا يمكن حذف الحساب الحالي.');
-
-  const targetRef = db.collection('users').doc(userId);
-  const targetSnap = await targetRef.get();
-  const target = targetSnap.exists ? (targetSnap.data() ?? {}) : null;
-  let authTargetExists = true;
-  let authTarget: Awaited<ReturnType<typeof auth.getUser>> | null = null;
-  try {
-    authTarget = await auth.getUser(userId);
-  } catch (e: any) {
-    if (e?.code === 'auth/user-not-found') authTargetExists = false;
-    else throw new HttpsError('internal', e?.message ?? 'تعذر التحقق من حساب Firebase Authentication.');
-  }
-
-  // A municipality coordinator may only delete workforce users explicitly
-  // assigned to them. Only the manager may repair/delete orphaned Auth accounts
-  // whose Firestore profile has already gone missing.
-  const targetRole = String(target?.role ?? '');
-  const workforce = targetRole === 'worker' || targetRole === 'group_supervisor';
-  const allowed = actor.role === 'donor_manager'
-    || (actor.role === 'municipality_coordinator' && target !== null && workforce
-      && String(target.municipalityCoordinatorId ?? '') === actorUid);
-  if (!allowed) throw new HttpsError('permission-denied', 'لا تملك صلاحية حذف هذا المستخدم.');
-
-  // Idempotent cleanup: a stale Firestore row, a stale Auth account, or a
-  // previous partially-completed deletion must not trap the admin in "not found".
-  // We retain operational history; only the account/profile are removed.
-  if (authTargetExists) {
-    try {
-      await auth.deleteUser(userId);
-    } catch (e: any) {
-      if (e?.code !== 'auth/user-not-found') {
-        throw new HttpsError('internal', e?.message ?? 'تعذر حذف حساب Firebase Authentication.');
-      }
-      authTargetExists = false;
-    }
-  }
-  if (targetSnap.exists) await targetRef.delete();
-
-  // Confirm the account and profile are absent before acknowledging success.
-  const remainingProfile = await targetRef.get();
-  let remainingAuth = false;
-  try {
-    await auth.getUser(userId);
-    remainingAuth = true;
-  } catch (e: any) {
-    if (e?.code !== 'auth/user-not-found') {
-      throw new HttpsError('internal', e?.message ?? 'تعذر التحقق من حذف حساب الدخول.');
-    }
-  }
-  if (remainingProfile.exists || remainingAuth) {
-    throw new HttpsError('internal', 'لم يكتمل حذف المستخدم من Firebase. يرجى إعادة المحاولة.');
-  }
-
-  await db.collection('audit').add({
-    actorId: actorUid,
-    operation: 'DELETE_USER',
-    targetId: userId,
-    before: { name: String(target?.name ?? authTarget?.displayName ?? ''), role: targetRole || 'unknown', profileExisted: targetSnap.exists, authExisted: authTargetExists },
-    after: { profileDeleted: targetSnap.exists, authDeleted: authTargetExists, idempotentCleanup: !targetSnap.exists && !authTargetExists },
-    createdAt: new Date().toISOString(),
-    timestamp: FieldValue.serverTimestamp(),
-    immutable: true,
-  });
-  return { ok: true, userId, deletedProfile: targetSnap.exists, deletedAuth: authTargetExists, alreadyAbsent: !targetSnap.exists && !authTargetExists };
+  return deleteManagedAccount(db, auth, request.auth.uid, String(request.data?.userId ?? '').trim());
 });
 
 export const recordAttendanceCheckout = onCall({ region: 'us-central1', timeoutSeconds: 30 }, async (request) => {

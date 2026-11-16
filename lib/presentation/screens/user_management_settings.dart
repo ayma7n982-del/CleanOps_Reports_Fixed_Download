@@ -7,6 +7,7 @@ import '../../core/constants/gaza_municipalities.dart';
 import '../../core/models/core_models.dart';
 import '../../core/services/auth_service.dart';
 import '../../core/services/operations_admin_service.dart';
+import '../../core/services/data_service.dart';
 import '../widgets/app_design.dart';
 import '../../core/constants/app_constants.dart';
 
@@ -75,13 +76,17 @@ class _UserManagementSettingsPageState extends State<UserManagementSettingsPage>
   }
 
   bool deletingUser = false;
+  bool showLegacyDeleted = false;
+  String? failedDeleteId, failedDeleteName;
 
   Future<void> _confirmDeleteManagedUser(BuildContext context, String id, String name, AppUser actor) async {
+    final english = !context.read<LocaleController>().isArabic;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const AppText('تأكيد حذف المستخدم'),
-        content: AppText('هل تريد تعطيل المستخدم "$name" وإخفاءه من النظام؟ سيبقى حسابه محفوظًا للأرشفة، لكنه لن يُحسب ضمن المستخدمين النشطين.'),
+        content: Text(english ? 'Permanently delete the account for "$name"? The login and profile will be removed; previous attendance and work records will be preserved.'
+            : 'هل تريد حذف حساب المستخدم "$name" نهائيًا؟ سيُحذف حساب الدخول وملفه، وتبقى سجلات الحضور والأعمال السابقة محفوظة.'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const AppText('إلغاء')),
           TextButton(onPressed: () => Navigator.pop(dialogContext, true), child: const AppText('حذف', style: TextStyle(color: Colors.red))),
@@ -92,8 +97,11 @@ class _UserManagementSettingsPageState extends State<UserManagementSettingsPage>
     setState(() => deletingUser = true);
     try {
       await context.read<OperationsAdminService>().deleteManagedUser(id, actorId: actor.id);
-      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: AppText('تم تعطيل المستخدم وإخفاؤه من النظام بعد تأكيد Firebase.')));
+      if (context.mounted) await context.read<DataService>().refreshOperations(limit: 10000);
+      if (mounted && failedDeleteId == id) setState(() { failedDeleteId = null; failedDeleteName = null; });
+      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: AppText('تم حذف حساب الدخول وملف المستخدم نهائيًا بعد تأكيد Firebase.')));
     } catch (e) {
+      if (mounted) setState(() { failedDeleteId = id; failedDeleteName = name; });
       if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: AppText('لم يكتمل حذف المستخدم: $e')));
     } finally {
       if (mounted) setState(() => deletingUser = false);
@@ -189,6 +197,19 @@ class _UserManagementSettingsPageState extends State<UserManagementSettingsPage>
             const AppText('الأمان: كلمة المرور تُرسل مباشرة إلى Firebase Authentication ولا تُخزن في Firestore أو LocalStore.', style: TextStyle(color: cleanOpsMuted, fontSize: 11)),
             const SizedBox(height: 16),
           ],
+            if (failedDeleteId != null) Card(child: Padding(
+              padding: const EdgeInsets.all(12), child: Column(children: [
+                Text('${tr('لم يكتمل تأكيد الحذف')}: ${failedDeleteName ?? failedDeleteId}. ${tr('يمكنك إعادة المحاولة حتى لو اختفى صف المستخدم.')}'),
+                TextButton.icon(onPressed: deletingUser ? null : () => _confirmDeleteManagedUser(
+                  context, failedDeleteId!, failedDeleteName ?? failedDeleteId!, actor),
+                  icon: const Icon(Icons.refresh), label: const AppText('إعادة محاولة الحذف')),
+              ]),
+            )),
+            SwitchListTile(
+              title: const AppText('إظهار الحسابات المحذوفة إداريًا لاستكمال حذفها نهائيًا'),
+              value: showLegacyDeleted,
+              onChanged: (value) => setState(() => showLegacyDeleted = value),
+            ),
             AiSectionCard(
               title: 'المستخدمون (تحديث مباشر)', feature: 'users',
               child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
@@ -196,7 +217,7 @@ class _UserManagementSettingsPageState extends State<UserManagementSettingsPage>
                 builder: (_, snap) {
                   if (snap.hasError) return AppText('تعذر تحميل المستخدمين: ${snap.error}');
                   if (!snap.hasData) return const Center(child: Padding(padding: EdgeInsets.all(12), child: CircularProgressIndicator()));
-                  final docs = snap.data!.docs.where((d) => d.data()['status'] != 'deleted').toList()
+                  final docs = snap.data!.docs.where((d) => showLegacyDeleted || d.data()['status'] != 'deleted').toList()
                     ..sort((a, b) => '${a.data()['name'] ?? ''}'.compareTo('${b.data()['name'] ?? ''}'));
                   if (docs.isEmpty) return const AppText('لا يوجد مستخدمون بعد.');
                   return Column(children: [
@@ -207,13 +228,14 @@ class _UserManagementSettingsPageState extends State<UserManagementSettingsPage>
                         leading: Icon(d.data()['isActive'] == false ? Icons.person_off_rounded : Icons.person_rounded,
                             color: d.data()['isActive'] == false ? Colors.red : Colors.green),
                         title: Text('${d.data()['name'] ?? d.id}'),
-                        subtitle: Text('${d.data()['username'] ?? ''} • ${roleNames['${d.data()['role']}'] ?? d.data()['role'] ?? ''}'),
+                        subtitle: Text('${d.data()['username'] ?? ''} • ${roleNames['${d.data()['role']}'] ?? d.data()['role'] ?? ''}'
+                          '${d.data()['status'] == 'pending_deletion' ? '\n${tr('الحذف لم يكتمل؛ أعد المحاولة.')}' : d.data()['status'] == 'deleted' ? '\n${tr('محذوف إداريًا فقط؛ يمكنك حذفه نهائيًا.')}' : ''}'),
                         trailing: (actor.role == 'donor_manager' || actor.role == 'municipality_coordinator') && d.id != actor.id
                             ? Wrap(children: [
                                 IconButton(tooltip: 'حذف المستخدم', onPressed: deletingUser ? null : () => _confirmDeleteManagedUser(context, d.id, '${d.data()['name'] ?? d.id}', actor), icon: const Icon(Icons.delete_forever_rounded, color: Colors.red)),
                                 Switch(
                                   value: d.data()['isActive'] != false,
-                                  onChanged: (v) async {
+                                  onChanged: deletingUser || ['deleted', 'pending_deletion'].contains(d.data()['status']) ? null : (v) async {
                                     try {
                                       await context.read<OperationsAdminService>().setUserActive(d.id, v, actorId: actor.id);
                                     } catch (e) {

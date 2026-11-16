@@ -1,0 +1,33 @@
+name: Permanent user deletion verification
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'functions/**'
+      - 'lib/core/services/operations_admin_service.dart'
+      - 'lib/presentation/screens/user_management_settings.dart'
+      - 'firebase.deletion-test.json'
+      - '.github/workflows/user-deletion.yml'
+  pull_request:
+    paths:
+      - 'functions/**'
+      - 'lib/core/services/operations_admin_service.dart'
+      - 'lib/presentation/screens/user_management_settings.dart'
+      - 'firebase.deletion-test.json'
+      - '.github/workflows/user-deletion.yml'
+jobs:
+  deletion-emulators:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - run: npm --prefix functions install
+      - run: npm --prefix functions run build
+      - name: Verify deletion with isolated Auth and Firestore emulators
+        run: npx --yes firebase-tools@14 emulators:exec --config firebase.deletion-test.json --project cleanops-user-deletion-test --only auth,firestore "node --test functions/tests/managed_user_deletion.test.cjs"
