@@ -137,7 +137,8 @@ jobs:
         run: npx firebase emulators:exec --project cleanops-messaging-rules-test --only firestore "npm --prefix firebase/tests test"
 
   deploy-decisions:
-    if: github.ref == 'refs/heads/main'
+    # Production rule deployment must be explicitly dispatched, never caused by a report code push.
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
     needs: [build-android, decision-rules]
     runs-on: ubuntu-latest
     environment: firebase-production
