@@ -1,4 +1,5 @@
 import 'report_service.dart';
+import 'report_ratios.dart';
 
 /// One report definition shared by the screen and its three export formats.
 class ReportMetric {
@@ -14,6 +15,31 @@ class ReportBreakdown {
 }
 
 class ReportContent {
+  static List<ReportRatio> ratios(ReportSnapshot s) {
+    final result = <ReportRatio>[...s.ratioInsights];
+    if (s.reportType != 'containers' && s.reportType != 'trips') {
+      result.add(ReportRatio('attendance', 'نسبة الحضور المسجل', 'Recorded attendance rate',
+        RatioMath.percent(s.attendance, s.attendance + s.absence),
+        '${s.attendance} حضور ÷ ${s.attendance + s.absence} سجل حضور وغياب؛ الإجازات والأيام غير المسجلة خارج المقام.',
+        '${s.attendance} present / ${s.attendance + s.absence} present and absent records; excludes leave and unrecorded days.'));
+      if (s.reportType != 'work') result.add(ReportRatio('ppe', 'توثيق السلامة ضمن الحضور', 'PPE documentation among present records',
+        RatioMath.percent(s.ppeCompliant, s.attendance),
+        '${s.ppeCompliant} سجل حضور موثق بمعدات مكتملة ÷ ${s.attendance} سجل حضور.',
+        '${s.ppeCompliant} present records with complete PPE / ${s.attendance} present records.'));
+    }
+    if (s.reportType == 'containers' || s.reportType == null || ['all', 'executive'].contains(s.reportType)) {
+      result.add(ReportRatio('fullShare', 'حصة الحاويات الممتلئة', 'Full-container share',
+        RatioMath.percent(s.containersFull, s.containersTotal),
+        '${s.containersFull} ممتلئة ÷ ${s.containersTotal} حاوية.',
+        '${s.containersFull} full / ${s.containersTotal} containers.'));
+      result.add(ReportRatio('issueShare', 'نسبة الحاويات ذات المشكلات', 'Container issue rate',
+        RatioMath.percent(s.containerIssues, s.containersTotal),
+        '${s.containerIssues} ذات مشكلات ÷ ${s.containersTotal} حاوية. قد تتداخل مع حالات الامتلاء.',
+        '${s.containerIssues} with issues / ${s.containersTotal} containers. May overlap fill states.'));
+    }
+    return result;
+  }
+
   static List<ReportMetric> metrics(ReportSnapshot s) {
     final all = <String, ReportMetric>{
       'trips': ReportMetric('trips', 'الترحيلات', 'Trips', '${s.trips}'),
@@ -56,6 +82,8 @@ class ReportContent {
     final containers = ReportBreakdown(t('حالة الحاويات', 'Container status'), {
       t('فارغة', 'Empty'): s.containersEmpty, t('نصف ممتلئة', 'Half full'): s.containersPartial,
       t('ممتلئة', 'Full'): s.containersFull,
+      if (s.containersTotal > s.containersEmpty + s.containersPartial + s.containersFull)
+        t('غير محددة', 'Unknown'): s.containersTotal - s.containersEmpty - s.containersPartial - s.containersFull,
     });
     return switch (s.reportType) {
       'trips' => [daily, groups],
@@ -102,10 +130,17 @@ class ReportContent {
         ? t('قد تكون البيانات جزئية؛ راجع المصدر قبل الاعتماد.', 'Data may be partial; verify the source before approval.')
         : t('لم يُكتشف اقتطاع ضمن البيانات المتاحة.', 'No truncation detected in available data.')],
       for (final metric in metrics(s)) [metric.label(english), metric.value],
+      for (final ratio in ratios(s)) ...[
+        [ratio.label(english), ratio.display(english)],
+        [t('أساس الحساب', 'Calculation basis'), ratio.basis(english)],
+      ],
       for (final section in breakdowns(s, english: english)) ...[
         [section.title, ''],
         if (section.values.isEmpty) [t('لا توجد سجلات', 'No records'), ''],
-        for (final entry in section.values.entries) [entry.key, '${entry.value}'],
+        for (final entry in section.values.entries) ...[
+          [entry.key, '${entry.value}'],
+          [t('الحصة', 'Share') + ' — ' + entry.key, RatioMath.display(RatioMath.percent(entry.value, section.values.values.fold<int>(0, (a, b) => a + b)))],
+        ],
       ],
       if (s.reportType == 'containers' || s.reportType == 'trips') ...[
         [t('السجلات المطابقة للفلاتر', 'Records matching filters'), ''],

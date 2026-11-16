@@ -5,6 +5,7 @@ import '../constants/app_constants.dart';
 import '../models/core_models.dart';
 import 'report_service.dart';
 import 'report_content.dart';
+import 'report_ratios.dart';
 
 class ReportPdfTemplate {
   final pw.Font regular;
@@ -33,9 +34,9 @@ class ReportPdfTemplate {
     ]));
   pw.Widget _breakdownTable(ReportBreakdown section) {
     final entries = section.values.entries.toList();
-    final maximum = entries.fold<int>(1, (value, entry) => entry.value > value ? entry.value : value);
+    final maximum = entries.fold<int>(0, (value, entry) => value + entry.value);
     return pw.Table(
-      columnWidths: {0: const pw.FlexColumnWidth(3), 1: const pw.FlexColumnWidth(2), 2: const pw.FlexColumnWidth(1)},
+      columnWidths: {0: const pw.FlexColumnWidth(3), 1: const pw.FlexColumnWidth(2), 2: const pw.FlexColumnWidth(2)},
       children: [for (final entry in entries) pw.TableRow(children: [
         pw.Padding(padding: const pw.EdgeInsets.all(5), child: pw.Text(entry.key,
             style: pw.TextStyle(font: regular, fontSize: 8))),
@@ -46,7 +47,7 @@ class ReportPdfTemplate {
             if (maximum - entry.value > 0) pw.Expanded(flex: maximum - entry.value,
               child: pw.Container(height: 5, color: PdfColors.grey200)),
           ])),
-        pw.Padding(padding: const pw.EdgeInsets.all(5), child: pw.Text('${entry.value}',
+        pw.Padding(padding: const pw.EdgeInsets.all(5), child: pw.Text('${entry.value} • ${RatioMath.display(RatioMath.percent(entry.value, maximum))}',
             style: pw.TextStyle(font: bold, fontSize: 8))),
       ])],
     );
@@ -103,6 +104,15 @@ class ReportPdfTemplate {
       pw.Text(t('الأعداد من السجلات المتاحة ضمن الفلاتر. مقارنة النقلات وحدها لا تحدد الكفاءة.',
           'Counts reflect available filtered records. Trip counts alone do not determine efficiency.'),
           style: pw.TextStyle(font: regular, fontSize: 8)),
+      pw.SizedBox(height: 12),
+      pw.Text(t('النسب ومؤشرات الأداء', 'Ratios and performance indicators'),
+          style: pw.TextStyle(font: bold, fontSize: 11, color: PdfColors.teal800)),
+      for (final ratio in ReportContent.ratios(snapshot)) ...[
+        pw.SizedBox(height: 7),
+        pw.Text('${ratio.label(english)}: ${ratio.display(english)}',
+            style: pw.TextStyle(font: bold, fontSize: 9)),
+        pw.Text(ratio.basis(english), style: pw.TextStyle(font: regular, fontSize: 8)),
+      ],
       for (final section in sections) ...[
         pw.SizedBox(height: 14),
         pw.Text(section.title, style: pw.TextStyle(font: bold, fontSize: 11, color: PdfColors.teal800)),

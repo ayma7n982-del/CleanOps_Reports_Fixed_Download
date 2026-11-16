@@ -79,6 +79,20 @@ void main() {
       expect(cycle.tripsByDay.keys.toList(), ['2026-01-02', '2027-01-02']);
       final byName = await ReportService(data).load(user: manager, reportType: 'cycles', cycle: 'Cycle One', startDate: DateTime(2026), endDate: DateTime(2027, 1, 31));
       expect(byName.trips, cycle.trips);
+      data.online = true;
+      data.operations = [
+        for (var i = 0; i < 4; i++) {'id':'previous-$i', '_entity':'trip', 'groupId':'g1', 'createdAt':'2026-11-09', 'status':'completed'},
+        {'id':'now-1', '_entity':'trip', 'groupId':'g1', 'createdAt':'2026-11-10', 'status':'completed'},
+        {'id':'now-2', '_entity':'trip', 'groupId':'g1', 'createdAt':'2026-11-11', 'status':'completed'},
+        {'id':'other-group', '_entity':'trip', 'groupId':'g2', 'createdAt':'2026-11-10', 'status':'completed'},
+        {'id':'deleted', '_entity':'trip', 'groupId':'g1', 'createdAt':'2026-11-10', 'status':'completed', 'isDeleted':true},
+      ];
+      final compared = await ReportService(data).load(user: manager, group:'g1', reportType:'trips',
+        startDate:DateTime(2026, 11, 10), endDate:DateTime(2026, 11, 11));
+      expect(compared.trips, 2);
+      expect(compared.ratioInsights.firstWhere((r) => r.id == 'growth').value, -50);
+      expect(compared.ratioInsights.firstWhere((r) => r.id == 'completion').value, 100);
+
       expect(cycle.tripsByMunicipality.values.fold<int>(0, (a, b) => a + b), 2);
 
     } finally {

@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:convert';
 import 'package:excel/excel.dart';
 import 'package:solid_waste_operations/core/services/report_content.dart';
+import 'package:solid_waste_operations/core/services/report_ratios.dart';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive_flutter/hive_flutter.dart';
@@ -72,6 +73,7 @@ void main() {
       selectedCycle: 'Cycle 1',
       containerRecords: const [{'id':'container-1', 'locationName':'MAIN', 'status':'full'}],
       tripRecords: const [{'id':'trip-1', 'locationName':'MAIN', 'groupName':'Group A'}],
+      ratioInsights: const [ReportRatio('growth', 'تغيّر النقلات', 'Trip growth', 25, 'الحالي 5؛ السابق 4.', 'Current 5; previous 4.', signed: true)],
       reportType: type,
       sourceMayBeIncomplete: partial,
       search: 'MAIN',
@@ -95,6 +97,10 @@ void main() {
           }
           final csv = utf8.decode(reports.buildOperationalCsvBytes(selected, languageCode: language));
           expect(csv, contains('MAIN'));
+          expect(csv, contains('+25.0%'));
+          for (final ratio in ReportContent.ratios(selected)) {
+            expect(rows.any((row) => row[0] == ratio.label(english) && row[1] == ratio.display(english)), isTrue);
+          }
           if (type == 'containers') expect(csv, contains('container-1'));
           if (type == 'trips') expect(csv, contains('trip-1'));
           expect(csv, contains(english ? 'Data may be partial' : 'قد تكون البيانات جزئية'));

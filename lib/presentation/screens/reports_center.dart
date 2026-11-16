@@ -15,6 +15,8 @@ import '../../core/services/auth_service.dart';
 import '../../core/services/data_service.dart';
 import '../../core/services/report_service.dart';
 import '../../core/services/report_content.dart';
+import '../../core/services/report_ratios.dart';
+import '../widgets/report_ratio_panel.dart';
 import 'monthly_attendance_report_screen.dart';
 import 'attendance_reports_home_screen.dart';
 import 'work_reports_dashboard.dart';
@@ -30,6 +32,9 @@ class ReportsCenterScreen extends StatefulWidget {
 class _ReportsCenterState extends State<ReportsCenterScreen> {
   late Future<ReportSnapshot> future;
   int days = 30;
+  int _recordsPage = 0;
+  static const _recordsPageSize = 25;
+  bool _compareMunicipalities = false;
   DateTime startDate = DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day);
   DateTime endDate = DateTime.now();
   String reportType = 'all';
@@ -46,6 +51,7 @@ class _ReportsCenterState extends State<ReportsCenterScreen> {
   void _reload() {
     final data = context.read<DataService>(); final user = context.read<AuthService>().currentUser;
     _loading = true;
+    _recordsPage = 0;
     final request = ReportService(data).load(days: days, startDate: startDate, endDate: endDate, user: user, municipality: municipality, group: group, cycle: cycle, reportType: reportType, reportId: _stableReportId(data), search: search, containerStatus: reportType == 'containers' ? containerStatus : 'all');
     future = request;
     request.then((snapshot) {
@@ -169,6 +175,7 @@ class _ReportsCenterState extends State<ReportsCenterScreen> {
     searchTimer?.cancel();
     setState(() {
       reportType = value; search = ''; searchController.clear();
+      _compareMunicipalities = value == 'municipalities';
       if (value != 'containers') containerStatus = 'all';
       if (value == 'containers') cycle = null;
       _reload();
@@ -219,6 +226,8 @@ class _ReportsCenterState extends State<ReportsCenterScreen> {
       const SizedBox(height: 10),
       _readingGuide(s),
       const SizedBox(height: 12),
+      ReportRatioPanel(ratios: ReportContent.ratios(s), english: !context.read<LocaleController>().isArabic),
+      const SizedBox(height: 12),
       _kpis(s),
       const SizedBox(height: 12),
       _selectedReport(s),
@@ -244,16 +253,25 @@ class _ReportsCenterState extends State<ReportsCenterScreen> {
 
   Widget _records(ReportSnapshot s) {
     final rows = reportType == 'containers' ? s.containerRecords : s.tripRecords;
+    final count = (rows.length / _recordsPageSize).ceil();
+    final page = count == 0 ? 0 : _recordsPage.clamp(0, count - 1).toInt();
+    final english = !context.read<LocaleController>().isArabic;
     return Card(child: Padding(padding: const EdgeInsets.all(12), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      AppText('النتائج: ${rows.length}', style: const TextStyle(fontWeight: FontWeight.bold)),
+      Text(english ? 'Detailed records (${rows.length})' : 'السجلات التفصيلية (${rows.length})', style: const TextStyle(fontWeight: FontWeight.bold)),
       if (rows.isEmpty) const Padding(padding: EdgeInsets.all(16), child: AppText('لا توجد نتائج مطابقة. جرّب مسح الفلاتر أو تغيير الفترة.')),
-      for (final row in rows.take(100)) ListTile(
+      for (final row in rows.skip(page * _recordsPageSize).take(_recordsPageSize)) ListTile(
         title: AppText('${row['locationName'] ?? row['title'] ?? row['location'] ?? row['id'] ?? ''}'),
         subtitle: AppText(reportType == 'containers'
           ? (containerStatusLabels['${row['status']}'] ?? 'غير محددة')
           : '${row['municipalityName'] ?? ''} • ${row['groupName'] ?? ''}'),
       ),
-      if (rows.length > 100) const AppText('تُعرض أول 100 نتيجة. ملخص التقرير يشمل جميع النتائج المطابقة.'),
+      if (rows.isNotEmpty) Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
+        TextButton(onPressed: page == 0 ? null : () => setState(() => _recordsPage = page - 1),
+            child: Text(english ? 'Previous' : 'السابق')),
+        Text(english ? 'Page ${page + 1} of $count' : 'صفحة ${page + 1} من $count'),
+        TextButton(onPressed: page + 1 >= count ? null : () => setState(() => _recordsPage = page + 1),
+            child: Text(english ? 'Next' : 'التالي')),
+      ]),
     ])));
   }
 
@@ -633,26 +651,69 @@ class _ReportsCenterState extends State<ReportsCenterScreen> {
   Widget _selectedReport(ReportSnapshot s) {
     switch(reportType) {
       case 'absence': return _section('الحضور والغياب', Column(children: [
-        _donut(s), _rank(s.absenceByGroup, 'سجلات الغياب حسب المجموعة', red)]));
-      case 'trips': return _section('حركة الترحيلات', Column(children: [
-        _lineTrips(s), _rank(s.tripsByGroup, 'عدد النقلات حسب المجموعة', green)]));
-      case 'containers': return _section('توزيع الحاويات', Column(children: [
-        _rank(s.containersByMunicipality, 'حسب البلدية', navy),
-        _rank(s.containersByGroup, 'حسب المجموعة', green)]));
-      case 'work': return _section('الأعمال خلال الفترة', Column(children: [
-        _lineTrips(s), _rank(s.tripsByGroup, 'عدد النقلات حسب المجموعة', green),
-        _rank(s.tripsByMunicipality, 'عدد النقلات حسب البلدية', navy)]));
+        _donut(s), _rank(s.absenceByGroup, 'الحصة من إجمالي سجلات الغياب حسب المجموعة', red)]));
+      case 'trips': return _section('حركة الترحيلات', Column(children: [_lineTrips(s), _comparativeBarChart(s)]));
+      case 'containers': return _section('توزيع الحاويات', Column(children: [_containerStatus(s), _comparativeBarChart(s)]));
+      case 'work': return _section('الأعمال خلال الفترة', Column(children: [_lineTrips(s), _comparativeBarChart(s)]));
       case 'cycles': return _section('دورات العمل', _cycleSummary(s));
-      case 'municipalities': return _section('مقارنة البلديات',
-        _rank(s.tripsByMunicipality, 'عدد النقلات المسجلة', navy));
+      case 'municipalities': return _section('مقارنة البلديات', _comparativeBarChart(s));
       case 'groups': return _section('مقارنة المجموعات', Column(children: [
-        _rank(s.tripsByGroup, 'عدد النقلات', green),
-        _rank(s.absenceByGroup, 'سجلات الغياب', red)]));
+        _comparativeBarChart(s), _rank(s.absenceByGroup, 'الحصة من إجمالي سجلات الغياب', red)]));
       default: return _section('تفاصيل المشهد التشغيلي', Column(children: [
-        _lineTrips(s), _rank(s.tripsByGroup, 'عدد النقلات حسب المجموعة', green),
-        const Divider(height: 30), _donut(s),
+        _lineTrips(s), _comparativeBarChart(s), const Divider(height: 30), _donut(s),
         const Divider(height: 30), _containerStatus(s)]));
     }
+  }
+
+  Widget _comparativeBarChart(ReportSnapshot s) {
+    final english = !context.read<LocaleController>().isArabic;
+    final values = reportType == 'containers'
+        ? (_compareMunicipalities ? s.containersByMunicipality : s.containersByGroup)
+        : (_compareMunicipalities ? s.tripsByMunicipality : s.tripsByGroup);
+    final entries = values.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
+    final total = entries.fold<int>(0, (a, b) => a + b.value);
+    final shown = entries.take(8).toList();
+    return Padding(padding: const EdgeInsets.only(top: 20), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text(english ? 'Share of filtered records' : 'الحصة من السجلات المطابقة للفلاتر', style: const TextStyle(fontWeight: FontWeight.w900)),
+      const SizedBox(height: 8),
+      SegmentedButton<bool>(segments: [
+        ButtonSegment(value: true, label: Text(english ? 'Municipalities' : 'البلديات')),
+        ButtonSegment(value: false, label: Text(english ? 'Groups' : 'المجموعات')),
+      ], selected: {_compareMunicipalities}, onSelectionChanged: (v) => setState(() => _compareMunicipalities = v.first)),
+      const SizedBox(height: 14),
+      if (total == 0) Text(english ? 'No records to compare.' : 'لا توجد سجلات للمقارنة.')
+      else SingleChildScrollView(scrollDirection: Axis.horizontal, child: SizedBox(
+        width: shown.length * 88.0 + 42, height: 260,
+        child: BarChart(BarChartData(maxY: 100, minY: 0,
+          borderData: FlBorderData(show: false),
+          barTouchData: BarTouchData(enabled: false),
+          gridData: const FlGridData(drawVerticalLine: false),
+          barGroups: [for (var i = 0; i < shown.length; i++) BarChartGroupData(x: i,
+            barRods: [BarChartRodData(toY: RatioMath.percent(shown[i].value, total) ?? 0, width: 25,
+                color: green, borderRadius: const BorderRadius.vertical(top: Radius.circular(5)))])],
+          titlesData: FlTitlesData(
+            rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+            topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+            leftTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 42, interval: 25,
+                getTitlesWidget: (v, _) => Text('${v.toInt()}%', style: const TextStyle(fontSize: 10)))),
+            bottomTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 74,
+              getTitlesWidget: (v, _) {
+                final index = v.round();
+                if (index < 0 || index >= shown.length) return const SizedBox.shrink();
+                return SizedBox(width: 82, child: Padding(padding: const EdgeInsets.only(top: 7),
+                  child: Text('${shown[index].key}\n${shown[index].value} • ${RatioMath.display(RatioMath.percent(shown[index].value, total))}',
+                    maxLines: 4, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: const TextStyle(fontSize: 10))));
+              })),
+          ),
+        )),
+      )),
+      const SizedBox(height: 8),
+      Text(english ? 'Denominator: all $total filtered records, including elements outside the top 8.'
+          : 'المقام: جميع السجلات المطابقة ($total)، بما فيها العناصر خارج أعلى 8.', style: const TextStyle(fontSize: 11)),
+      if (entries.length > 8) ExpansionTile(title: Text(english ? 'All shares' : 'جميع الحصص'),
+        children: [for (final entry in entries) ListTile(title: Text(entry.key),
+          trailing: Text('${entry.value} • ${RatioMath.display(RatioMath.percent(entry.value, total))}'))]),
+    ]));
   }
   Widget _section(String title, Widget child) => AiSectionCard(title: title, feature: 'reports', child: child);
 
@@ -730,11 +791,31 @@ class _ReportsCenterState extends State<ReportsCenterScreen> {
           style: TextStyle(fontSize: 11, color: cleanOpsMuted)),
     ]);
   }
-  Widget _containerStatus(ReportSnapshot s)=>Wrap(spacing:8,runSpacing:8,children:[_mini('فارغة',s.containersEmpty,green),_mini('نصف ممتلئة',s.containersPartial,orange),_mini('ممتلئة',s.containersFull,red),_mini('مشكلات',s.containerIssues,red)]);
-  Widget _mini(String t,int v,Color c)=>Container(width:125,padding:const EdgeInsets.all(12),decoration:BoxDecoration(borderRadius:BorderRadius.circular(14),border:Border.all(color:c.withOpacity(.3))),child:Column(children:[AppText(t),AppText('$v',style:TextStyle(fontSize:23,fontWeight:FontWeight.w900,color:c))]));
+  Widget _containerStatus(ReportSnapshot s) {
+    final english = !context.read<LocaleController>().isArabic;
+    final counts = [s.containersFull, s.containersPartial, s.containersEmpty,
+      (s.containersTotal - s.containersFull - s.containersPartial - s.containersEmpty).clamp(0, s.containersTotal)];
+    final colors = [red, orange, green, Colors.blueGrey];
+    final labels = english ? ['Full', 'Half full', 'Empty', 'Unknown'] : ['ممتلئة', 'نصف ممتلئة', 'فارغة', 'غير محددة'];
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text(english ? 'Container composition' : 'التوزيع النسبي للحاويات', style: const TextStyle(fontWeight: FontWeight.w900)),
+      const SizedBox(height: 12),
+      if (s.containersTotal > 0) ClipRRect(borderRadius: BorderRadius.circular(7), child: Row(children: [
+        for (var i = 0; i < counts.length; i++) if (counts[i] > 0)
+          Expanded(flex: counts[i].toInt(), child: Container(height: 18, color: colors[i])),
+      ])),
+      const SizedBox(height: 10),
+      Wrap(spacing: 14, runSpacing: 8, children: [for (var i = 0; i < counts.length; i++)
+        Text('● ${labels[i]} ${counts[i]} • ${RatioMath.display(RatioMath.percent(counts[i], s.containersTotal))}',
+            style: TextStyle(color: colors[i], fontSize: 12))]),
+      const SizedBox(height: 10),
+      Text(english ? 'With issues: ${s.containerIssues} (overlaps fill states)' : 'ذات مشكلات: ${s.containerIssues} (قد تتداخل مع حالات الامتلاء)',
+          style: TextStyle(color: Colors.deepPurple.shade600, fontSize: 12)),
+    ]);
+  }
   Widget _rank(Map<String, int> map, String title, Color color) {
     final entries = map.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
-    final maximum = entries.isEmpty || entries.first.value <= 0 ? 1 : entries.first.value;
+    final maximum = entries.fold<int>(0, (sum, entry) => sum + entry.value);
     Widget row(MapEntry<String, int> entry, int index) => Padding(
       padding: const EdgeInsets.symmetric(vertical: 9),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -743,11 +824,11 @@ class _ReportsCenterState extends State<ReportsCenterScreen> {
           const SizedBox(width: 10),
           Expanded(child: Text(entry.key)),
           const SizedBox(width: 12),
-          Text('${entry.value}', style: TextStyle(color: color, fontWeight: FontWeight.w900, fontSize: 17)),
+          Text('${entry.value} • ${RatioMath.display(RatioMath.percent(entry.value, maximum))}', style: TextStyle(color: color, fontWeight: FontWeight.w900, fontSize: 15)),
         ]),
         const SizedBox(height: 7),
         ClipRRect(borderRadius: BorderRadius.circular(3), child: LinearProgressIndicator(
-          value: (entry.value / maximum).clamp(0.0, 1.0), minHeight: 6,
+          value: (maximum == 0 ? 0.0 : entry.value / maximum).clamp(0.0, 1.0), minHeight: 6,
           color: color, backgroundColor: color.withOpacity(.08))),
       ]),
     );
@@ -756,11 +837,11 @@ class _ReportsCenterState extends State<ReportsCenterScreen> {
         AppText(title, style: const TextStyle(fontWeight: FontWeight.w900)),
         if (entries.isEmpty) const Padding(padding: EdgeInsets.symmetric(vertical: 14),
           child: AppText('لا توجد سجلات متاحة لهذه المقارنة.')),
-        for (var i = 0; i < entries.length && i < 6; i++) row(entries[i], i),
-        if (entries.length > 6) ExpansionTile(
+        for (var i = 0; i < entries.length && i < 8; i++) row(entries[i], i),
+        if (entries.length > 8) ExpansionTile(
           tilePadding: EdgeInsets.zero,
-          title: AppText('عرض البقية (${entries.length - 6})'),
-          children: [for (var i = 6; i < entries.length; i++) row(entries[i], i)]),
+          title: AppText('عرض البقية (${entries.length - 8})'),
+          children: [for (var i = 8; i < entries.length; i++) row(entries[i], i)]),
       ]));
   }
   Widget _cycleSummary(ReportSnapshot s)=>ListTile(leading:const Icon(Icons.event_repeat),title:AppText('الدورات المتاحة: ${s.cycleCount}'),subtitle:AppText(s.cycles.isEmpty?'لا توجد بيانات دورات متاحة':'آخر دورة: ${s.cycles.first}'));

@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'report_branding_store.dart';
+import 'report_ratios.dart';
 
 import 'work_report_summary.dart';
 import 'daily_work_report_photo.dart';
@@ -170,7 +171,7 @@ class DailyWorkReportPdf {
               pw.Row(mainAxisSize: pw.MainAxisSize.min, children: [
                 pw.Container(width: 5, height: 5, color: colors[i]),
                 pw.SizedBox(width: 3),
-                text('${names[i]} ${values[i] ?? '—'}', size: 7),
+                text('${names[i]} ${values[i] ?? '—'} • ${RatioMath.display(complete ? RatioMath.percent(values[i], total) : null)}', size: 7),
               ]),
           ]),
         ])));

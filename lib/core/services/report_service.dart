@@ -14,6 +14,7 @@ import 'data_service.dart';
 import 'pdf_file_saver.dart';
 import 'report_pdf_template.dart';
 import 'report_content.dart';
+import 'report_ratios.dart';
 
 class ReportPeriodRange {
   final DateTime startDate;
@@ -89,6 +90,7 @@ class ReportSnapshot {
   final DateTime generatedAt;
   /// True when records were capped or cannot be attributed to a selected cycle.
   final bool sourceMayBeIncomplete;
+  final List<ReportRatio> ratioInsights;
 
   const ReportSnapshot({
     required this.trips,
@@ -115,6 +117,7 @@ class ReportSnapshot {
     required this.periodLabel,
     required this.generatedAt,
     this.sourceMayBeIncomplete = false,
+    this.ratioInsights = const [],
     this.availableMunicipalities = const [],
     this.search = '', this.containerStatus = 'all',
     this.containerRecords = const [], this.tripRecords = const [],
@@ -370,6 +373,33 @@ class ReportService {
 
     if (user?.role == 'municipality_coordinator' && user!.scope.trim().isNotEmpty && user.scope != 'assigned_only' && user.scope != 'all') municipalities.add(user.scope.trim());
     if (reportType == 'cycles') cycleCount = cycleKeys.length;
+    final spanDays = DateTime.utc(end.year, end.month, end.day)
+        .difference(DateTime.utc(start.year, start.month, start.day)).inDays + 1;
+    final previousStart = DateTime(start.year, start.month, start.day - spanDays);
+    final previousEnd = start.subtract(const Duration(milliseconds: 1));
+    final ratioCurrent = <Map<String, dynamic>>[], ratioPrevious = <Map<String, dynamic>>[];
+    for (final record in cached) {
+      if (record['isDeleted'] == true || !_inScope(record, user) ||
+          !_matchesFilters(record, municipality: municipality, group: group, cycle: cycle, cycleAliases: cycleAliases) ||
+          !ReportRecordFilters.matchesSearch(record, search)) continue;
+      if (_inDateRange(record, start, end)) ratioCurrent.add(record);
+      if (_inDateRange(record, previousStart, previousEnd)) ratioPrevious.add(record);
+    }
+    num? verifiedTarget;
+    if (data.online && !sourceMayBeIncomplete && search.isEmpty && spanDays == 1 &&
+        start.year == now.year && start.month == now.month && start.day == now.day) {
+      final targetGroups = cached.where((r) => r['_entity'] == 'group' && r['isDeleted'] != true &&
+        r['isActive'] != false && !['inactive', 'deleted', 'frozen'].contains(r['status']) &&
+        _inScope({...r, 'groupId': r['groupId'] ?? r['id']}, user) &&
+        _matchesFilters(r, municipality: municipality, group: group, cycle: cycle, cycleAliases: cycleAliases)).toList();
+      if (targetGroups.isNotEmpty && targetGroups.every((r) => r['dailyTargetTrips'] is num &&
+          (r['dailyTargetTrips'] as num).isFinite && (r['dailyTargetTrips'] as num) > 0)) {
+        verifiedTarget = targetGroups.fold<num>(0, (sum, r) => sum + (r['dailyTargetTrips'] as num));
+      }
+    }
+    final ratioInsights = ReportRatioEngine.build(current: ratioCurrent, previous: ratioPrevious,
+      previousLabel: '${DateFormat('yyyy-MM-dd').format(previousStart)} → ${DateFormat('yyyy-MM-dd').format(previousEnd)}',
+      comparisonComplete: data.online && !sourceMayBeIncomplete, reportType: reportType, verifiedTarget: verifiedTarget);
     final sortedDays = byDay.entries.toList()..sort((a, b) => a.key.compareTo(b.key));
     final municipalityNames = municipalities.toList()..sort();
     final locationOptions = availableMunicipalities.toList()..sort();
@@ -380,7 +410,7 @@ class ReportService {
     var filterHash = 0;
     for (final unit in filterKey.codeUnits) { filterHash = (filterHash * 31 + unit) & 0x7fffffff; }
     final snapshotId = reportId == null ? 'CO-${now.millisecondsSinceEpoch}' : '$reportId-${filterHash.toRadixString(16)}';
-    return ReportSnapshot(trips: trips, alternativeTrips: alternativeTrips, attendance: attendance, absence: absence, ppeCompliant: ppe, emergencies: emergencies, emergencyOpen: emergencyOpen, emergencySecured: emergencySecured, landfillCapacity: landfill, heavyMachineryHours: heavyMachineryHours, tripsByGroup: byGroup, tripsByDay: Map<String, int>.fromEntries(sortedDays), attendanceByGroup: attendanceByGroup, ppeByGroup: ppeByGroup, emergenciesByGroup: emergenciesByGroup, containerByStatus: containerByStatus, containersTotal: containersTotal, containersFull: containersFull, containersPartial: containersPartial, containersEmpty: containersEmpty, containerIssues: containerIssues, workers: workers.length, supervisors: supervisors.length, groups: groups.length, municipalities: municipalities.length, dumpsites: dumpsites, cycleCount: cycleCount, municipalityNames: municipalityNames, tripsByMunicipality: tripsByMunicipality, attendanceByMunicipality: attendanceByMunicipality, absenceByGroup: absenceByGroup, containersByMunicipality: containersByMunicipality, containersByGroup: containersByGroup, cycles: cycles, selectedMunicipality: municipality, selectedGroup: group, selectedCycle: cycle, reportType: reportType, reportId: snapshotId, sourceMayBeIncomplete: sourceMayBeIncomplete, availableMunicipalities: locationOptions, search: search, containerStatus: containerStatus, containerRecords: containerRecords, tripRecords: tripRecords, periodLabel: reportType == 'containers' ? 'آخر حالة مسجلة للحاويات' : '${DateFormat('yyyy-MM-dd').format(start)} → ${DateFormat('yyyy-MM-dd').format(end)}', generatedAt: now);
+    return ReportSnapshot(ratioInsights: ratioInsights, trips: trips, alternativeTrips: alternativeTrips, attendance: attendance, absence: absence, ppeCompliant: ppe, emergencies: emergencies, emergencyOpen: emergencyOpen, emergencySecured: emergencySecured, landfillCapacity: landfill, heavyMachineryHours: heavyMachineryHours, tripsByGroup: byGroup, tripsByDay: Map<String, int>.fromEntries(sortedDays), attendanceByGroup: attendanceByGroup, ppeByGroup: ppeByGroup, emergenciesByGroup: emergenciesByGroup, containerByStatus: containerByStatus, containersTotal: containersTotal, containersFull: containersFull, containersPartial: containersPartial, containersEmpty: containersEmpty, containerIssues: containerIssues, workers: workers.length, supervisors: supervisors.length, groups: groups.length, municipalities: municipalities.length, dumpsites: dumpsites, cycleCount: cycleCount, municipalityNames: municipalityNames, tripsByMunicipality: tripsByMunicipality, attendanceByMunicipality: attendanceByMunicipality, absenceByGroup: absenceByGroup, containersByMunicipality: containersByMunicipality, containersByGroup: containersByGroup, cycles: cycles, selectedMunicipality: municipality, selectedGroup: group, selectedCycle: cycle, reportType: reportType, reportId: snapshotId, sourceMayBeIncomplete: sourceMayBeIncomplete, availableMunicipalities: locationOptions, search: search, containerStatus: containerStatus, containerRecords: containerRecords, tripRecords: tripRecords, periodLabel: reportType == 'containers' ? 'آخر حالة مسجلة للحاويات' : '${DateFormat('yyyy-MM-dd').format(start)} → ${DateFormat('yyyy-MM-dd').format(end)}', generatedAt: now);
   }
 
   bool _matchesFilters(Map<String,dynamic> m, {String? municipality, String? group, String? cycle, Set<String> cycleAliases = const {}}) {
