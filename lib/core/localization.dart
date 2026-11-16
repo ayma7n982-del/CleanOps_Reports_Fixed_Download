@@ -76,13 +76,6 @@ class I18n {
   }
 
   static const Map<String, String> _en = {
-    'يمكنك إعادة المحاولة حتى لو اختفى صف المستخدم.': 'You can retry even if the user row has disappeared.',
-    'لم يكتمل تأكيد الحذف': 'Deletion confirmation is incomplete',
-    'إعادة محاولة الحذف': 'Retry deletion',
-    'محذوف إداريًا فقط؛ يمكنك حذفه نهائيًا.': 'Administratively deleted only; permanent deletion is available.',
-    'الحذف لم يكتمل؛ أعد المحاولة.': 'Deletion is incomplete; retry.',
-    'تم حذف حساب الدخول وملف المستخدم نهائيًا بعد تأكيد Firebase.': 'Firebase confirmed permanent deletion of the login account and user profile.',
-    'إظهار الحسابات المحذوفة إداريًا لاستكمال حذفها نهائيًا': 'Show administratively deleted accounts for permanent removal',
     'تُحفظ الشعارات المختارة محليًا على الجهاز وتُضمّن في PDF عند توفرها. يمكن لمدير اليونيسف نشر الهوية المشتركة للبلدية أو المجلس المحدد. تحتفظ الأجهزة بنسخة للعمل دون اتصال.': 'Logos are saved on this device and embedded in PDFs. The UNICEF manager can publish a shared identity for the selected municipality or council. Devices retain an offline copy.',
     'نُشرت الهوية المشتركة. تسترجعها الأجهزة عند تصدير تقرير النطاق نفسه.': 'Shared identity published. Devices retrieve it when exporting a report in the same scope.',
     'نشر الهوية على أجهزة النطاق نفسه': 'Publish identity to devices in this scope',
