@@ -392,7 +392,13 @@ class ReportService {
         r['isActive'] != false && !['inactive', 'deleted', 'frozen'].contains(r['status']) &&
         _inScope({...r, 'groupId': r['groupId'] ?? r['id']}, user) &&
         _matchesFilters(r, municipality: municipality, group: group, cycle: cycle, cycleAliases: cycleAliases)).toList();
-      if (targetGroups.isNotEmpty && targetGroups.every((r) => r['dailyTargetTrips'] is num &&
+      final targetGroupKeys = {for (final r in targetGroups)
+        for (final key in ['id', 'groupId', 'name', 'groupName'])
+          if ('${r[key] ?? ''}'.isNotEmpty) '${r[key]}'};
+      final covered = ratioCurrent.where((r) => ['trip', 'trips', 'work_report'].contains(
+        r['_entity'] == 'report' ? r['reportKind'] : r['_entity']))
+          .every((r) => targetGroupKeys.contains('${r['groupId'] ?? r['groupName'] ?? ''}'));
+      if (covered && targetGroups.isNotEmpty && targetGroups.every((r) => r['dailyTargetTrips'] is num &&
           (r['dailyTargetTrips'] as num).isFinite && (r['dailyTargetTrips'] as num) > 0)) {
         verifiedTarget = targetGroups.fold<num>(0, (sum, r) => sum + (r['dailyTargetTrips'] as num));
       }

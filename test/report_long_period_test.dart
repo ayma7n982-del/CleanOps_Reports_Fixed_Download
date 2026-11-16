@@ -92,6 +92,17 @@ void main() {
       expect(compared.trips, 2);
       expect(compared.ratioInsights.firstWhere((r) => r.id == 'growth').value, -50);
       expect(compared.ratioInsights.firstWhere((r) => r.id == 'completion').value, 100);
+      final today = DateTime.now();
+      data.operations = [
+        {'id':'g1', '_entity':'group', 'dailyTargetTrips':2},
+        {'id':'today-g1', '_entity':'trip', 'groupId':'g1', 'createdAt':today.toIso8601String(), 'status':'completed'},
+      ];
+      final withTarget = await ReportService(data).load(user:manager, reportType:'trips', startDate:today, endDate:today);
+      expect(withTarget.ratioInsights.firstWhere((r) => r.id == 'achievement').value, 50);
+      data.operations.add({'id':'uncovered-group', '_entity':'trip', 'groupId':'g2', 'createdAt':today.toIso8601String(), 'status':'completed'});
+      final uncovered = await ReportService(data).load(user:manager, reportType:'trips', startDate:today, endDate:today);
+      expect(uncovered.ratioInsights.firstWhere((r) => r.id == 'achievement').value, isNull);
+
 
       expect(cycle.tripsByMunicipality.values.fold<int>(0, (a, b) => a + b), 2);
 

@@ -17,6 +17,7 @@ class ReportRatioPanel extends StatelessWidget {
           Text(ratio.points && ratio.value != null
               ? '${ratio.value! > 0 ? '+' : ''}${ratio.value!.toStringAsFixed(1)}'
               : ratio.display(english),
+              textDirection: TextDirection.ltr,
               style: TextStyle(fontSize: 23, fontWeight: FontWeight.w900,
                   color: ratio.value == null ? Colors.blueGrey : const Color(0xFF087F78))),
           if (ratio.points) Text(english ? 'percentage points' : 'نقطة مئوية', style: const TextStyle(fontSize: 10)),
@@ -27,9 +28,8 @@ class ReportRatioPanel extends StatelessWidget {
       children: [Padding(padding: const EdgeInsets.only(bottom: 12),
         child: Text(ratio.basis(english), style: const TextStyle(fontSize: 12)))],
     );
-    return Container(padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(color: Theme.of(context).colorScheme.surface,
-          border: const BorderDirectional(start: BorderSide(color: Color(0xFF087F78), width: 3))),
+    return Material(color: Theme.of(context).colorScheme.surface, child: Container(padding: const EdgeInsets.all(16),
+      decoration: const BoxDecoration(border: BorderDirectional(start: BorderSide(color: Color(0xFF087F78), width: 3))),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text(english ? 'Ratios and performance indicators' : 'النسب ومؤشرات الأداء',
             style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
@@ -39,6 +39,6 @@ class ReportRatioPanel extends StatelessWidget {
         if (ordered.length > 4) ExpansionTile(tilePadding: EdgeInsets.zero,
           title: Text(english ? 'More indicators (${ordered.length - 4})' : 'مؤشرات إضافية (${ordered.length - 4})'),
           children: [for (final ratio in ordered.skip(4)) row(ratio)]),
-      ]));
+      ])));
   }
 }

@@ -22,6 +22,9 @@ void main() {
         expect(find.text('-25.0%'), findsOneWidget);
         expect(find.text('+10.0'), findsOneWidget);
         expect(tester.takeException(), isNull);
+        await tester.tap(find.text(english ? 'Trip growth vs previous period' : 'تغيّر النقلات عن الفترة السابقة'));
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
       }
     }
     tester.view.resetPhysicalSize();
