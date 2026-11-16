@@ -167,8 +167,10 @@ class ReportService {
     final availableMunicipalities = <String>{};
     final groups = <String>{}, municipalities = <String>{}, workers = <String>{}, supervisors = <String>{};
 
+    final refreshBefore = data.lastDataRefresh;
     final cached = await data.refreshOperations(limit: 10000);
-    var sourceMayBeIncomplete = data.online && data.operationsCapped;
+    final refreshed = data.online && data.lastDataRefresh != refreshBefore;
+    var sourceMayBeIncomplete = data.online && (data.operationsCapped || !refreshed);
     final cycleKeys = <String>{};
     final cycleIdsByName = <String, String>{};
     final cycleAliases = <String>{if (cycle != null && cycle.isNotEmpty) cycle};
@@ -386,7 +388,7 @@ class ReportService {
       if (_inDateRange(record, previousStart, previousEnd)) ratioPrevious.add(record);
     }
     num? verifiedTarget;
-    if (data.online && !sourceMayBeIncomplete && search.isEmpty && spanDays == 1 &&
+    if (refreshed && !sourceMayBeIncomplete && search.isEmpty && spanDays == 1 &&
         start.year == now.year && start.month == now.month && start.day == now.day) {
       final targetGroups = cached.where((r) => r['_entity'] == 'group' && r['isDeleted'] != true &&
         r['isActive'] != false && !['inactive', 'deleted', 'frozen'].contains(r['status']) &&
@@ -405,7 +407,7 @@ class ReportService {
     }
     final ratioInsights = ReportRatioEngine.build(current: ratioCurrent, previous: ratioPrevious,
       previousLabel: '${DateFormat('yyyy-MM-dd').format(previousStart)} → ${DateFormat('yyyy-MM-dd').format(previousEnd)}',
-      comparisonComplete: data.online && !sourceMayBeIncomplete, reportType: reportType, verifiedTarget: verifiedTarget);
+      comparisonComplete: refreshed && !sourceMayBeIncomplete, reportType: reportType, verifiedTarget: verifiedTarget);
     final sortedDays = byDay.entries.toList()..sort((a, b) => a.key.compareTo(b.key));
     final municipalityNames = municipalities.toList()..sort();
     final locationOptions = availableMunicipalities.toList()..sort();

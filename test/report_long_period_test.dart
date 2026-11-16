@@ -8,6 +8,17 @@ import 'package:solid_waste_operations/core/services/data_service.dart';
 import 'package:solid_waste_operations/core/services/local_store.dart';
 import 'package:solid_waste_operations/core/services/report_service.dart';
 
+class ConfirmedReportData extends DataService {
+  int revision = 0;
+  bool confirmRefresh = true;
+  ConfirmedReportData(super.store, super.config);
+  @override
+  Future<List<Map<String, dynamic>>> refreshOperations({int limit = 1000}) async {
+    if (online && confirmRefresh) lastDataRefresh = 'confirmed-${++revision}';
+    return operations;
+  }
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -17,7 +28,7 @@ void main() {
     Hive.init(directory.path);
     final box = await Hive.openBox('long_period');
     final store = LocalStore(box);
-    final data = DataService(store, ConfigService(store));
+    final data = ConfirmedReportData(store, ConfigService(store));
     final manager = AppUser(
       id: 'manager-long-report',
       username: 'manager-long-report',
@@ -102,6 +113,12 @@ void main() {
       data.operations.add({'id':'uncovered-group', '_entity':'trip', 'groupId':'g2', 'createdAt':today.toIso8601String(), 'status':'completed'});
       final uncovered = await ReportService(data).load(user:manager, reportType:'trips', startDate:today, endDate:today);
       expect(uncovered.ratioInsights.firstWhere((r) => r.id == 'achievement').value, isNull);
+      data.confirmRefresh = false;
+      final cachedOnly = await ReportService(data).load(user:manager, reportType:'trips', startDate:today, endDate:today);
+      expect(cachedOnly.sourceMayBeIncomplete, isTrue);
+      expect(cachedOnly.ratioInsights.firstWhere((r) => r.id == 'growth').value, isNull);
+      expect(cachedOnly.ratioInsights.firstWhere((r) => r.id == 'achievement').value, isNull);
+
 
 
       expect(cycle.tripsByMunicipality.values.fold<int>(0, (a, b) => a + b), 2);
