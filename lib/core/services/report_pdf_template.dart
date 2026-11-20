@@ -88,6 +88,7 @@ class ReportPdfTemplate {
         pw.Text('${t('تاريخ الإصدار: ','Generated: ')}${DateFormat('yyyy-MM-dd HH:mm').format(snapshot.generatedAt)}',style:pw.TextStyle(font:regular,fontSize:8,color:PdfColors.white)),
       ])),
       pw.SizedBox(height: 12),
+      if (snapshot.legacyCounts != null) pw.Text(t('ملخص النسخة القديمة المحفوظة', 'Stored legacy summary')),
       if (snapshot.sourceMayBeIncomplete) _section(t('تنبيه اكتمال البيانات', 'Data completeness warning'), [
         pw.Text(t('قد تكون البيانات جزئية؛ راجع المصدر قبل الاعتماد.',
             'Data may be partial; verify the source before approval.'),
@@ -121,7 +122,7 @@ class ReportPdfTemplate {
             style: pw.TextStyle(font: regular, fontSize: 8))
         else _breakdownTable(section),
       ],
-      if (snapshot.reportType == 'containers' || snapshot.reportType == 'trips') ...[
+      if (snapshot.legacyCounts == null && (snapshot.reportType == 'containers' || snapshot.reportType == 'trips')) ...[
         pw.SizedBox(height: 14),
         pw.Text(t('السجلات المطابقة للفلاتر', 'Records matching filters'),
             style: pw.TextStyle(font: bold, fontSize: 11, color: PdfColors.teal800)),
@@ -131,7 +132,7 @@ class ReportPdfTemplate {
               child: pw.Text(value, style: pw.TextStyle(font: regular, fontSize: 8)))],
           )]),
       ],
-      _section(t('الاعتماد والتوقيع','Review and signatures'),[pw.Text('${t('معدّ التقرير: ','Prepared by: ')}${user?.name ?? t('النظام','System')}',style:pw.TextStyle(font:regular,fontSize:9)),pw.Text(t('المراجع: ____________________','Reviewer: ____________________'),style:pw.TextStyle(font:regular,fontSize:9)),pw.Text(t('المعتمد: ____________________    التاريخ: __________','Approved by: ____________________    Date: __________'),style:pw.TextStyle(font:regular,fontSize:9))]),
+      _section(t('الاعتماد والتوقيع','Review and signatures'),[pw.Text('${t('معدّ التقرير: ','Prepared by: ')}${snapshot.preparer ?? user?.name ?? t('النظام','System')}',style:pw.TextStyle(font:regular,fontSize:9)),pw.Text(t('المراجع: ____________________','Reviewer: ____________________'),style:pw.TextStyle(font:regular,fontSize:9)),pw.Text(snapshot.reviewer == null ? t('المعتمد: ____________________    التاريخ: __________','Approved by: ____________________    Date: __________') : '${t('المعتمد','Approved by')}: ${snapshot.reviewer}    ${snapshot.approvalTime ?? ''}',style:pw.TextStyle(font:regular,fontSize:9))]),
     ];
   }
   pw.Widget header(pw.Context context){
@@ -157,6 +158,6 @@ class ReportPdfTemplate {
       ]),
     );
   }
-  pw.Widget footer(pw.Context context)=>pw.Container(padding:const pw.EdgeInsets.only(top:5),decoration:const pw.BoxDecoration(border:pw.Border(top:pw.BorderSide(color:PdfColors.grey300))),child:pw.Row(children:[pw.Expanded(child:pw.Text('${t('صادر عن: ','Issued by: ')}${user?.name ?? t('النظام','System')}',style:pw.TextStyle(font:regular,fontSize:7))),pw.Text(t('صفحة ${context.pageNumber} من ${context.pagesCount}','Page ${context.pageNumber} of ${context.pagesCount}'),style:pw.TextStyle(font:bold,fontSize:7))]));
+  pw.Widget footer(pw.Context context)=>pw.Container(padding:const pw.EdgeInsets.only(top:5),decoration:const pw.BoxDecoration(border:pw.Border(top:pw.BorderSide(color:PdfColors.grey300))),child:pw.Row(children:[pw.Expanded(child:pw.Text('${t('صادر عن: ','Issued by: ')}${snapshot.preparer ?? user?.name ?? t('النظام','System')}',style:pw.TextStyle(font:regular,fontSize:7))),pw.Text(t('صفحة ${context.pageNumber} من ${context.pagesCount}','Page ${context.pageNumber} of ${context.pagesCount}'),style:pw.TextStyle(font:bold,fontSize:7))]));
   pw.MultiPage page()=>pw.MultiPage(maxPages:500,pageFormat:PdfPageFormat.a4,margin:const pw.EdgeInsets.fromLTRB(28,32,28,32),textDirection:english ? pw.TextDirection.ltr : pw.TextDirection.rtl,header:header,footer:footer,theme:pw.ThemeData.withFont(base:regular,bold:bold),build:(_)=>build());
 }

@@ -1,3 +1,4 @@
+import 'trip_lifecycle.dart';
 import 'dart:convert';
 
 import 'worker_roster.dart';
@@ -210,7 +211,7 @@ class WorkReportSummary {
     var completed = 0, active = 0, cancelled = 0, unknownTrips = 0;
     for (final r in trips) {
       final status = text(r['status']).toLowerCase();
-      if (const {'completed', 'done', 'closed'}.contains(status)) {
+      if (TripLifecycle.isCompleted(status)) {
         completed++;
       } else if (const {'cancelled', 'canceled', 'rejected'}.contains(status)) {
         cancelled++;

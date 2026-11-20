@@ -16,6 +16,7 @@ class ReportBreakdown {
 
 class ReportContent {
   static List<ReportRatio> ratios(ReportSnapshot s) {
+    if (s.legacyCounts != null) return [];
     final result = <ReportRatio>[...s.ratioInsights];
     if (s.reportType != 'containers' && s.reportType != 'trips') {
       result.add(ReportRatio('attendance', 'نسبة الحضور المسجل', 'Recorded attendance rate',
@@ -42,7 +43,10 @@ class ReportContent {
 
   static List<ReportMetric> metrics(ReportSnapshot s) {
     final all = <String, ReportMetric>{
-      'trips': ReportMetric('trips', 'الترحيلات', 'Trips', '${s.trips}'),
+      'trips': ReportMetric('trips', s.reportType == 'work' ? 'النقلات المكتملة' : 'النقلات المسجلة', s.reportType == 'work' ? 'Completed trips' : 'Registered trips', '${s.trips}'),
+      'completedTrips': ReportMetric('completedTrips', 'النقلات المكتملة', 'Completed trips', '${s.completedTrips}'),
+      'supervisors': ReportMetric('supervisors', 'المشرفون', 'Supervisors', '${s.supervisors}'),
+      'emergencies': ReportMetric('emergencies', 'الطوارئ', 'Emergencies', '${s.emergencies}'),
       'groups': ReportMetric('groups', 'المجموعات', 'Groups', '${s.groups}'),
       'municipalities': ReportMetric('municipalities', 'البلديات', 'Municipalities', '${s.municipalities}'),
       'containers': ReportMetric('containers', 'كل الحاويات', 'Containers', '${s.containersTotal}'),
@@ -57,21 +61,25 @@ class ReportContent {
       'workers': ReportMetric('workers', 'العمال', 'Workers', '${s.workers}'),
       'cycles': ReportMetric('cycles', 'الدورات في النتائج', 'Cycles in results', '${s.cycleCount}'),
     };
+    if (s.legacyCounts != null) {
+      return [for (final key in s.legacyCounts!.keys) if (all.containsKey(key)) all[key]!];
+    }
     final keys = switch (s.reportType) {
-      'trips' => ['trips', 'groups', 'municipalities'],
+      'trips' => ['trips', 'completedTrips', 'groups', 'municipalities'],
       'containers' => ['containers', 'full', 'partial', 'issues'],
       'absence' => ['attendanceRate', 'attendance', 'absence', 'ppe'],
       'work' => ['trips', 'attendance', 'groups', 'workers'],
       'cycles' => ['cycles', 'trips', 'attendance'],
       'municipalities' => ['municipalities', 'trips', 'attendance', 'containers'],
       'groups' => ['groups', 'trips', 'attendance', 'absence'],
-      _ => ['trips', 'attendanceRate', 'containers', 'full', 'groups', 'workers'],
+      _ => ['trips', 'completedTrips', 'attendanceRate', 'containers', 'full', 'groups', 'workers'],
     };
     return [for (final key in keys) all[key]!];
   }
 
   static List<ReportBreakdown> breakdowns(ReportSnapshot s, {bool english = false}) {
     String t(String ar, String en) => english ? en : ar;
+    if (s.legacyCounts != null) return [];
     final daily = ReportBreakdown(t('النقلات حسب يوم التسجيل', 'Trips by recorded day'), s.tripsByDay);
     final groups = ReportBreakdown(t('النقلات حسب المجموعة', 'Trips by group'), s.tripsByGroup);
     final municipalities = ReportBreakdown(t('النقلات حسب البلدية', 'Trips by municipality'), s.tripsByMunicipality);
@@ -126,7 +134,10 @@ class ReportContent {
       [t('المجموعة', 'Group'), s.selectedGroup ?? t('كل المجموعات المتاحة', 'All permitted groups')],
       [t('الدورة', 'Cycle'), s.selectedCycle ?? t('كل الدورات', 'All cycles')],
       [t('تاريخ الإصدار', 'Generated at'), s.generatedAt.toIso8601String()],
-      [t('اكتمال المصدر', 'Source completeness'), s.sourceMayBeIncomplete
+      if (s.reviewer != null) [t('المعتمد', 'Approved by'), s.reviewer!],
+      if (s.approvalTime != null) [t('تاريخ الاعتماد','Approved at'),s.approvalTime!],
+      if (s.legacyCounts != null) [t('الأرشيف', 'Archive'), t('ملخص النسخة القديمة المحفوظة', 'Stored legacy summary')]
+      else [t('اكتمال المصدر', 'Source completeness'), s.sourceMayBeIncomplete
         ? t('قد تكون البيانات جزئية؛ راجع المصدر قبل الاعتماد.', 'Data may be partial; verify the source before approval.')
         : t('لم يُكتشف اقتطاع ضمن البيانات المتاحة.', 'No truncation detected in available data.')],
       for (final metric in metrics(s)) [metric.label(english), metric.value],
@@ -142,7 +153,7 @@ class ReportContent {
           [t('الحصة', 'Share') + ' — ' + entry.key, RatioMath.display(RatioMath.percent(entry.value, section.values.values.fold<int>(0, (a, b) => a + b)))],
         ],
       ],
-      if (s.reportType == 'containers' || s.reportType == 'trips') ...[
+      if (s.legacyCounts == null && (s.reportType == 'containers' || s.reportType == 'trips')) ...[
         [t('السجلات المطابقة للفلاتر', 'Records matching filters'), ''],
         ...recordRows(s, english: english),
       ],

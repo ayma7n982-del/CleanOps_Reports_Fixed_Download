@@ -956,9 +956,15 @@ service cloud.firestore {
         && d.updatedAt == request.time;
     }
 
+    // Form submissions, reviews and frozen exports use the transactional callable.
+    function managedReport(row) {
+      return row.get('reportKind', '') in ['work_report', 'report_approval']
+        || row.get('_entity', '') in ['work_report', 'report_approval'];
+    }
+
     match /operations/{id} {
       allow read: if operationReadAllowed();
-      allow create: if signedIn() && (
+      allow create: if signedIn() && !managedReport(request.resource.data) && (
         (request.resource.data._entity == 'worker'
           && (isL2() || (isL4() && validWorkforceProjection(id))))
         ||
@@ -974,7 +980,13 @@ service cloud.firestore {
         || (isL3() && (request.resource.data._entity == 'heavy_machinery' || request.resource.data._entity == 'emergency' || request.resource.data._entity == 'notification' || request.resource.data._entity == 'report'))
         || (role() == 'group_supervisor' && (validSupervisorTripCreate() || request.resource.data._entity == 'trip_photo' || (request.resource.data._entity == 'attendance' && userDoc().isActive != false && userDoc().groupId is string && userDoc().groupId.size() > 0 && request.resource.data.groupId == userDoc().groupId && request.resource.data.reportedBy == request.auth.uid && request.resource.data.status in ['present','absent','leave','permission','excused_absence','unexcused_absence','external_task']) || request.resource.data._entity == 'street_photo' || (request.resource.data._entity == 'emergency' && validSupervisorSosCreate()) || request.resource.data._entity == 'notification' || request.resource.data._entity == 'report'))
       );
-      allow update: if signedIn() && (
+      allow update: if signedIn() && resource.data._entity == 'emergency' && (
+        (request.resource.data.status == 'secured' && validJscSosSecure())
+        || (request.resource.data.status == 'reopened' && validJscSosReopen())
+        || (resource.data.status == 'reopened' && request.resource.data.status == 'closed' && validJscSosCloseAfterReopen())
+        || validSosAcknowledgment() || validJscSosReferral()
+      );
+      allow update: if signedIn() && !managedReport(resource.data) && !managedReport(request.resource.data) && (
         (resource.data._entity == 'worker' && request.resource.data._entity == 'worker'
           && (isL2() || (isL4() && validWorkforceProjection(id))))
         ||
@@ -982,21 +994,6 @@ service cloud.firestore {
         // unrelated SOS/equipment branches first exceeds the rules 1000-
         // expression limit on real trips and incorrectly denies supervisors.
         (role() == 'group_supervisor' && validSupervisorTripUpdate())
-        // Route valid JSC status transitions to their exact validator first.
-        // Otherwise unrelated complex rules exhaust the 1000-expression limit.
-        || (isL3() && resource.data._entity == 'emergency'
-          && request.resource.data.status == 'secured' && validJscSosSecure())
-        || (isL3() && resource.data._entity == 'emergency'
-          && request.resource.data.status == 'reopened' && validJscSosReopen())
-        || (isL3() && resource.data._entity == 'emergency'
-          && resource.data.status == 'reopened'
-          && request.resource.data.status == 'closed'
-          && validJscSosCloseAfterReopen())
-        || validSosAcknowledgment()
-        || validJscSosReferral()
-        || validJscSosReopen()
-        || validJscSosSecure()
-        || validJscSosCloseAfterReopen()
         || (isL4() && (resource.data._entity == 'report' || resource.data._entity == 'user'))
         || (isL2() && (resource.data._entity == 'group' || resource.data._entity == 'worker' || validOperationsCartAssignmentUpdate(id)))
         || (isL3() && (resource.data._entity == 'heavy_machinery' || resource.data._entity == 'notification' || resource.data._entity == 'report'))

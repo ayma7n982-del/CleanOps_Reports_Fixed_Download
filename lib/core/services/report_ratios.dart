@@ -55,8 +55,8 @@ class ReportRatioEngine {
       ratios.add(ReportRatio('growth', 'تغيّر النقلات عن الفترة السابقة', 'Trip growth vs previous period', growth,
         growth == null ? 'غير متاح: قاعدة سابقة غير موجبة أو بيانات المقارنة غير مكتملة.' : 'الحالي $nowCount؛ السابق $priorCount. الفترة السابقة: $previousLabel. اليوم الجاري قد يكون جزئيًا.',
         growth == null ? 'Unavailable: no positive baseline or incomplete comparison data.' : 'Current $nowCount; previous $priorCount. Previous period: $previousLabel. The current day may be partial.', signed: true));
-      final complete = currentTrips.where((r) => const ['completed', 'done', 'closed', 'delivered'].contains('${r['status']}')).length;
-      final known = currentTrips.every((r) => const ['completed', 'done', 'closed', 'delivered', 'cancelled', 'canceled'].contains('${r['status']}') || TripLifecycle.activeStatuses.contains('${r['status']}'));
+      final complete = currentTrips.where((r) => TripLifecycle.isCompleted(r['status'])).length;
+      final known = currentTrips.every((r) => TripLifecycle.isCompleted(r['status']) || const ['cancelled', 'canceled', 'rejected'].contains('${r['status']}') || TripLifecycle.activeStatuses.contains('${r['status']}'));
       ratios.add(ReportRatio('completion', 'إتمام النقلات المسجلة', 'Recorded trip completion',
         !work && known ? RatioMath.percent(complete, currentTrips.length) : null,
         !work && known && currentTrips.isNotEmpty ? '$complete مكتملة ÷ ${currentTrips.length} نقلة مسجلة، بما فيها الجارية والملغاة.' : 'غير متاح: لا توجد نقلات مباشرة مكتملة الحالة في مصدر هذا التقرير.',

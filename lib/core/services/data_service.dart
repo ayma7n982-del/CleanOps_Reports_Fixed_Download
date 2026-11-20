@@ -433,12 +433,87 @@ class DataService extends ChangeNotifier {
     return false;
   }
 
+  static bool _reportEntity(String entity) => entity == 'report_approval' || entity == 'work_report';
+
+  Future<void> _cacheOperations(int limit) {
+    // Retain previously downloaded approvals when the general offline cache rolls over.
+    final rows = [
+      ...operations.take(limit),
+      ...operations.skip(limit).where((row) => (row['reportKind'] ?? row['_entity']) == 'report_approval'),
+    ];
+    return store.saveCachedOperations([for (final row in rows) Map<String,dynamic>.from(_toJsonSafe(row) as Map)]);
+  }
+
+  SyncItem? pendingReport(String id) {
+    for (final item in queue) {
+      if (!_reportEntity(item.entity)) continue;
+      if (Firebase.apps.isNotEmpty && item.ownerUid != null && item.ownerUid != FirebaseAuth.instance.currentUser?.uid) continue;
+      if (item.reportId == id || (item.reportId == null && (jsonDecode(item.payload) as Map)['id'] == id)) return item;
+    }
+    return null;
+  }
+
+  Future<void> refreshReportArchive(AppUser user) async {
+    if (!online || Firebase.apps.isEmpty) return;
+    Query<Map<String,dynamic>> query = FirebaseFirestore.instance.collection('operations')
+        .where('reportKind', isEqualTo: 'report_approval');
+    switch (user.role) {
+      case 'municipality_coordinator':
+        query = query.where('municipalityCoordinatorId', isEqualTo: user.id);
+        break;
+      case 'jsc_coordinator':
+        if (['', 'all', 'assigned_only'].contains(user.scope.trim())) return;
+        query = query.where('councilName', isEqualTo: user.scope.trim());
+        break;
+      case 'donor_manager':
+        query = query.where('status', whereIn: ['approved','closed']);
+        break;
+      default: return;
+    }
+    try {
+      final result = await query.get(const GetOptions(source: Source.server));
+      if (FirebaseAuth.instance.currentUser?.uid != user.id) return;
+      operations = _mergeOperations([for (final d in result.docs) {...Map<String,dynamic>.from(_toJsonSafe(d.data()) as Map), 'id':d.id}], operations);
+      await _cacheOperations(operations.length);
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Could not refresh report archive: $e');
+    }
+  }
+
+  Future<void> dismissReportError(SyncItem item) async {
+    if (item.reportError == null || !_reportEntity(item.entity)) return;
+    final actor = FirebaseAuth.instance.currentUser?.uid;
+    if (actor == null || (item.ownerUid != null && item.ownerUid != actor)) return;
+    final id = (jsonDecode(item.payload) as Map)['id'] as String;
+    // Restore the server version before removing the block on export or review.
+    final doc = await FirebaseFirestore.instance.collection('operations').doc(id)
+        .get(const GetOptions(source: Source.server));
+    if (FirebaseAuth.instance.currentUser?.uid != actor) return;
+    operations = operations.where((r) => r['id'] != id).toList();
+    if (doc.exists) operations.add({...Map<String,dynamic>.from(_toJsonSafe(doc.data()) as Map), 'id': id});
+    await _cacheOperations(operations.length);
+    queue = queue.where((q) => q.id != item.id).toList();
+    await store.saveQueue(queue);
+    notifyListeners();
+  }
+
   Future<void> enqueue(String entity, String operation, Map<String, dynamic> payload) async {
     final safePayload = Map<String, dynamic>.from(_toJsonSafe(payload) as Map);
     final queueId = uuid.v4();
     await _preserveOfflineAttachment(safePayload, queueId);
+    if (_reportEntity(entity)) {
+      final pending = pendingReport('${safePayload['id']}');
+      // A local daily draft may be edited before its initial creation synchronizes.
+      final draftEdit = entity == 'work_report' && operation == 'update' &&
+          safePayload['contentEditedAt'] != null && ['draft','needs_edits'].contains(safePayload['status']);
+      if (pending != null && (!draftEdit || pending.reportError != null)) {
+        throw StateError('يوجد إجراء سابق لهذا التقرير. انتظر المزامنة أو راجع سبب الرفض.');
+      }
+    }
     final item = SyncItem(
       id: queueId,
+      reportId: _reportEntity(entity) ? safePayload['id']?.toString() : null,
       ownerUid: Firebase.apps.isNotEmpty
           ? FirebaseAuth.instance.currentUser?.uid : null,
       entity: entity,
@@ -448,7 +523,9 @@ class DataService extends ChangeNotifier {
     );
     queue = [...queue, item];
     await store.saveQueue(queue);
-    if (entity != 'cart_redirect' && entity != 'equipment_dispatch' &&
+    final deferReport = _reportEntity(entity) && operation == 'update' &&
+        (entity == 'report_approval' || safePayload['_expectedRevision'] != null || safePayload['status'] == 'submitted');
+    if (!deferReport && entity != 'cart_redirect' && entity != 'equipment_dispatch' &&
         entity != 'equipment_return') {
       _applyLocalOperation(entity == 'attendance_checkout' ? 'attendance' : entity, operation, safePayload);
     }
@@ -511,7 +588,7 @@ class DataService extends ChangeNotifier {
         if (lastDocument != null) page = page.startAfterDocument(lastDocument);
         final snapshot = await page.get(const GetOptions(source: Source.server));
         for (final doc in snapshot.docs) {
-          loaded.add({'id': doc.id, ...doc.data()});
+          loaded.add({...doc.data(), 'id': doc.id});
         }
         if (snapshot.docs.isNotEmpty) lastDocument = snapshot.docs.last;
         hasMore = snapshot.docs.length == requested;
@@ -519,7 +596,7 @@ class DataService extends ChangeNotifier {
       } while (loaded.length < boundedLimit);
       operationsCapped = hasMore && loaded.length >= boundedLimit;
       operations = _mergeOperations(loaded, operations);
-      await store.saveCachedOperations(operations.take(boundedLimit).toList());
+      await _cacheOperations(boundedLimit);
       lastDataRefresh = DateTime.now().toIso8601String();
       await store.saveLastDataRefresh(lastDataRefresh);
       notifyListeners();
@@ -566,11 +643,13 @@ class DataService extends ChangeNotifier {
     final next = {...payload, '_entity': entity};
     final index = operations.indexWhere((e) => '${e['id']}' == id);
     if (index >= 0) {
+      if (_reportEntity(entity) && payload['revision'] is int &&
+          (operations[index]['revision'] as int? ?? 0) > (payload['revision'] as int)) return;
       operations = [...operations]..[index] = {...operations[index], ...next};
     } else {
       operations = _mergeOperations([next], operations);
     }
-    unawaited(store.saveCachedOperations(operations.take(1000).toList()));
+    unawaited(_cacheOperations(1000));
   }
 
   /// Reflect a server-confirmed cart move in local caches. Pending moves never
@@ -607,7 +686,7 @@ class DataService extends ChangeNotifier {
     operations = operations.where((entry) =>
         !(entry['_entity'] == 'cart_redirect' &&
           '${entry['id']}' == '${payload['id']}')).toList();
-    await store.saveCachedOperations(operations.take(1000).toList());
+    await _cacheOperations(1000);
     notifyListeners();
   }
 
@@ -663,6 +742,8 @@ class DataService extends ChangeNotifier {
         // Retain records for a different account; its own session will retry.
         if (_syncItemOverride == null && item.ownerUid != null &&
             item.ownerUid != currentUid) continue;
+        if (item.reportError != null) continue;
+        if (_reportEntity(item.entity) && pendingReport('${(jsonDecode(item.payload) as Map)['id']}')?.id != item.id) continue;
         try {
           final payload = Map<String, dynamic>.from(jsonDecode(item.payload));
 
@@ -1056,11 +1137,24 @@ class DataService extends ChangeNotifier {
           } else if (item.entity == 'work_report' || item.entity == 'report_approval') {
             // These records use a trusted callable because the deployed rules are
             // intentionally unchanged and only permit existing report workflows.
-            await FirebaseFunctions.instance.httpsCallable('saveOperationalReport').call(<String, dynamic>{
+            final expectedRevision = cloudPayload.remove('_expectedRevision');
+            final result = await FirebaseFunctions.instance.httpsCallable('saveOperationalReport').call(<String, dynamic>{
+              'requestId': item.id,
+              if (expectedRevision != null) 'expectedRevision': expectedRevision,
               'sourceEntity': item.entity,
               'operation': item.operation,
               'report': <String, dynamic>{...cloudPayload, 'reportKind': item.entity},
             });
+            final response = Map<String, dynamic>.from(result.data as Map);
+            if (response['ok'] != true || response['id'] != docId) throw StateError('لم يؤكد الخادم حفظ التقرير.');
+            // A retry may acknowledge an older revision after another device has
+            // already returned, resubmitted or closed it. Use the current stored copy.
+            final saved = await ref.get(const GetOptions(source: Source.server));
+            if (!saved.exists) throw StateError('تعذر قراءة النسخة المؤكدة.');
+            cloudPayload
+              ..clear()
+              ..addAll(Map<String,dynamic>.from(_toJsonSafe(saved.data()) as Map))
+              ..['id'] = docId;
           } else if (item.operation == 'delete') {
             await ref.set({
               ...cloudPayload,
@@ -1111,6 +1205,13 @@ class DataService extends ChangeNotifier {
             }
           }
         } catch (itemError) {
+          if ((item.entity == 'report_approval' || (item.entity == 'work_report' && item.operation == 'update')) &&
+              itemError is FirebaseFunctionsException &&
+              const {'permission-denied','invalid-argument','failed-precondition','already-exists','not-found'}.contains(itemError.code)) {
+            queue = [for (final q in queue)
+              if (q.id == item.id) SyncItem.fromJson({...q.toJson(), 'reportError': itemError.message ?? itemError.code}) else q];
+            await store.saveQueue(queue);
+          }
           lastSyncError = '$itemError';
           debugPrint('تعذر مزامنة العنصر ${item.id}: $itemError');
         }

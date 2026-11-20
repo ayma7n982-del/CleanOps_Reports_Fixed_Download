@@ -1,4 +1,7 @@
 class TripLifecycle {
+  static bool isCompleted(Object? status) =>
+      const {'completed', 'done', 'closed', 'delivered'}.contains('${status ?? ''}'.trim().toLowerCase());
+
   static const targetMinuteOptions = <int>[30, 60, 90, 120, 180, 240];
   static const activeStatuses = <String>{
     'pending', 'scheduled', 'assigned', 'active', 'open',

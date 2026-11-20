@@ -1,5 +1,5 @@
 import { deleteManagedAccount } from './managed_user_deletion';
-import { validOwnerReportUpdate } from './report_edit_policy';
+import { aggregateCorrection, reviewFields, validReportArchive, validOwnerReportUpdate } from './report_edit_policy';
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { readSmsCredentials, smsProviderStatus, configureTwilioCredentials } from './sms_provider';
 import { onDocumentWritten } from 'firebase-functions/v2/firestore';
@@ -294,99 +294,135 @@ export const saveOperationalReport = onCall({ region: 'us-central1', timeoutSeco
   }
 
   const reportRef = db.collection('operations').doc(reportId);
-  const existingSnap = await reportRef.get();
-  const existing = existingSnap.exists ? (existingSnap.data() ?? {}) : null;
-  const actorRole = String(actor.role ?? '');
-  const actorGroup = String(actor.groupId ?? '').trim();
-  const actorScope = String(actor.scope ?? '').trim();
-  const reportGroup = String(report.groupId ?? existing?.groupId ?? '').trim();
-  const reportMunicipality = String(report.municipalityName ?? report.municipality ?? existing?.municipalityName ?? existing?.municipality ?? '').trim();
-  const coordinatorId = String(report.municipalityCoordinatorId ?? existing?.municipalityCoordinatorId ?? '').trim();
-  const reporterId = String(report.reportedBy ?? report.requestedBy ?? existing?.reportedBy ?? existing?.requestedBy ?? '').trim();
-  const isScopedMunicipality = actorScope.length > 0 && actorScope !== 'all' && actorScope !== 'assigned_only' && reportMunicipality === actorScope;
-
-  if (operation === 'create') {
-    if (existingSnap.exists) throw new HttpsError('already-exists', 'يوجد تقرير بهذا المعرّف مسبقًا.');
-    if (sourceEntity === 'work_report') {
-      if (!['municipality_coordinator', 'group_supervisor'].includes(actorRole)) {
-        throw new HttpsError('permission-denied', 'لا تملك صلاحية إنشاء تقرير عمل.');
-      }
-      if (reporterId !== uid) throw new HttpsError('permission-denied', 'يجب أن يكون منشئ التقرير هو المستخدم الحالي.');
-      if (actorRole === 'group_supervisor' && (!actorGroup || reportGroup !== actorGroup)) {
-        throw new HttpsError('permission-denied', 'لا يمكنك إنشاء تقرير خارج مجموعتك.');
-      }
-      if (actorRole === 'municipality_coordinator' && coordinatorId !== uid && !isScopedMunicipality) {
-        throw new HttpsError('permission-denied', 'التقرير خارج نطاق البلدية المخصصة لك.');
-      }
-      if (String(report.status ?? 'draft') !== 'draft') throw new HttpsError('failed-precondition', 'يجب حفظ تقرير العمل كمسودة أولاً.');
-    } else {
-      if (actorRole !== 'municipality_coordinator' || String(report.requestedBy ?? '') !== uid) {
-        throw new HttpsError('permission-denied', 'لا تملك صلاحية إرسال هذا التقرير للمراجعة.');
-      }
-      if (coordinatorId !== uid && !isScopedMunicipality) {
-        throw new HttpsError('permission-denied', 'التقرير خارج نطاق البلدية المخصصة لك.');
-      }
-      if (String(report.status ?? '') !== 'submitted') throw new HttpsError('failed-precondition', 'يجب إرسال التقرير للمراجعة.');
+  const requestId = String(input.requestId ?? '');
+  if (requestId && !/^[a-zA-Z0-9-]{1,80}$/.test(requestId)) throw new HttpsError('invalid-argument', 'Invalid request ID.');
+  const receiptRef = requestId ? reportRef.collection('report_receipts').doc(uid + '_' + requestId) : null;
+  return db.runTransaction(async tx => {
+    const existingSnap = await tx.get(reportRef);
+    if (receiptRef) {
+      const receipt = await tx.get(receiptRef);
+      if (receipt.exists && receipt.get('actorId') === uid) return receipt.get('result');
     }
-  } else if (operation === 'update') {
-    if (!existingSnap.exists) throw new HttpsError('not-found', 'التقرير غير موجود أو حُذف.');
-    const current = existing!;
-    const currentKind = String(current.reportKind ?? sourceEntity);
-    if (currentKind !== sourceEntity) throw new HttpsError('failed-precondition', 'نوع التقرير لا يطابق السجل المحفوظ.');
-    const oldStatus = String(current.status ?? 'draft');
-    const newStatus = String(report.status ?? oldStatus);
-    const ownerId = String(current.reportedBy ?? current.requestedBy ?? '');
-    if (sourceEntity === 'work_report' && (actorRole === 'group_supervisor' || actorRole === 'municipality_coordinator')
-      && ownerId === uid && ['draft', 'needs_edits'].includes(oldStatus)
-      && (newStatus === oldStatus || newStatus === 'submitted')) {
-      if (!validOwnerReportUpdate(current, report)) {
-        throw new HttpsError('permission-denied', 'لا يمكن تغيير هوية التقرير أو نطاقه أو حقول الاعتماد أثناء التصحيح.');
-      }
-      if (actorRole === 'group_supervisor' && (!actorGroup || String(current.groupId ?? '') !== actorGroup)) {
-        throw new HttpsError('permission-denied', 'لا يمكنك إرسال تقرير خارج مجموعتك.');
-      }
-      if (actorRole === 'municipality_coordinator' && String(current.municipalityCoordinatorId ?? '') !== uid
-        && !(actorScope && actorScope !== 'all' && actorScope !== 'assigned_only' && String(current.municipalityName ?? '') === actorScope)) {
-        throw new HttpsError('permission-denied', 'التقرير خارج نطاق البلدية المخصصة لك.');
-      }
-    } else if (actorRole === 'jsc_coordinator' && oldStatus === 'submitted' && ['approved', 'needs_edits'].includes(newStatus)) {
-      const currentCouncil = String(current.councilName ?? current.councilId ?? current.municipalityName ?? '');
-      if (actorScope && actorScope !== 'all' && actorScope !== 'assigned_only' && currentCouncil !== actorScope) {
-        throw new HttpsError('permission-denied', 'التقرير خارج نطاق المجلس المخصص لك.');
-      }
-    } else if (actorRole === 'donor_manager' && oldStatus === 'approved' && newStatus === 'closed') {
-      // Manager closes only reports that have passed council approval.
-    } else {
-      throw new HttpsError('permission-denied', 'إجراء الاعتماد غير مسموح في هذه المرحلة.');
-    }
-  } else {
-    throw new HttpsError('invalid-argument', 'Unsupported report operation.');
-  }
+    const existing = existingSnap.exists ? (existingSnap.data() ?? {}) : null;
+    const actorRole = String(actor.role ?? '');
+    const actorGroup = String(actor.groupId ?? '').trim();
+    const actorScope = String(actor.scope ?? '').trim();
+    const reportGroup = String(report.groupId ?? existing?.groupId ?? '').trim();
+    const reportMunicipality = String(report.municipalityName ?? report.municipality ?? existing?.municipalityName ?? existing?.municipality ?? '').trim();
+    const coordinatorId = String(report.municipalityCoordinatorId ?? existing?.municipalityCoordinatorId ?? '').trim();
+    const reporterId = String(report.reportedBy ?? report.requestedBy ?? existing?.reportedBy ?? existing?.requestedBy ?? '').trim();
+    const isScopedMunicipality = actorScope.length > 0 && actorScope !== 'all' && actorScope !== 'assigned_only' && reportMunicipality === actorScope;
 
-  const now = new Date().toISOString();
-  const normalized: Record<string, unknown> = {
-    ...(existing ?? {}), ...report,
-    id: reportId,
-    _entity: 'report',
-    reportKind: sourceEntity,
-    updatedBy: uid,
-    updatedAt: FieldValue.serverTimestamp(),
-    ...(operation === 'update' && report.status === 'submitted' ? { submittedBy: uid, submittedAt: now } : {}),
-    ...(operation === 'create' ? { createdAt: report.createdAt ?? now, createdBy: uid } : {}),
-    ...(operation === 'update' && report.status ? { statusChangedAt: now, statusChangedBy: uid, statusChangedByRole: actorRole } : {}),
-  };
-  await reportRef.set(normalized, { merge: true });
-  await db.collection('audit').add({
-    actorId: uid,
-    operation: operation === 'create' ? 'CREATE_OPERATIONAL_REPORT' : 'OPERATIONAL_REPORT_STATUS_CHANGED',
-    targetId: reportId,
-    before: existing ? { status: existing.status ?? 'draft' } : {},
-    after: { status: normalized.status ?? 'draft', reportKind: sourceEntity, actorRole },
-    createdAt: now,
-    timestamp: FieldValue.serverTimestamp(),
-    immutable: true,
+    let changes = { ...report };
+    const revision = Number(existing?.revision ?? 0);
+    const expectedRevision = input.expectedRevision;
+    if (operation === 'update' && expectedRevision !== undefined && expectedRevision !== revision) {
+      throw new HttpsError('failed-precondition', 'تغيرت نسخة التقرير. راجع آخر نسخة ثم أعد الإجراء.');
+    }
+    if (operation === 'create') {
+      if (existingSnap.exists) throw new HttpsError('already-exists', 'يوجد تقرير بهذا المعرّف مسبقًا.');
+      if (sourceEntity === 'work_report') {
+        if (!['municipality_coordinator', 'group_supervisor'].includes(actorRole)) {
+          throw new HttpsError('permission-denied', 'لا تملك صلاحية إنشاء تقرير عمل.');
+        }
+        if (reporterId !== uid) throw new HttpsError('permission-denied', 'يجب أن يكون منشئ التقرير هو المستخدم الحالي.');
+        if (actorRole === 'group_supervisor' && (!actorGroup || reportGroup !== actorGroup)) {
+          throw new HttpsError('permission-denied', 'لا يمكنك إنشاء تقرير خارج مجموعتك.');
+        }
+        if (actorRole === 'municipality_coordinator' && coordinatorId !== uid && !isScopedMunicipality) {
+          throw new HttpsError('permission-denied', 'التقرير خارج نطاق البلدية المخصصة لك.');
+        }
+        if (String(report.status ?? 'draft') !== 'draft') throw new HttpsError('failed-precondition', 'يجب حفظ تقرير العمل كمسودة أولاً.');
+      } else {
+        if (actorRole !== 'municipality_coordinator' || String(report.requestedBy ?? '') !== uid) {
+          throw new HttpsError('permission-denied', 'لا تملك صلاحية إرسال هذا التقرير للمراجعة.');
+        }
+        if (coordinatorId !== uid && !isScopedMunicipality) {
+          throw new HttpsError('permission-denied', 'التقرير خارج نطاق البلدية المخصصة لك.');
+        }
+        if (report.archiveV1 !== undefined && !validReportArchive(report)) {
+          throw new HttpsError('invalid-argument', 'الأعداد المعروضة لا تطابق نسخة التقرير المحفوظة.');
+        }
+        if (String(report.status ?? '') !== 'submitted') throw new HttpsError('failed-precondition', 'يجب إرسال التقرير للمراجعة.');
+      }
+    } else if (operation === 'update') {
+      if (!existingSnap.exists) throw new HttpsError('not-found', 'التقرير غير موجود أو حُذف.');
+      const current = existing!;
+      const currentKind = String(current.reportKind ?? current._entity ?? '');
+      if (currentKind !== sourceEntity) throw new HttpsError('failed-precondition', 'نوع التقرير لا يطابق السجل المحفوظ.');
+      const oldStatus = String(current.status ?? 'draft');
+      const newStatus = String(report.status ?? oldStatus);
+      const ownerId = String(current.reportedBy ?? current.requestedBy ?? '');
+      if (sourceEntity === 'work_report' && (actorRole === 'group_supervisor' || actorRole === 'municipality_coordinator')
+        && ownerId === uid && ['draft', 'needs_edits'].includes(oldStatus)
+        && (newStatus === oldStatus || newStatus === 'submitted')) {
+        if (!validOwnerReportUpdate(current, report)) {
+          throw new HttpsError('permission-denied', 'لا يمكن تغيير هوية التقرير أو نطاقه أو حقول الاعتماد أثناء التصحيح.');
+        }
+        if (actorRole === 'group_supervisor' && (!actorGroup || String(current.groupId ?? '') !== actorGroup)) {
+          throw new HttpsError('permission-denied', 'لا يمكنك إرسال تقرير خارج مجموعتك.');
+        }
+        if (actorRole === 'municipality_coordinator' && String(current.municipalityCoordinatorId ?? '') !== uid
+          && !(actorScope && actorScope !== 'all' && actorScope !== 'assigned_only' && String(current.municipalityName ?? '') === actorScope)) {
+          throw new HttpsError('permission-denied', 'التقرير خارج نطاق البلدية المخصصة لك.');
+        }
+      } else if (sourceEntity === 'report_approval' && actorRole === 'municipality_coordinator'
+          && current.requestedBy === uid && (current.municipalityCoordinatorId === uid || isScopedMunicipality)
+          && oldStatus === 'needs_edits' && newStatus === 'submitted') {
+        const corrected = aggregateCorrection(report);
+        if (!corrected) throw new HttpsError('invalid-argument', 'أعد مراجعة الأعداد وأدخل توضيح التصحيح.');
+        changes = corrected;
+      } else if (actorRole === 'jsc_coordinator' && oldStatus === 'submitted' && ['approved', 'needs_edits'].includes(newStatus)) {
+        const currentCouncil = String(current.councilName ?? current.councilId ?? current.municipalityName ?? '');
+        if (!actorScope || actorScope === 'all' || actorScope === 'assigned_only' || currentCouncil !== actorScope) {
+          throw new HttpsError('permission-denied', 'التقرير خارج نطاق المجلس المخصص لك.');
+        }
+        const reviewed = reviewFields(newStatus, uid, new Date().toISOString(), report.returnReason);
+        if (!reviewed) throw new HttpsError('invalid-argument', 'أدخل سبب الإرجاع.');
+        changes = newStatus === 'approved' ? {...reviewed, approvedByName: String(actor.name ?? uid)} : reviewed;
+      } else if (actorRole === 'donor_manager' && oldStatus === 'approved' && newStatus === 'closed') {
+        changes = reviewFields('closed', uid, new Date().toISOString())!;
+      } else {
+        throw new HttpsError('permission-denied', 'إجراء الاعتماد غير مسموح في هذه المرحلة.');
+      }
+    } else {
+      throw new HttpsError('invalid-argument', 'Unsupported report operation.');
+    }
+
+    const now = new Date().toISOString();
+    const normalized: Record<string, unknown> = {
+      ...(existing ?? {}), ...changes,
+      revision: revision + 1,
+      id: reportId,
+      _entity: 'report',
+      reportKind: sourceEntity,
+      updatedBy: uid,
+      updatedAt: FieldValue.serverTimestamp(),
+      ...(operation === 'update' && report.status === 'submitted' ? { submittedBy: uid, submittedAt: now } : {}),
+      ...(operation === 'create' ? { createdAt: report.createdAt ?? now, createdBy: uid } : {}),
+      ...(operation === 'update' && report.status ? { statusChangedAt: now, statusChangedBy: uid, statusChangedByRole: actorRole } : {}),
+    };
+    tx.set(reportRef, normalized);
+    tx.create(db.collection('audit').doc(), {
+      actorId: uid,
+      operation: operation === 'create' ? 'CREATE_OPERATIONAL_REPORT' : 'OPERATIONAL_REPORT_STATUS_CHANGED',
+      targetId: reportId,
+      before: existing ? { status: existing.status ?? 'draft' } : {},
+      after: { status: normalized.status ?? 'draft', reportKind: sourceEntity, actorRole, revision: revision + 1,
+        ...(changes.returnReason ? {returnReason: changes.returnReason} : {}),
+        ...(changes.correctionNote ? {correctionNote: changes.correctionNote} : {}) },
+      createdAt: now,
+      timestamp: FieldValue.serverTimestamp(),
+      immutable: true,
+    });
+    const result = { ok: true, id: reportId, status: normalized.status ?? 'draft', reportKind: sourceEntity,
+      revision: revision + 1, updatedBy: uid, updatedAt: now,
+      ...Object.fromEntries(['approvedBy', 'approvedByName', 'approvedAt', 'returnedAt', 'returnReason', 'closedBy', 'closedAt',
+        'submittedAt', 'submittedBy', 'createdBy', 'statusChangedAt', 'statusChangedBy', 'statusChangedByRole']
+        .filter(key => normalized[key] != null).map(key => [key, normalized[key]])) };
+    if (receiptRef) tx.create(receiptRef, { actorId: uid, result });
+    return result;
   });
-  return { ok: true, id: reportId, status: normalized.status ?? 'draft', reportKind: sourceEntity };
 });
 
 

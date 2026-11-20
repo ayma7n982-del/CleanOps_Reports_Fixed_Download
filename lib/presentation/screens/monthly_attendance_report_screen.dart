@@ -17,6 +17,7 @@ import '../../core/services/data_service.dart';
 import '../../core/services/pdf_file_saver.dart';
 import '../widgets/app_design.dart';
 import 'cycle_manual_attendance_screen.dart';
+import '../../core/services/monthly_attendance_rows.dart';
 
 /// Calendar-style attendance matrix. Rows are people; columns are calendar days.
 /// It uses real attendance operations already stored in the offline-first cache.
@@ -79,34 +80,13 @@ class _MonthlyAttendanceReportScreenState extends State<MonthlyAttendanceReportS
     final endDay = periodMode == 'first' ? 15 : daysInMonth;
     final records = data.operations.where((e) {
       if (e['_entity'] != 'attendance' || e['isDeleted'] == true || !_canViewAttendance(e, currentUser)) return false;
-      final raw = e['createdAt'] ?? e['date'] ?? e['timestamp'];
-      final date = raw is DateTime ? raw : raw is Timestamp ? raw.toDate() : DateTime.tryParse('$raw');
+      final date = MonthlyAttendanceRows.workDay(e);
       return date != null && date.year == month.year && date.month == month.month && date.day >= startDay && date.day <= endDay;
     }).toList();
 
-    final names = <String>{};
-    final statusByPersonDay = <String, String>{};
-    final displayNameById = <String, String>{};
-    for (final person in roster) {
-      final id = '${person['id'] ?? ''}';
-      final rawName = '${person['name'] ?? person['username'] ?? id}';
-      final role = '${person['workerRole'] ?? person['role'] ?? ''}';
-      final name = _displayName(rawName, role);
-      names.add(name);
-      if (id.isNotEmpty) displayNameById[id] = name;
-    }
-    for (final r in records) {
-      final id = '${r['workerId'] ?? ''}';
-      final rawName = '${r['workerName'] ?? r['name'] ?? r['workerId'] ?? 'غير محدد'}';
-      final role = '${r['workerRole'] ?? ''}';
-      final name = displayNameById[id] ?? _displayName(rawName, role);
-      final raw = r['createdAt'] ?? r['date'] ?? r['timestamp'];
-      final date = raw is DateTime ? raw : raw is Timestamp ? raw.toDate() : DateTime.tryParse('$raw');
-      if (date == null) continue;
-      names.add(name);
-      statusByPersonDay['$name|${date.day}'] = '${r['status'] ?? ''}';
-    }
-    final sortedNames = names.toList()..sort();
+    final matrix = MonthlyAttendanceRows(roster, records);
+    final sortedIds = matrix.ids;
+    final statusByPersonDay = matrix.statuses;
     final presentCount = statusByPersonDay.values.where((s) => s == 'present' || s == 'حضور').length;
     final absentCount = statusByPersonDay.values.where((s) => ['absent', 'غياب', 'excused_absence', 'unexcused_absence'].contains(s)).length;
     final lateCount = statusByPersonDay.values.where((s) => s == 'late' || s == 'متأخر').length;
@@ -131,7 +111,7 @@ class _MonthlyAttendanceReportScreenState extends State<MonthlyAttendanceReportS
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             child: Wrap(spacing: 8, runSpacing: 8, children: [
-              _summaryTile('إجمالي العاملين / Total Workers', '${sortedNames.length}', Colors.blue),
+              _summaryTile('إجمالي العاملين / Total Workers', '${sortedIds.length}', Colors.blue),
               _summaryTile('الحاضرون / Present', '$presentCount', Colors.green),
               _summaryTile('الغائبون / Absent', '$absentCount', Colors.red),
               _summaryTile('المتأخرون / Late', '$lateCount', Colors.orange),
@@ -162,14 +142,14 @@ class _MonthlyAttendanceReportScreenState extends State<MonthlyAttendanceReportS
             Text('${month.year}-${month.month.toString().padLeft(2, '0')} | $startDay–$endDay'),
           ])),
           Padding(padding: const EdgeInsets.symmetric(horizontal: 12), child: Row(children: [
-            _legend('حضور', Colors.green), const SizedBox(width: 12), _legend('غياب', Colors.red), const SizedBox(width: 12), _legend('لا يوجد تسجيل', Colors.grey),
+            _legend('حضور', Colors.green), const SizedBox(width: 12), _legend('غياب', Colors.red), const SizedBox(width: 12), _legend('لا يوجد تسجيل', Colors.grey), if (statusByPersonDay.containsValue('conflict')) const Text(' ! تعارض'),
           ])),
           Padding(padding: const EdgeInsets.symmetric(horizontal: 12), child: Row(children: [
             const Text('لغة التقرير:'), const SizedBox(width: 8),
             DropdownButton<String>(value: exportLanguage, items: const [DropdownMenuItem(value: 'ar', child: Text('العربية')), DropdownMenuItem(value: 'en', child: Text('English'))], onChanged: exporting ? null : (v) { if (v != null) setState(() => exportLanguage = v); }),
             const Spacer(),
-            IconButton(tooltip: 'معاينة وطباعة PDF', onPressed: exporting || records.isEmpty ? null : () => _previewPdf(sortedNames, statusByPersonDay, daysInMonth), icon: const Icon(Icons.preview_outlined)),
-            IconButton(tooltip: 'تصدير PDF', onPressed: exporting || records.isEmpty ? null : () => _exportPdf(sortedNames, statusByPersonDay, daysInMonth), icon: const Icon(Icons.picture_as_pdf_outlined)),
+            IconButton(tooltip: 'معاينة وطباعة PDF', onPressed: exporting || records.isEmpty ? null : () => _previewPdf(matrix, daysInMonth), icon: const Icon(Icons.preview_outlined)),
+            IconButton(tooltip: 'تصدير PDF', onPressed: exporting || records.isEmpty ? null : () => _exportPdf(matrix, daysInMonth), icon: const Icon(Icons.picture_as_pdf_outlined)),
           ])),
           const SizedBox(height: 8),
           Expanded(child: records.isEmpty
@@ -190,18 +170,18 @@ class _MonthlyAttendanceReportScreenState extends State<MonthlyAttendanceReportS
                           ]))),
                       ],
                       rows: [
-                        for (final name in sortedNames)
+                        for (final id in sortedIds)
                           DataRow(cells: [
-                            DataCell(SizedBox(width: 150, child: Text(name, overflow: TextOverflow.ellipsis))),
+                            DataCell(SizedBox(width: 150, child: Tooltip(message: matrix.labels[id]!, child: Text(matrix.labels[id]!, overflow: TextOverflow.ellipsis)))),
                             for (var day = startDay; day <= endDay; day++)
                               DataCell(Container(
                                 width: 32, height: 28,
                                 alignment: Alignment.center,
                                 decoration: BoxDecoration(
-                                  color: _statusColor(statusByPersonDay['$name|$day']).withOpacity(.14),
+                                  color: _statusColor(statusByPersonDay['$id|$day']).withOpacity(.14),
                                   borderRadius: BorderRadius.circular(6),
                                 ),
-                                child: Text(_statusMark(statusByPersonDay['$name|$day']), style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _statusColor(statusByPersonDay['$name|$day']))),
+                                child: Text(_statusMark(statusByPersonDay['$id|$day']), style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _statusColor(statusByPersonDay['$id|$day']))),
                               )),
                           ]),
                       ],
@@ -260,7 +240,7 @@ class _MonthlyAttendanceReportScreenState extends State<MonthlyAttendanceReportS
     return role == 'donor_manager';
   }
 
-  Future<Uint8List> _pdfBytes(List<String> names, Map<String, String> statuses, int daysInMonth) async {
+  Future<Uint8List> _pdfBytes(MonthlyAttendanceRows matrix, int daysInMonth) async {
     final regular = pw.Font.ttf(await rootBundle.load('assets/fonts/NotoSansArabic-Regular.ttf'));
     final bold = pw.Font.ttf(await rootBundle.load('assets/fonts/NotoSansArabic-Bold.ttf'));
     final english = exportLanguage == 'en';
@@ -269,9 +249,9 @@ class _MonthlyAttendanceReportScreenState extends State<MonthlyAttendanceReportS
       pw.Container(width: 90, padding: const pw.EdgeInsets.all(3), child: pw.Text(english ? 'Worker / Supervisor' : 'العامل / المشرف', style: pw.TextStyle(font: bold, fontSize: 6))),
       for (var d = (periodMode == 'second' ? 16 : 1); d <= (periodMode == 'first' ? 15 : daysInMonth); d++) pw.Container(width: 22, padding: const pw.EdgeInsets.all(1), child: pw.Column(children: [pw.Text(_weekday(DateTime(month.year, month.month, d), !english), style: pw.TextStyle(font: regular, fontSize: 5)), pw.Text('$d', style: pw.TextStyle(font: bold, fontSize: 6))])),
     ];
-    final rows = <pw.TableRow>[pw.TableRow(children: headers), for (final name in names) pw.TableRow(children: [
-      pw.Container(width: 90, padding: const pw.EdgeInsets.all(3), child: pw.Text(name, style: pw.TextStyle(font: regular, fontSize: 6))),
-      for (var d = (periodMode == 'second' ? 16 : 1); d <= (periodMode == 'first' ? 15 : daysInMonth); d++) pw.Container(width: 22, padding: const pw.EdgeInsets.all(2), alignment: pw.Alignment.center, child: pw.Text(_pdfMark(statuses['$name|$d'], english), style: pw.TextStyle(font: bold, fontSize: 6, color: _pdfColor(statuses['$name|$d'])))),
+    final rows = <pw.TableRow>[pw.TableRow(children: headers), for (final id in matrix.ids) pw.TableRow(children: [
+      pw.Container(width: 90, padding: const pw.EdgeInsets.all(3), child: pw.Text(matrix.labels[id]!, style: pw.TextStyle(font: regular, fontSize: 6))),
+      for (var d = (periodMode == 'second' ? 16 : 1); d <= (periodMode == 'first' ? 15 : daysInMonth); d++) pw.Container(width: 22, padding: const pw.EdgeInsets.all(2), alignment: pw.Alignment.center, child: pw.Text(_pdfMark(matrix.statuses['$id|$d'], english), style: pw.TextStyle(font: bold, fontSize: 6, color: _pdfColor(matrix.statuses['$id|$d'])))),
     ])];
     final municipalities = roster.map((row) => '${row['municipalityName'] ?? row['municipality'] ?? ''}'.trim())
         .where((value) => value.isNotEmpty).toSet();
@@ -305,19 +285,18 @@ class _MonthlyAttendanceReportScreenState extends State<MonthlyAttendanceReportS
     ]));
     return Uint8List.fromList(await doc.save());
   }
-  Future<void> _previewPdf(List<String> names, Map<String, String> statuses, int days) async {
+  Future<void> _previewPdf(MonthlyAttendanceRows matrix, int days) async {
     setState(() => exporting = true);
-    try { final bytes = await _pdfBytes(names, statuses, days); if (!mounted) return; await Printing.layoutPdf(onLayout: (_) async => bytes); }
+    try { final bytes = await _pdfBytes(matrix, days); if (!mounted) return; await Printing.layoutPdf(onLayout: (_) async => bytes); }
     catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: AppText('تعذرت معاينة التقرير: $e'))); }
     finally { if (mounted) setState(() => exporting = false); }
   }
-  Future<void> _exportPdf(List<String> names, Map<String, String> statuses, int days) async {
+  Future<void> _exportPdf(MonthlyAttendanceRows matrix, int days) async {
     setState(() => exporting = true);
-    try { final bytes = await _pdfBytes(names, statuses, days); final path = await savePdfBytes(bytes, '${periodMode}_attendance_${month.year}_${month.month.toString().padLeft(2,'0')}_$exportLanguage.pdf'); if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: AppText(path == null ? 'تعذر حفظ PDF' : 'تم إنشاء PDF: $path'))); }
+    try { final bytes = await _pdfBytes(matrix, days); final path = await savePdfBytes(bytes, '${periodMode}_attendance_${month.year}_${month.month.toString().padLeft(2,'0')}_$exportLanguage.pdf'); if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: AppText(path == null ? 'تعذر حفظ PDF' : 'تم إنشاء PDF: $path'))); }
     catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: AppText('تعذر تصدير التقرير: $e'))); }
     finally { if (mounted) setState(() => exporting = false); }
   }
-  String _displayName(String name, String role) => role == 'group_supervisor' ? '$name (مشرف)' : role == 'worker' ? '$name (عامل)' : name;
   String _monthLabel(bool arabic) {
     const ar = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
     const en = ['January','February','March','April','May','June','July','August','September','October','November','December'];
@@ -328,7 +307,7 @@ class _MonthlyAttendanceReportScreenState extends State<MonthlyAttendanceReportS
     const en = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
     return (arabic ? ar : en)[date.weekday - 1];
   }
-  String _pdfMark(String? s, bool english) { if (s == 'present' || s == 'حضور') return '✓'; if (s == 'absent' || s == 'غياب') return '×'; if (s == 'excused_absence') return english ? 'E' : 'م'; if (s == 'unexcused_absence') return english ? 'U' : 'غ'; return '—'; }
+  String _pdfMark(String? s, bool english) { if (s == 'conflict') return '!'; if (s == 'present' || s == 'حضور') return '✓'; if (s == 'absent' || s == 'غياب') return '×'; if (s == 'excused_absence') return english ? 'E' : 'م'; if (s == 'unexcused_absence') return english ? 'U' : 'غ'; return '—'; }
   PdfColor _pdfColor(String? s) { if (s == 'present' || s == 'حضور') return PdfColors.green700; if (s == 'absent' || s == 'غياب' || s == 'excused_absence' || s == 'unexcused_absence') return PdfColors.red700; return PdfColors.grey600; }
 
   Widget _legend(String text, Color color) => Row(mainAxisSize: MainAxisSize.min, children: [Container(width: 10, height: 10, decoration: BoxDecoration(color: color, shape: BoxShape.circle)), const SizedBox(width: 4), Text(text, style: const TextStyle(fontSize: 11))]);
@@ -338,6 +317,7 @@ class _MonthlyAttendanceReportScreenState extends State<MonthlyAttendanceReportS
     return Colors.grey;
   }
   String _statusMark(String? s) {
+    if (s == 'conflict') return '!';
     if (s == 'present' || s == 'حضور') return '✓';
     if (s == 'absent' || s == 'غياب') return '×';
     if (s == 'excused_absence') return 'م';

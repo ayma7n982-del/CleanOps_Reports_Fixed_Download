@@ -7,6 +7,8 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:printing/printing.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_core/firebase_core.dart';
 import '../widgets/app_design.dart';
 import '../widgets/eco_shortcuts.dart';
 import '../../core/constants/app_constants.dart';
@@ -52,7 +54,7 @@ class _ReportsCenterState extends State<ReportsCenterScreen> {
     final data = context.read<DataService>(); final user = context.read<AuthService>().currentUser;
     _loading = true;
     _recordsPage = 0;
-    final request = ReportService(data).load(days: days, startDate: startDate, endDate: endDate, user: user, municipality: municipality, group: group, cycle: cycle, reportType: reportType, reportId: _stableReportId(data), search: search, containerStatus: reportType == 'containers' ? containerStatus : 'all');
+    final request = ReportService(data).load(days: days, startDate: startDate, endDate: endDate, user: user, municipality: municipality, group: group, cycle: cycle, reportType: reportType, reportId: 'operational-v2', search: search, containerStatus: reportType == 'containers' ? containerStatus : 'all');
     future = request;
     request.then((snapshot) {
       if (mounted && identical(future, request)) setState(() { lastSnapshot = snapshot; _loading = false; });
@@ -109,39 +111,40 @@ class _ReportsCenterState extends State<ReportsCenterScreen> {
     return 'فترة مخصصة (${range.inclusiveDays} يوم)';
   }
 
-  String _stableReportId(DataService data) {
-    String dateKey(DateTime d) => '${d.year}${d.month.toString().padLeft(2, '0')}${d.day.toString().padLeft(2, '0')}';
-    final operationKeys = data.operations.where((e) => e['isDeleted'] != true && e['reportKind'] != 'report_approval' && e['_entity'] != 'report_approval').map((e) {
-      final entity = '${e['_entity'] ?? ''}';
-      return '${e['id'] ?? ''}:${e['createdAt'] ?? ''}:${e['checkInAt'] ?? ''}:${e['checkOutAt'] ?? ''}:${e['trips'] ?? ''}:${e['status'] ?? ''}:${e['updatedAt'] ?? ''}:${e['attendance'] ?? ''}:${e['absence'] ?? ''}:${entity == 'attendance' ? e['status'] ?? '' : ''}';
-    }).toList()..sort();
-    final source = '$search|$containerStatus|${dateKey(startDate)}|${dateKey(endDate)}|$reportType|${municipality ?? 'all'}|${group ?? 'all'}|${cycle ?? 'all'}|${operationKeys.join(';')}';
-    var hash = 0;
-    for (final unit in source.codeUnits) { hash = (hash * 31 + unit) & 0x7fffffff; }
-    return 'CO-${hash.toRadixString(16)}';
+  Map<String, dynamic>? _approvedRecord(ReportSnapshot snapshot, AppUser user) {
+    final data = context.read<DataService>();
+    if (!user.can('reports', 'export')) return null;
+    final matches = data.operations.where((row) =>
+      row['selectionKey'] == snapshot.reportId && ReportApprovalScreen.canView(row, user) &&
+      (user.role == 'municipality_coordinator' ? row['requestedBy'] == user.id : snapshot.selectedMunicipality != null) &&
+      ReportApprovalScreen.canExport(row, user, data)).toList()
+      ..sort((a,b) => '${b['approvedAt'] ?? b['createdAt']}'.compareTo('${a['approvedAt'] ?? a['createdAt']}'));
+    return matches.firstOrNull;
   }
 
-  bool _isApproved(ReportSnapshot snapshot) => context.read<DataService>().operations.any((e) =>
-      '${e['id'] ?? ''}' == snapshot.reportId &&
-      (e['reportKind'] == 'report_approval' || e['_entity'] == 'report_approval') &&
-      ['approved', 'closed'].contains('${e['status'] ?? ''}'));
-
-  bool _canExportOfficial(ReportSnapshot snapshot, AppUser user) =>
-      user.can('reports', 'export') &&
-      ['municipality_coordinator', 'jsc_coordinator', 'donor_manager'].contains(user.role) &&
-      _isApproved(snapshot);
-
-  String _councilForReport(String? municipalityName) {
-    final requested = (municipalityName ?? '').trim();
-    if (requested.isEmpty) return '';
+  Future<String> _councilForReport(AppUser user, String? municipalityName) async {
+    final requested = _namedScope(municipalityName ?? user.scope);
+    final councils = <String>{};
     for (final row in context.read<DataService>().operations) {
-      final municipalityValue = '${row['municipalityName'] ?? row['municipality'] ?? row['municipalityId'] ?? ''}'.trim();
-      if (municipalityValue != requested) continue;
+      if (row['isDeleted'] == true) continue;
+      final belongs = requested.isEmpty
+          ? row['municipalityCoordinatorId'] == user.id
+          : [row['municipalityName'], row['municipality'], row['municipalityId']].contains(requested);
       final council = '${row['councilName'] ?? row['councilId'] ?? ''}'.trim();
-      if (council.isNotEmpty) return council;
+      if (belongs && council.isNotEmpty) councils.add(council);
+    }
+    if (councils.length == 1) return councils.single;
+    if (Firebase.apps.isNotEmpty) {
+      final profile = (await FirebaseFirestore.instance.collection('users').doc(user.id).get()).data();
+      for (final key in ['councilName','council','councilId']) {
+        final value = '${profile?[key] ?? ''}'.trim();
+        if (value.isNotEmpty) return value;
+      }
     }
     return '';
   }
+
+  String _namedScope(String value) => ['assigned_only','all'].contains(value.trim()) ? '' : value.trim();
 
   @override Widget build(BuildContext context) {
     final rtl = context.watch<LocaleController>().isArabic;
@@ -629,7 +632,8 @@ class _ReportsCenterState extends State<ReportsCenterScreen> {
       'containers' => '${s.containersFull} حاوية ممتلئة من ${s.containersTotal} حاوية مسجلة',
       'absence' => attendanceTotal == 0 ? 'لا توجد سجلات حضور أو غياب في الفترة' : '${s.attendance} سجل حضور من $attendanceTotal سجل حضور وغياب',
       'cycles' => 'الدورات المتاحة: ${s.cycleCount}',
-      _ => '${s.trips} نقلة مسجلة ضمن الفترة المختارة',
+      'work' => '${s.trips} نقلة مكتملة في تقارير العمل',
+      _ => '${s.completedTrips} نقلة مكتملة من ${s.trips} نقلة مسجلة',
     };
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 18),
@@ -869,7 +873,7 @@ class _ReportsCenterState extends State<ReportsCenterScreen> {
   }
 
   Widget _actions(ReportSnapshot snapshot, AppUser user) {
-    final approved = _canExportOfficial(snapshot, user);
+    final approved = _approvedRecord(snapshot, user) != null;
     return AiSectionCard(
       title: '4. المعاينة والتصدير',
       subtitle: 'عاين التقرير أولًا، ثم أرسله للمراجعة أو صدّر النسخة المعتمدة.',
@@ -891,7 +895,7 @@ class _ReportsCenterState extends State<ReportsCenterScreen> {
           OutlinedButton.icon(
             onPressed: _previewing ? null : () => _previewReport(snapshot, user),
             icon: const Icon(Icons.preview_outlined),
-            label: const AppText('معاينة وطباعة'),
+            label: const AppText('معاينة البيانات الحالية'),
           ),
           OutlinedButton.icon(
             onPressed: user.can('reports', 'create')
@@ -922,7 +926,7 @@ class _ReportsCenterState extends State<ReportsCenterScreen> {
             const SizedBox(width: 8),
             Expanded(child: AppText(
               approved
-                  ? 'التقرير معتمد وجاهز للتصدير الرسمي.'
+                  ? 'التصدير يستخدم آخر نسخة معتمدة محفوظة لهذه الفلاتر.'
                   : !user.can('reports', 'export')
                       ? 'المعاينة متاحة. التصدير الرسمي غير متاح ضمن صلاحيات حسابك.'
                       : 'التصدير الرسمي يتاح بعد اعتماد التقرير. يمكنك معاينته الآن.',
@@ -959,7 +963,7 @@ class _ReportsCenterState extends State<ReportsCenterScreen> {
       final bytes = await ReportService(context.read<DataService>()).buildOperationalPdfBytes(
         snapshot: snapshot,
         user: user,
-        title: '${_title()} — CleanOps',
+        title: exportLanguage == 'en' ? 'Draft preview — CleanOps' : 'معاينة غير معتمدة — ${_title()}',
         languageCode: exportLanguage,
       );
       if (!mounted) return;
@@ -978,8 +982,10 @@ class _ReportsCenterState extends State<ReportsCenterScreen> {
   }
 
   Future<void> _exportPdf(ReportSnapshot snapshot, AppUser user) async {
-    if (!_canExportOfficial(snapshot, user)) return;
+    final row = _approvedRecord(snapshot, user);
+    if (row == null) return;
     try {
+      snapshot = ReportArchive.read(row);
       final path = await ReportService(context.read<DataService>()).exportOperationalPdf(
         snapshot: snapshot,
         user: user,
@@ -993,8 +999,10 @@ class _ReportsCenterState extends State<ReportsCenterScreen> {
   }
 
   Future<void> _exportExcel(ReportSnapshot snapshot, AppUser user) async {
-    if (!_canExportOfficial(snapshot, user)) return;
+    final row = _approvedRecord(snapshot, user);
+    if (row == null) return;
     try {
+      snapshot = ReportArchive.read(row);
       final path = await ReportService(context.read<DataService>()).exportOperationalExcel(
         snapshot: snapshot,
         user: user,
@@ -1007,8 +1015,10 @@ class _ReportsCenterState extends State<ReportsCenterScreen> {
   }
 
   Future<void> _exportCsv(ReportSnapshot snapshot, AppUser user) async {
-    if (!_canExportOfficial(snapshot, user)) return;
+    final row = _approvedRecord(snapshot, user);
+    if (row == null) return;
     try {
+      snapshot = ReportArchive.read(row);
       final path = await ReportService(context.read<DataService>()).exportOperationalCsv(
         snapshot: snapshot,
         user: user,
@@ -1025,8 +1035,20 @@ class _ReportsCenterState extends State<ReportsCenterScreen> {
     try {
       final now = DateTime.now().toIso8601String();
       final data = context.read<DataService>();
+      final id = ReportArchive.documentId(snapshot, user.id);
+      final returned = data.operations.any((r) => r['selectionKey'] == snapshot.reportId &&
+          r['requestedBy'] == user.id && r['status'] == 'needs_edits' && r['isDeleted'] != true);
+      if (returned || data.operations.any((r) => r['id'] == id && r['isDeleted'] != true)) {
+        _showMessage(returned ? 'افتح التقرير المعاد لتصحيحه وإرساله.' : 'هذه النسخة موجودة في دورة الاعتماد.');
+        Navigator.push(context, MaterialPageRoute(builder: (_) => const ReportApprovalScreen()));
+        return;
+      }
+      final council = await _councilForReport(user, municipality);
+      if (!mounted || context.read<AuthService>().currentUser?.id != user.id || !identical(snapshot, lastSnapshot)) return;
+      if (council.isEmpty) throw StateError('تعذر تحديد المجلس من سجلات البلدية. حدد البلدية المرتبطة بالمجلس.');
       await data.enqueue('report_approval', 'create', {
-        'id': snapshot.reportId,
+        'id': id, 'selectionKey': snapshot.reportId,
+        'periodStart': startDate.toIso8601String(), 'periodEnd': endDate.toIso8601String(),
         'title': '${_periodPresetLabel()} — ${_title()}',
         'reportType': reportType,
         'search': snapshot.search,
@@ -1036,44 +1058,18 @@ class _ReportsCenterState extends State<ReportsCenterScreen> {
         'municipality': municipality,
         'group': group,
         'cycle': cycle,
-        'requestedBy': user.id,
+        'requestedBy': user.id, 'requesterName': user.name,
         'municipalityCoordinatorId': user.id,
         'municipalityName': municipality ?? (user.scope != 'assigned_only' ? user.scope : ''),
-        'councilName': _councilForReport(municipality ?? user.scope),
-        'snapshot': {
-          'trips': snapshot.trips,
-          'attendance': snapshot.attendance,
-          'absence': snapshot.absence,
-          'workers': snapshot.workers,
-          'supervisors': snapshot.supervisors,
-          'groups': snapshot.groups,
-          'containers': snapshot.containersTotal,
-          'emergencies': snapshot.emergencies,
-        },
+        'councilName': council,
+        ...ReportArchive.submission(snapshot, offline: !data.online),
         'createdAt': now,
         'status': 'submitted',
         'isDeleted': false,
       });
-      await data.writeAudit(
-        actorId: user.id,
-        operation: 'REQUEST_REPORT_APPROVAL',
-        targetId: snapshot.reportId,
-        after: {
-          'reportType': reportType,
-          'search': snapshot.search,
-          'containerStatus': snapshot.containerStatus,
-          'filterLabel': snapshot.filterLabel(),
-          'period': snapshot.periodLabel,
-          'periodPreset': periodPreset,
-          'status': 'submitted',
-          'municipality': municipality,
-          'group': group,
-          'cycle': cycle,
-        },
-      );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: AppText('تم إرسال التقرير إلى دورة المراجعة.')),
+        const SnackBar(content: AppText('حُفظ طلب المراجعة للمزامنة. تظهر حالته بعد تأكيد الخادم.')),
       );
       Navigator.push(context, MaterialPageRoute(builder: (_) => const ReportApprovalScreen()));
     } catch (error) {

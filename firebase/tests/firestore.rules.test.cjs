@@ -1157,3 +1157,19 @@ test('L4 cannot spoof workforce projection identity, group, state, or extra fiel
   }
   await assertFails(setDoc(doc(db('head-a'), 'operations', 'worker-a'), workforceProjection('worker-a', u)));
 });
+
+test('review snapshots and states are writable only through the report callable', async () => {
+  const initial = {_entity:'report', reportKind:'report_approval', status:'submitted',
+    municipalityCoordinatorId:'coordinator', snapshot:{trips:3}};
+  await env.withSecurityRulesDisabled(async ctx => {
+    await setDoc(doc(ctx.firestore(),'operations','frozen-report'),initial);
+  });
+  await assertSucceeds(getDoc(doc(db('coordinator'),'operations','frozen-report')));
+  for (const uid of ['head-a','jsc','manager']) {
+    await assertFails(setDoc(doc(db(uid),'operations','client-review'),initial));
+    await assertFails(updateDoc(doc(db(uid),'operations','frozen-report'),{status:'approved'}));
+    await assertFails(updateDoc(doc(db(uid),'operations','frozen-report'),{reportKind:'generic',snapshot:{trips:5}}));
+  }
+  await assertSucceeds(setDoc(doc(db('manager'),'operations','generic-note'),{_entity:'report',title:'note'}));
+  await assertFails(updateDoc(doc(db('manager'),'operations','generic-note'),{reportKind:'work_report'}));
+});

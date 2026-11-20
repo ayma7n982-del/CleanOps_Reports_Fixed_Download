@@ -350,6 +350,7 @@ class ActivityItem {
 class SyncItem {
   final String id, entity, operation, payload, createdAt;
   final int retryCount;
+  final String? reportError, reportId;
   /// The Firebase account that originally queued this operation.
   /// Null supports records written before this field was introduced.
   final String? ownerUid;
@@ -360,6 +361,7 @@ class SyncItem {
     required this.payload,
     required this.createdAt,
     this.retryCount = 0,
+    this.reportError, this.reportId,
     this.ownerUid,
   });
 
@@ -370,6 +372,8 @@ class SyncItem {
     'payload': payload,
     'createdAt': createdAt,
     'retryCount': retryCount,
+    if (reportError != null) 'reportError': reportError,
+    if (reportId != null) 'reportId': reportId,
     if (ownerUid != null) 'ownerUid': ownerUid,
   };
 
@@ -381,5 +385,7 @@ class SyncItem {
     createdAt: '${j['createdAt']}',
     retryCount: (j['retryCount'] ?? 0) as int,
     ownerUid: j['ownerUid']?.toString(),
+    reportError: j['reportError']?.toString(),
+    reportId: j['reportId']?.toString(),
   );
 }

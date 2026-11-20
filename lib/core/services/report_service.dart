@@ -1,4 +1,7 @@
 import 'dart:convert';
+import 'dart:collection';
+import 'package:archive/archive.dart';
+import 'package:uuid/uuid.dart';
 import 'dart:math' as math;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -15,6 +18,9 @@ import 'pdf_file_saver.dart';
 import 'report_pdf_template.dart';
 import 'report_content.dart';
 import 'report_ratios.dart';
+import 'trip_lifecycle.dart';
+
+part 'report_archive.dart';
 
 class ReportPeriodRange {
   final DateTime startDate;
@@ -91,6 +97,10 @@ class ReportSnapshot {
   /// True when records were capped or cannot be attributed to a selected cycle.
   final bool sourceMayBeIncomplete;
   final List<ReportRatio> ratioInsights;
+  final String? reviewer, approvalTime, preparer;
+  final Map<String, dynamic>? legacyCounts;
+  final int? archivedCompletedTrips;
+  int get completedTrips => archivedCompletedTrips ?? (reportType == 'work' ? trips : tripRecords.where((row) => TripLifecycle.isCompleted(row['status'])).length);
 
   const ReportSnapshot({
     required this.trips,
@@ -117,6 +127,9 @@ class ReportSnapshot {
     required this.periodLabel,
     required this.generatedAt,
     this.sourceMayBeIncomplete = false,
+    this.reviewer, this.approvalTime, this.preparer,
+    this.legacyCounts,
+    this.archivedCompletedTrips,
     this.ratioInsights = const [],
     this.availableMunicipalities = const [],
     this.search = '', this.containerStatus = 'all',
@@ -412,12 +425,8 @@ class ReportService {
     final municipalityNames = municipalities.toList()..sort();
     final locationOptions = availableMunicipalities.toList()..sort();
     if (municipality != null && municipality.isNotEmpty && !municipalityNames.contains(municipality)) municipalityNames.insert(0, municipality);
-    final sourceRows = reportType == 'containers' ? containerRecords : tripRecords;
-    final sourceKeys = sourceRows.map((m) => '${m['id']}:${m['status']}:${m['updatedAt']}:${m['createdAt']}').toList()..sort();
-    final filterKey = '$search|$containerStatus|${sourceKeys.join(';')}';
-    var filterHash = 0;
-    for (final unit in filterKey.codeUnits) { filterHash = (filterHash * 31 + unit) & 0x7fffffff; }
-    final snapshotId = reportId == null ? 'CO-${now.millisecondsSinceEpoch}' : '$reportId-${filterHash.toRadixString(16)}';
+    final snapshotId = reportId == null ? 'CO-${now.microsecondsSinceEpoch}'
+        : const Uuid().v5(Uuid.NAMESPACE_URL, jsonEncode([reportId, search, containerStatus, reportType, municipality, group, cycle, start.toIso8601String(), end.toIso8601String()]));
     return ReportSnapshot(ratioInsights: ratioInsights, trips: trips, alternativeTrips: alternativeTrips, attendance: attendance, absence: absence, ppeCompliant: ppe, emergencies: emergencies, emergencyOpen: emergencyOpen, emergencySecured: emergencySecured, landfillCapacity: landfill, heavyMachineryHours: heavyMachineryHours, tripsByGroup: byGroup, tripsByDay: Map<String, int>.fromEntries(sortedDays), attendanceByGroup: attendanceByGroup, ppeByGroup: ppeByGroup, emergenciesByGroup: emergenciesByGroup, containerByStatus: containerByStatus, containersTotal: containersTotal, containersFull: containersFull, containersPartial: containersPartial, containersEmpty: containersEmpty, containerIssues: containerIssues, workers: workers.length, supervisors: supervisors.length, groups: groups.length, municipalities: municipalities.length, dumpsites: dumpsites, cycleCount: cycleCount, municipalityNames: municipalityNames, tripsByMunicipality: tripsByMunicipality, attendanceByMunicipality: attendanceByMunicipality, absenceByGroup: absenceByGroup, containersByMunicipality: containersByMunicipality, containersByGroup: containersByGroup, cycles: cycles, selectedMunicipality: municipality, selectedGroup: group, selectedCycle: cycle, reportType: reportType, reportId: snapshotId, sourceMayBeIncomplete: sourceMayBeIncomplete, availableMunicipalities: locationOptions, search: search, containerStatus: containerStatus, containerRecords: containerRecords, tripRecords: tripRecords, periodLabel: reportType == 'containers' ? 'آخر حالة مسجلة للحاويات' : '${DateFormat('yyyy-MM-dd').format(start)} → ${DateFormat('yyyy-MM-dd').format(end)}', generatedAt: now);
   }
 

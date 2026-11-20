@@ -300,6 +300,9 @@ class _WorkReportsDashboardState extends State<WorkReportsDashboard> {
                       'الإجازات',
                       'خاصة ${e['specialLeave'] ?? '—'} • مرضية ${e['sickLeave'] ?? '—'} • أخرى ${e['otherAbsence'] ?? '—'}',
                     ),
+                    if (e['returnReason'] != null) _line('سبب الإرجاع', '${e['returnReason']}'),
+                    if (context.read<DataService>().pendingReport('${e['id']}') case final pending?)
+                      _line('المزامنة', pending.reportError ?? 'بانتظار تأكيد الخادم'),
                     _line('المهام', '${e['workTasks'] ?? '—'}'),
                     _line('حالة المكب', '${e['landfillStatus'] ?? '—'}'),
                     _line('حالة الحاويات', '${e['containerStatus'] ?? '—'}'),
@@ -461,7 +464,7 @@ class _WorkReportsDashboardState extends State<WorkReportsDashboard> {
     if (changes == null || !mounted) return;
     try {
       await context.read<DataService>().enqueue('work_report', 'update', {
-        ...report, ...changes,
+        'id':report['id'], 'status':report['status'] ?? 'draft', ...changes,
         'contentEditedAt': DateTime.now().toIso8601String(),
       });
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
@@ -569,7 +572,12 @@ class _WorkReportsDashboardState extends State<WorkReportsDashboard> {
         'submittedAt': DateTime.now().toIso8601String(),
         'submittedBy': user.id,
       });
-      await data.enqueue('work_report', 'update', updated);
+      await data.enqueue('work_report', 'update', {
+        'id': id, '_expectedRevision':report['revision'] ?? 0,
+        for (final field in ['status','submittedBy','submittedAt','countsMode','sourceSnapshot',
+          'attendance','absence','specialLeave','sickLeave','otherAbsence','trips'])
+          if (updated.containsKey(field)) field:updated[field],
+      });
       await data.writeAudit(
         actorId: user.id,
         operation: 'WORK_REPORT_SUBMITTED',

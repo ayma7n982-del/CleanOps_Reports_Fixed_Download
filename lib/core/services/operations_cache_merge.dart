@@ -19,7 +19,9 @@ class OperationsCacheMerge {
       final id = '${record['id'] ?? ''}'.trim();
       if (id.isEmpty) continue;
       final remote = merged[id];
-      if (remote == null || pendingIds.contains(id)) {
+      final newerReport = ['work_report','report_approval'].contains(record['reportKind'] ?? record['_entity']) &&
+          (record['revision'] as int? ?? 0) > (remote?['revision'] as int? ?? 0);
+      if (remote == null || pendingIds.contains(id) || newerReport) {
         merged[id] = {...?remote, ...record};
       }
     }
