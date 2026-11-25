@@ -246,12 +246,12 @@ class _MonthlyAttendanceReportScreenState extends State<MonthlyAttendanceReportS
     final bold = pw.Font.ttf(await rootBundle.load('assets/fonts/NotoSansArabic-Bold.ttf'));
     final english = exportLanguage == 'en';
     final headers = <pw.Widget>[
-      pw.Container(width: 90, padding: const pw.EdgeInsets.all(3), child: pw.Text(english ? 'Worker / Supervisor' : 'العامل / المشرف', style: pw.TextStyle(font: bold, fontSize: 6))),
-      for (var d = (periodMode == 'second' ? 16 : 1); d <= (periodMode == 'first' ? 15 : daysInMonth); d++) pw.Container(width: 22, padding: const pw.EdgeInsets.all(1), child: pw.Column(children: [pw.Text(_weekday(DateTime(month.year, month.month, d), !english), style: pw.TextStyle(font: regular, fontSize: 5)), pw.Text('$d', style: pw.TextStyle(font: bold, fontSize: 6))])),
+      pw.Container(width: 90, padding: const pw.EdgeInsets.all(3), child: pw.Text(english ? 'Worker / Supervisor' : 'العامل / المشرف', style: pw.TextStyle(font: bold, fontSize: 9))),
+      for (var d = (periodMode == 'second' ? 16 : 1); d <= (periodMode == 'first' ? 15 : daysInMonth); d++) pw.Container(width: 22, padding: const pw.EdgeInsets.all(1), child: pw.Column(children: [pw.Text(_weekday(DateTime(month.year, month.month, d), !english), style: pw.TextStyle(font: regular, fontSize: 7)), pw.Text('$d', style: pw.TextStyle(font: bold, fontSize: 9))])),
     ];
-    final rows = <pw.TableRow>[pw.TableRow(repeat: true, children: headers), for (final id in matrix.ids) pw.TableRow(children: [
-      pw.Container(width: 90, padding: const pw.EdgeInsets.all(3), child: pw.Text(matrix.labels[id]!, style: pw.TextStyle(font: regular, fontSize: 6))),
-      for (var d = (periodMode == 'second' ? 16 : 1); d <= (periodMode == 'first' ? 15 : daysInMonth); d++) pw.Container(width: 22, padding: const pw.EdgeInsets.all(2), alignment: pw.Alignment.center, child: pw.Text(_pdfMark(matrix.statuses['$id|$d'], english), style: pw.TextStyle(font: bold, fontSize: 6, color: _pdfColor(matrix.statuses['$id|$d'])))),
+    final rows = <pw.TableRow>[pw.TableRow(repeat: true, decoration: const pw.BoxDecoration(color: PdfColors.teal50), children: headers), for (final id in matrix.ids) pw.TableRow(children: [
+      pw.Container(width: 90, padding: const pw.EdgeInsets.all(3), child: pw.Text(matrix.labels[id]!, style: pw.TextStyle(font: regular, fontSize: 9))),
+      for (var d = (periodMode == 'second' ? 16 : 1); d <= (periodMode == 'first' ? 15 : daysInMonth); d++) pw.Container(width: 22, padding: const pw.EdgeInsets.all(3), alignment: pw.Alignment.center, child: pw.Text(_pdfMark(matrix.statuses['$id|$d'], english), style: pw.TextStyle(font: bold, fontSize: 9, color: _pdfColor(matrix.statuses['$id|$d'])))),
     ])];
     final municipalities = roster.map((row) => '${row['municipalityName'] ?? row['municipality'] ?? ''}'.trim())
         .where((value) => value.isNotEmpty).toSet();
@@ -281,7 +281,7 @@ class _MonthlyAttendanceReportScreenState extends State<MonthlyAttendanceReportS
       pw.SizedBox(height: 4),
       pw.Text('${_monthLabel(!english)} • ${periodMode == 'second' ? 16 : 1}–${periodMode == 'first' ? 15 : daysInMonth}', style: pw.TextStyle(font: regular, fontSize: 9)),
       pw.SizedBox(height: 10),
-      pw.Directionality(textDirection: english ? pw.TextDirection.ltr : pw.TextDirection.rtl, child: pw.Table(border: pw.TableBorder.all(color: PdfColors.grey400, width: .35), columnWidths: {0: const pw.FixedColumnWidth(90), for (var d=1; d<= (periodMode == 'first' ? 15 : daysInMonth - (periodMode == 'second' ? 15 : 0)); d++) d: const pw.FixedColumnWidth(22)}, children: rows)),
+      pw.Directionality(textDirection: english ? pw.TextDirection.ltr : pw.TextDirection.rtl, child: pw.Table(border: pw.TableBorder.all(color: PdfColors.grey400, width: .35), columnWidths: {0: const pw.FixedColumnWidth(120), for (var d=1; d<= (periodMode == 'first' ? 15 : daysInMonth - (periodMode == 'second' ? 15 : 0)); d++) d: const pw.FlexColumnWidth()}, children: rows)),
       pw.SizedBox(height: 8), pw.Text(english ? 'Present: ✓   Absent: ×   Excused: E   Unexcused: U   No entry: —' : 'حضور: ✓   غياب: ×   بعذر: م   دون عذر: غ   لا يوجد تسجيل: —', style: pw.TextStyle(font: regular, fontSize: 7)),
     ]));
     return Uint8List.fromList(await doc.save());

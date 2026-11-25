@@ -167,7 +167,7 @@ Future<Uint8List> buildDecisionPdf({required DecisionAnalytics data,
       'المكبات مرجّحة بالسعات؛ علامة الخطر عند 85%.'),
   ];
   if (section == 'all' || section == 'operations') {
-    content.add(pw.NewPage());
+    content.add(pw.NewPage(freeSpace: 180));
     content.add(heading('1 • قرارات الميدان الفورية وكفاءة المجموعات'));
     content.add(note('الأخضر: المنجز • الأزرق: الهدف المسجّل. '
       'الأطنان من النقلات المكتملة فقط؛ يُذكر التقدير عند غياب الوزن الفعلي.'));
@@ -191,7 +191,7 @@ Future<Uint8List> buildDecisionPdf({required DecisionAnalytics data,
     if (data.groups.isEmpty) content.add(note('لا توجد مجموعات متاحة ضمن نطاق التقرير.'));
   }
   if (section == 'all' || section == 'strategic') {
-    content.add(pw.NewPage());
+    content.add(pw.NewPage(freeSpace: 180));
     content.add(heading('2 • التخطيط الاستراتيجي للدورة القادمة'));
     content.add(note('نافذة التحليل تبدأ ${decisionReportDate(data.historyStart, includeTime: false)}. '
       'التوصيات مشروطة بأدلة تاريخية، وتُحفظ مستقلة عن توزيع الدورة الحالية.'));
@@ -214,7 +214,7 @@ Future<Uint8List> buildDecisionPdf({required DecisionAnalytics data,
     }
   }
   if (section == 'all' || section == 'health') {
-    content.add(pw.NewPage());
+    content.add(pw.NewPage(freeSpace: 180));
     content.add(heading('3 • القرارات الصحية والبيئية'));
     content.add(note('خطر أعلى من 12 ساعة يُثبت فقط بوقت بدء امتلاء محفوظ. '
       'نسبة المرض تعتمد على الغياب المصنّف مرضيًا ولا تثبت خلو الباقين من المرض.'));
@@ -245,7 +245,7 @@ Future<Uint8List> buildDecisionPdf({required DecisionAnalytics data,
   }
   if (section == 'all' || section == 'supply') {
     final s = supply ?? SupplyChainAnalytics.from(data);
-    content.add(pw.NewPage());
+    content.add(pw.NewPage(freeSpace: 180));
     content.add(heading('تحليل سلسلة الإمداد • SUPPLY CHAIN'));
     content.add(note('${s.scope}\n${s.period} • أيام مكتملة حتى نهاية أمس\n'
       'الفترة السابقة مساوية: ${s.days} يومًا. الحالة الحالية للحاويات مستقلة عن الفترة.\n'
@@ -265,7 +265,7 @@ Future<Uint8List> buildDecisionPdf({required DecisionAnalytics data,
       headerStyle: pw.TextStyle(font: bold, fontSize: 9, color: PdfColors.white),
       headerDecoration: const pw.BoxDecoration(color: _navy),
       cellStyle: pw.TextStyle(font: regular, fontSize: 8), cellAlignment: pw.Alignment.center));
-    content.add(pw.NewPage());
+    content.add(pw.NewPage(freeSpace: 180));
     content.add(heading('المقارنات والتوزيعات • Comparisons'));
     // Keep each chart readable even with a large number of authorized groups.
     for (var offset = 0; offset < s.groups.length; offset += 8) {
