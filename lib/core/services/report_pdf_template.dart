@@ -31,19 +31,20 @@ class ReportPdfTemplate {
       child: ink(name, size: 11, strong: true, color: PdfColors.teal900));
 
   pw.Widget grid(List<String> headings, List<List<String>> rows, List<int> widths) {
+    final columns = List.generate(widths.length, (i) => english ? i : widths.length - 1 - i);
     pw.Widget cell(String value, bool head) => pw.Padding(
-        padding: const pw.EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+        padding: const pw.EdgeInsets.symmetric(horizontal: 5, vertical: 3.5),
         child: ink(value, strong: head, size: head ? 8 : 8.5,
           color: head ? PdfColors.white : PdfColors.blueGrey900));
     return pw.Table(
-      columnWidths: {for (var i = 0; i < widths.length; i++) i: pw.FlexColumnWidth(widths[i].toDouble())},
+      columnWidths: {for (var i = 0; i < widths.length; i++) i: pw.FlexColumnWidth(widths[columns[i]].toDouble())},
       border: pw.TableBorder(horizontalInside: const pw.BorderSide(color: PdfColors.grey300, width: .35)),
       children: [
         pw.TableRow(repeat: true, decoration: const pw.BoxDecoration(color: PdfColors.teal900),
-            children: [for (final value in headings) cell(value, true)]),
+            children: [for (final column in columns) cell(headings[column], true)]),
         for (var i = 0; i < rows.length; i++) pw.TableRow(
           decoration: pw.BoxDecoration(color: i.isOdd ? PdfColors.grey100 : PdfColors.white),
-          children: [for (final value in rows[i]) cell(value, false)]),
+          children: [for (final column in columns) cell(rows[i][column], false)]),
       ]);
   }
 
