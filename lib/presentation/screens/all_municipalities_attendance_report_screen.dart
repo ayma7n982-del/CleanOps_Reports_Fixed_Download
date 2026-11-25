@@ -1,3 +1,4 @@
+import '../../core/services/report_letterhead.dart';
 import 'dart:convert';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
@@ -262,11 +263,8 @@ class _AllMunicipalitiesAttendanceReportScreenState
     }
     final councilLogo = logo('report_council_logo_base64');
     final unicefLogo = logo('report_unicef_logo_base64');
-    final council = actor.role == 'jsc_coordinator' ? actor.scope : 'مجالس الخدمات';
-    final cycles = roster.map((p) => _value(p, ['cycleName', 'cycleId', 'cycle']))
-        .where((name) => name.isNotEmpty).toSet();
-    final cycle = cycles.length == 1 ? cycles.first : cycles.isEmpty
-        ? prefs.getString('report_project_name') ?? 'غير محددة' : 'دورات متعددة';
+    final council = reportField(roster, ['councilName']);
+    final cycle = reportField(roster, ['cycleName', 'cycle']);
     final days = List.generate(20, (i) => start.add(Duration(days: i)));
     const weekdays = ['الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت', 'الأحد'];
     pw.Widget txt(String value, {bool strong = false, double size = 8, PdfColor color = PdfColors.blueGrey900}) =>
@@ -284,34 +282,19 @@ class _AllMunicipalitiesAttendanceReportScreenState
           txt(weekdays[day.weekday - 1], strong: true, size: 6.1, color: PdfColors.white),
           pw.SizedBox(height: 2), txt('${day.day}/${day.month}', strong: true, size: 7.4, color: PdfColors.white),
         ]));
-    pw.Widget header(String title) => pw.Directionality(textDirection: pw.TextDirection.rtl,
-        child: pw.Column(children: [
-          pw.Container(padding: const pw.EdgeInsets.symmetric(horizontal: 11, vertical: 7),
-              decoration: pw.BoxDecoration(color: PdfColors.teal50,
-                  borderRadius: pw.BorderRadius.circular(9)), child: pw.Row(children: [
-                pw.Expanded(child: txt('البلديات', strong: true, size: 9)),
-                pw.Expanded(child: pw.Row(children: [
-                  if (councilLogo != null) pw.Container(width: 35, height: 35,
-                      margin: const pw.EdgeInsets.only(left: 7), child: pw.Image(councilLogo)),
-                  pw.Expanded(child: txt(council, strong: true, size: 9)),
-                ])),
-                pw.Expanded(child: pw.Row(children: [
-                  if (unicefLogo != null) pw.Container(width: 35, height: 35,
-                      margin: const pw.EdgeInsets.only(left: 7), child: pw.Image(unicefLogo)),
-                  pw.Expanded(child: txt('اليونيسف UNICEF', strong: true, size: 9)),
-                ])),
-              ])),
+    pw.Widget header(String title, String municipality) => pw.Column(children: [
+          reportLetterhead(cycle: cycle, municipality: municipality, council: council, regular: regular, bold: bold, municipalityLogo: null, councilLogo: councilLogo, unicefLogo: unicefLogo),
           pw.SizedBox(height: 8),
           pw.Container(padding: const pw.EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               decoration: pw.BoxDecoration(color: PdfColors.teal800,
                   borderRadius: pw.BorderRadius.circular(8)),
               child: pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [
                 txt(title, strong: true, size: 16, color: PdfColors.white),
-                txt('الدورة: $cycle   |   ${_day(start)} - ${_day(days.last)}',
+                txt('${_day(start)} - ${_day(days.last)}',
                     size: 9, color: PdfColors.white),
               ])),
           pw.SizedBox(height: 11),
-        ]));
+        ]);
     pw.Widget footer(pw.Context context) => pw.Directionality(textDirection: pw.TextDirection.rtl,
         child: pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [
           txt('الأعداد يومية للأفراد، المشرفون ضمن الحالات • ح/غ = حضور/غياب • — = لا يوجد تسجيل', size: 8),
@@ -332,7 +315,7 @@ class _AllMunicipalitiesAttendanceReportScreenState
     doc.addPage(pw.MultiPage(pageFormat: PdfPageFormat.a3.landscape,
         margin: const pw.EdgeInsets.all(26), textDirection: pw.TextDirection.rtl,
         theme: pw.ThemeData.withFont(base: regular, bold: bold),
-        header: (_) => header('تقرير حضور وغياب البلديات الشامل'), footer: footer,
+        header: (_) => header('تقرير حضور وغياب البلديات الشامل', reportNames(cities.map((c) => c.name))), footer: footer,
         build: (_) => [
           pw.Directionality(textDirection: pw.TextDirection.rtl, child: pw.Row(children: [
             metric('البلديات', '${cities.length}'),
@@ -375,7 +358,7 @@ class _AllMunicipalitiesAttendanceReportScreenState
       doc.addPage(pw.MultiPage(pageFormat: PdfPageFormat.a3.landscape,
           margin: const pw.EdgeInsets.all(26), textDirection: pw.TextDirection.rtl,
           theme: pw.ThemeData.withFont(base: regular, bold: bold),
-          header: (_) => header('كشف البلدية: ${city.name}'), footer: footer,
+          header: (_) => header('كشف البلدية: ${city.name}', city.name), footer: footer,
           build: (_) => [
             pw.Directionality(textDirection: pw.TextDirection.rtl, child: pw.Row(children: [
               metric('المجموعات', '${groups.length}'), metric('العمال', '${city.workers}'),

@@ -1,3 +1,4 @@
+import 'report_letterhead.dart';
 import 'dart:convert';
 import 'dart:collection';
 import 'package:archive/archive.dart';
@@ -74,6 +75,9 @@ class ReportSnapshot {
   final int containersTotal, containersFull, containersPartial, containersEmpty, containerIssues;
   final int workers, supervisors, groups, municipalities, dumpsites, cycleCount;
   final List<String> municipalityNames;
+  final String councilLabel, cycleLabel;
+  String get municipalityLabel => selectedMunicipality ?? reportNames(municipalityNames);
+
   final Map<String, int> tripsByMunicipality;
   final Map<String, int> attendanceByMunicipality;
   final Map<String, int> absenceByGroup;
@@ -122,6 +126,7 @@ class ReportSnapshot {
     required this.containersTotal, required this.containersFull, required this.containersPartial, required this.containersEmpty, required this.containerIssues,
     required this.workers, required this.supervisors, required this.groups, required this.municipalities, required this.dumpsites, required this.cycleCount, required this.municipalityNames,
     required this.tripsByMunicipality, required this.attendanceByMunicipality, required this.absenceByGroup, required this.containersByMunicipality, required this.containersByGroup, required this.cycles,
+    this.councilLabel = '', this.cycleLabel = '',
     this.selectedMunicipality, this.selectedGroup, this.selectedCycle, this.reportType,
     required this.reportId,
     required this.periodLabel,
@@ -185,6 +190,8 @@ class ReportService {
     final refreshed = data.online && data.lastDataRefresh != refreshBefore;
     var sourceMayBeIncomplete = data.online && (data.operationsCapped || !refreshed);
     final cycleKeys = <String>{};
+    final councilsInReport = <String>{};
+    final cyclesInReport = <String>{};
     final cycleIdsByName = <String, String>{};
     final cycleAliases = <String>{if (cycle != null && cycle.isNotEmpty) cycle};
     List<String> cycles = [];
@@ -353,7 +360,9 @@ class ReportService {
           if (!ReportRecordFilters.matchesSearch(m, search) || !ReportRecordFilters.matchesContainerStatus(m, containerStatus, now)) continue;
           containerRecords.add(Map<String, dynamic>.from(m));
           if (mun != 'غير محددة') municipalities.add(mun);
-          if (grp != 'غير محددة') groups.add(grp);
+          councilsInReport.add('${m['councilName'] ?? ''}');
+      cyclesInReport.add('${m['cycleName'] ?? ''}');
+      if (grp != 'غير محددة') groups.add(grp);
           containersTotal++; containersByMunicipality[mun]=(containersByMunicipality[mun]??0)+1; containersByGroup[grp]=(containersByGroup[grp]??0)+1;
           final status='${m['status']??'unknown'}'; containerByStatus[status]=(containerByStatus[status]??0)+1;
           if(status=='full') containersFull++; else if(status=='partial') containersPartial++; else if(status=='empty') containersEmpty++;
@@ -427,7 +436,7 @@ class ReportService {
     if (municipality != null && municipality.isNotEmpty && !municipalityNames.contains(municipality)) municipalityNames.insert(0, municipality);
     final snapshotId = reportId == null ? 'CO-${now.microsecondsSinceEpoch}'
         : const Uuid().v5(Uuid.NAMESPACE_URL, jsonEncode([reportId, search, containerStatus, reportType, municipality, group, cycle, start.toIso8601String(), end.toIso8601String()]));
-    return ReportSnapshot(ratioInsights: ratioInsights, trips: trips, alternativeTrips: alternativeTrips, attendance: attendance, absence: absence, ppeCompliant: ppe, emergencies: emergencies, emergencyOpen: emergencyOpen, emergencySecured: emergencySecured, landfillCapacity: landfill, heavyMachineryHours: heavyMachineryHours, tripsByGroup: byGroup, tripsByDay: Map<String, int>.fromEntries(sortedDays), attendanceByGroup: attendanceByGroup, ppeByGroup: ppeByGroup, emergenciesByGroup: emergenciesByGroup, containerByStatus: containerByStatus, containersTotal: containersTotal, containersFull: containersFull, containersPartial: containersPartial, containersEmpty: containersEmpty, containerIssues: containerIssues, workers: workers.length, supervisors: supervisors.length, groups: groups.length, municipalities: municipalities.length, dumpsites: dumpsites, cycleCount: cycleCount, municipalityNames: municipalityNames, tripsByMunicipality: tripsByMunicipality, attendanceByMunicipality: attendanceByMunicipality, absenceByGroup: absenceByGroup, containersByMunicipality: containersByMunicipality, containersByGroup: containersByGroup, cycles: cycles, selectedMunicipality: municipality, selectedGroup: group, selectedCycle: cycle, reportType: reportType, reportId: snapshotId, sourceMayBeIncomplete: sourceMayBeIncomplete, availableMunicipalities: locationOptions, search: search, containerStatus: containerStatus, containerRecords: containerRecords, tripRecords: tripRecords, periodLabel: reportType == 'containers' ? 'آخر حالة مسجلة للحاويات' : '${DateFormat('yyyy-MM-dd').format(start)} → ${DateFormat('yyyy-MM-dd').format(end)}', generatedAt: now);
+    return ReportSnapshot(councilLabel: reportNames(councilsInReport), cycleLabel: cycle == null ? reportNames(cyclesInReport) : cycleIdsByName.keys.firstWhere((name) => cycleIdsByName[name] == cycle, orElse: () => cycle), ratioInsights: ratioInsights, trips: trips, alternativeTrips: alternativeTrips, attendance: attendance, absence: absence, ppeCompliant: ppe, emergencies: emergencies, emergencyOpen: emergencyOpen, emergencySecured: emergencySecured, landfillCapacity: landfill, heavyMachineryHours: heavyMachineryHours, tripsByGroup: byGroup, tripsByDay: Map<String, int>.fromEntries(sortedDays), attendanceByGroup: attendanceByGroup, ppeByGroup: ppeByGroup, emergenciesByGroup: emergenciesByGroup, containerByStatus: containerByStatus, containersTotal: containersTotal, containersFull: containersFull, containersPartial: containersPartial, containersEmpty: containersEmpty, containerIssues: containerIssues, workers: workers.length, supervisors: supervisors.length, groups: groups.length, municipalities: municipalities.length, dumpsites: dumpsites, cycleCount: cycleCount, municipalityNames: municipalityNames, tripsByMunicipality: tripsByMunicipality, attendanceByMunicipality: attendanceByMunicipality, absenceByGroup: absenceByGroup, containersByMunicipality: containersByMunicipality, containersByGroup: containersByGroup, cycles: cycles, selectedMunicipality: municipality, selectedGroup: group, selectedCycle: cycle, reportType: reportType, reportId: snapshotId, sourceMayBeIncomplete: sourceMayBeIncomplete, availableMunicipalities: locationOptions, search: search, containerStatus: containerStatus, containerRecords: containerRecords, tripRecords: tripRecords, periodLabel: reportType == 'containers' ? 'آخر حالة مسجلة للحاويات' : '${DateFormat('yyyy-MM-dd').format(start)} → ${DateFormat('yyyy-MM-dd').format(end)}', generatedAt: now);
   }
 
   bool _matchesFilters(Map<String,dynamic> m, {String? municipality, String? group, String? cycle, Set<String> cycleAliases = const {}}) {
@@ -553,7 +562,7 @@ class ReportService {
     final bold = pw.Font.ttf(await rootBundle.load('assets/fonts/NotoSansArabic-Bold.ttf'));
     final selectedMunicipality = s.selectedMunicipality ?? (s.municipalityNames.length == 1 ? s.municipalityNames.first : '');
     final prefs = await ReportBrandingStore.read(municipality: selectedMunicipality,
-        project: s.selectedCycle ?? '', allowLocalMunicipality: false,
+        council: s.councilLabel, project: s.selectedCycle ?? '', allowLocalMunicipality: false,
         allowLocalCouncil: selectedMunicipality.isNotEmpty);
     pw.ImageProvider? readLogo(String key) {
       final encoded = prefs.getString(key);
@@ -563,11 +572,11 @@ class ReportService {
     final municipalityLogo = readLogo('report_municipality_logo_base64');
     final councilLogo = readLogo('report_council_logo_base64');
     final unicefLogo = readLogo('report_unicef_logo_base64');
-    final configuredMunicipality = prefs.getString('report_municipality_name') ?? '';
-    final municipalityName = selectedMunicipality.isNotEmpty ? selectedMunicipality : configuredMunicipality;
-    final councilName = prefs.getString('report_council_name') ?? '';
-    final projectName = (s.selectedCycle != null && s.selectedCycle!.isNotEmpty) ? s.selectedCycle! : (prefs.getString('report_project_name') ?? '');
-    final exportTitle = languageCode == 'en' ? _englishReportTitle(title) : title;
+    final municipalityName = s.municipalityLabel;
+    final councilName = s.councilLabel;
+    final projectName = s.cycleLabel.isNotEmpty ? s.cycleLabel : s.selectedCycle ?? '';
+    final cleanTitle = title.replaceAll(RegExp(r'(?:\s*[—–-]\s*)?CleanOps', caseSensitive: false), '').trim();
+    final exportTitle = languageCode == 'en' ? _englishReportTitle(cleanTitle) : cleanTitle;
     final doc = pw.Document();
     doc.addPage(ReportPdfTemplate(regular: regular, bold: bold, user: user, title: exportTitle, snapshot: s, languageCode: languageCode, municipalityName: municipalityName, councilName: councilName, projectName: projectName, municipalityLogo: municipalityLogo, councilLogo: councilLogo, unicefLogo: unicefLogo).page());
     return doc.save();
@@ -620,14 +629,14 @@ class ReportService {
 
   String _englishReportTitle(String title) {
     const map = <String, String>{
-      'تقرير الغياب والحضور — CleanOps': 'Attendance & Absence Report — CleanOps',
-      'تقرير عمليات الترحيل — CleanOps': 'Transport Operations Report — CleanOps',
-      'تقرير الحاويات — CleanOps': 'Container Report — CleanOps',
-      'تقرير العمل والتشغيل — CleanOps': 'Work & Operations Report — CleanOps',
-      'تقرير الدورات — CleanOps': 'Work Cycles Report — CleanOps',
-      'تقرير البلديات — CleanOps': 'Municipality Report — CleanOps',
-      'تقرير المجموعات — CleanOps': 'Groups Report — CleanOps',
-      'التقرير التنفيذي الشامل — CleanOps': 'Executive Summary Report — CleanOps',
+      'تقرير الغياب والحضور': 'Attendance & Absence Report',
+      'تقرير عمليات الترحيل': 'Transport Operations Report',
+      'تقرير الحاويات': 'Container Report',
+      'تقرير العمل والتشغيل': 'Work & Operations Report',
+      'تقرير الدورات': 'Work Cycles Report',
+      'تقرير البلديات': 'Municipality Report',
+      'تقرير المجموعات': 'Groups Report',
+      'التقرير التنفيذي الشامل': 'Executive Summary Report',
     };
     return map[title] ?? title.replaceAll('التقرير التشغيلي لمنظومة جمع النفايات', 'Solid Waste Operations Report');
   }

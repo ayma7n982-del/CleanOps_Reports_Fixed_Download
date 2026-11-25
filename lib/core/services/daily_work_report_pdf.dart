@@ -1,3 +1,4 @@
+import 'report_letterhead.dart';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -58,15 +59,9 @@ class DailyWorkReportPdf {
     final municipalityLogo = logo('report_municipality_logo_base64');
     final councilLogo = logo('report_council_logo_base64');
     final unicefLogo = logo('report_unicef_logo_base64');
-    final municipality = _value(report, 'municipalityName').isNotEmpty
-        ? _value(report, 'municipalityName')
-        : prefs.getString('report_municipality_name') ?? 'البلدية غير محددة';
-    final council = _value(report, 'councilName').isNotEmpty
-        ? _value(report, 'councilName')
-        : prefs.getString('report_council_name') ?? 'المجلس غير محدد';
-    final cycle = _value(report, 'cycleName').isNotEmpty
-        ? _value(report, 'cycleName')
-        : prefs.getString('report_project_name') ?? 'الدورة غير محددة';
+    final municipality = _value(report, 'municipalityName');
+    final council = _value(report, 'councilName');
+    final cycle = _value(report, 'cycleName');
     final snapshot = report['sourceSnapshot'] is Map
         ? Map<String, dynamic>.from(report['sourceSnapshot'] as Map)
         : <String, dynamic>{};
@@ -88,22 +83,9 @@ class DailyWorkReportPdf {
         textDirection: pw.TextDirection.rtl,
         style: pw.TextStyle(font: strong ? bold : regular, fontSize: size,
             color: color));
-    pw.Widget brand(pw.ImageProvider? image, String label) => pw.Expanded(child: pw.Row(children: [
-      if (image != null) pw.Container(width: 32, height: 32,
-          margin: const pw.EdgeInsets.only(left: 7),
-          child: pw.Image(image, fit: pw.BoxFit.contain)),
-      pw.Expanded(child: text(label, size: 8.5, strong: true)),
-    ]));
     pw.Widget header(pw.Context context) => pw.Directionality(textDirection: pw.TextDirection.rtl,
         child: pw.Column(children: [
-          pw.Container(padding: const pw.EdgeInsets.symmetric(horizontal: 11, vertical: 8),
-              decoration: pw.BoxDecoration(color: PdfColors.teal50,
-                  borderRadius: pw.BorderRadius.circular(8)),
-              child: pw.Row(children: [
-                brand(municipalityLogo, municipality),
-                brand(councilLogo, council),
-                brand(unicefLogo, 'اليونيسف UNICEF'),
-              ])),
+          reportLetterhead(cycle: cycle, municipality: municipality, council: council, regular: regular, bold: bold, municipalityLogo: municipalityLogo, councilLogo: councilLogo, unicefLogo: unicefLogo),
           pw.SizedBox(height: 8),
           pw.Container(padding: const pw.EdgeInsets.symmetric(horizontal: 14, vertical: 12),
               decoration: pw.BoxDecoration(color: PdfColors.teal800,

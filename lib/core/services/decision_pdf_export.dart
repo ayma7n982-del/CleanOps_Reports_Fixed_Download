@@ -1,3 +1,4 @@
+import 'report_letterhead.dart';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart' as f;
@@ -81,7 +82,7 @@ Future<Uint8List> buildDecisionPdf({required DecisionAnalytics data,
   final regular = pw.Font.ttf(await rootBundle.load('assets/fonts/NotoSansArabic-Regular.ttf'));
   final bold = pw.Font.ttf(await rootBundle.load('assets/fonts/NotoSansArabic-Bold.ttf'));
   final doc = pw.Document(title: 'لوحة الإجراءات والقرارات الذكية',
-    author: coordinator, creator: 'CleanOps 4.9.5');
+    author: coordinator);
   final attendance = await _ringImage(data.attendanceRate,
     portions: data.workers == 0 ? [] : [data.present / data.workers,
       data.absent / data.workers, (data.workers - data.present - data.absent) / data.workers],
@@ -132,8 +133,6 @@ Future<Uint8List> buildDecisionPdf({required DecisionAnalytics data,
   final content = <pw.Widget>[
     pw.Container(padding: const pw.EdgeInsets.all(18), color: _navy,
       child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.stretch, children: [
-        text('CLEANOPS • DECISION INTELLIGENCE', size: 10, color: PdfColors.white),
-        pw.SizedBox(height: 8),
         text('لوحة الإجراءات والقرارات الذكية', size: 21, strong: true, color: PdfColors.white),
         pw.SizedBox(height: 8),
         text('المسؤول: $coordinator • الدورة: ${data.cycleName}', color: PdfColors.white),
@@ -313,8 +312,7 @@ Future<Uint8List> buildDecisionPdf({required DecisionAnalytics data,
   doc.addPage(pw.MultiPage(pageFormat: PdfPageFormat.a4, maxPages: 500,
     margin: const pw.EdgeInsets.all(28), textDirection: pw.TextDirection.rtl,
     theme: pw.ThemeData.withFont(base: regular, bold: bold),
-    header: (_) => pw.Padding(padding: const pw.EdgeInsets.only(bottom: 8),
-      child: text('CleanOps 4.9.5 | مركز القرار • $coordinator', size: 8, color: _teal)),
+    header: (_) => reportLetterhead(cycle: data.cycleName, municipality: reportField(data.groups.map((g) => g.row), ['municipalityName', 'municipality']), council: reportField(data.groups.map((g) => g.row), ['councilName']), regular: regular, bold: bold),
     footer: (c) => pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
       children: [text('قراءة تحليلية للسجلات المتاحة • $quality', size: 7),
         text('${c.pageNumber} / ${c.pagesCount}', size: 8)]),
@@ -329,7 +327,7 @@ Future<void> exportDecisionPdf({required DecisionAnalytics data,
     SupplyChainAnalytics? supply}) async {
   final bytes = await buildDecisionPdf(data: data, decisions: decisions,
     coordinator: coordinator, quality: quality, plans: plans, section: section, supply: supply);
-  await Printing.layoutPdf(name: 'CleanOps_Decisions_${section}_'
+  await Printing.layoutPdf(name: 'Decisions_${section}_'
     '${data.now.toIso8601String().substring(0, 10)}.pdf', onLayout: (_) async => bytes);
 }
 

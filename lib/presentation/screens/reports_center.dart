@@ -963,7 +963,7 @@ class _ReportsCenterState extends State<ReportsCenterScreen> {
       final bytes = await ReportService(context.read<DataService>()).buildOperationalPdfBytes(
         snapshot: snapshot,
         user: user,
-        title: exportLanguage == 'en' ? 'Draft preview — CleanOps' : 'معاينة غير معتمدة — ${_title()}',
+        title: exportLanguage == 'en' ? 'Draft preview' : 'معاينة غير معتمدة — ${_title()}',
         languageCode: exportLanguage,
       );
       if (!mounted) return;
@@ -989,7 +989,7 @@ class _ReportsCenterState extends State<ReportsCenterScreen> {
       final path = await ReportService(context.read<DataService>()).exportOperationalPdf(
         snapshot: snapshot,
         user: user,
-        title: '${_title()} — CleanOps',
+        title: _title(),
         languageCode: exportLanguage,
       );
       _showMessage(path == null ? 'تعذر إنشاء PDF.' : 'تم إنشاء ملف PDF: $path');

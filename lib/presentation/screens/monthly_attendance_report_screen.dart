@@ -1,3 +1,4 @@
+import '../../core/services/report_letterhead.dart';
 import '../widgets/app_navigation_bar.dart';
 import 'dart:typed_data';
 import 'dart:convert';
@@ -244,7 +245,6 @@ class _MonthlyAttendanceReportScreenState extends State<MonthlyAttendanceReportS
     final regular = pw.Font.ttf(await rootBundle.load('assets/fonts/NotoSansArabic-Regular.ttf'));
     final bold = pw.Font.ttf(await rootBundle.load('assets/fonts/NotoSansArabic-Bold.ttf'));
     final english = exportLanguage == 'en';
-    final projectLabel = english ? 'Project / cycle' : 'المشروع / الدورة';
     final headers = <pw.Widget>[
       pw.Container(width: 90, padding: const pw.EdgeInsets.all(3), child: pw.Text(english ? 'Worker / Supervisor' : 'العامل / المشرف', style: pw.TextStyle(font: bold, fontSize: 6))),
       for (var d = (periodMode == 'second' ? 16 : 1); d <= (periodMode == 'first' ? 15 : daysInMonth); d++) pw.Container(width: 22, padding: const pw.EdgeInsets.all(1), child: pw.Column(children: [pw.Text(_weekday(DateTime(month.year, month.month, d), !english), style: pw.TextStyle(font: regular, fontSize: 5)), pw.Text('$d', style: pw.TextStyle(font: bold, fontSize: 6))])),
@@ -269,12 +269,13 @@ class _MonthlyAttendanceReportScreenState extends State<MonthlyAttendanceReportS
     final municipalityLogo = logo('report_municipality_logo_base64');
     final councilLogo = logo('report_council_logo_base64');
     final unicefLogo = logo('report_unicef_logo_base64');
-    final municipalityName = prefs.getString('report_municipality_name') ?? '';
-    final councilName = prefs.getString('report_council_name') ?? '';
-    final projectName = prefs.getString('report_project_name') ?? '';
+    final municipalityName = reportNames(municipalities);
+    final councilName = reportNames(councils);
+    final projectName = reportNames(projects);
     final doc = pw.Document();
-    doc.addPage(pw.MultiPage(pageFormat: PdfPageFormat.a3.landscape, margin: const pw.EdgeInsets.all(22), textDirection: english ? pw.TextDirection.ltr : pw.TextDirection.rtl, theme: pw.ThemeData.withFont(base: regular, bold: bold), build: (_) => [
-      pw.Row(children: [if (municipalityLogo != null) pw.Container(width: 32,height:32,child:pw.Image(municipalityLogo)), if (councilLogo != null) pw.Padding(padding: const pw.EdgeInsets.only(left:3),child:pw.Container(width:32,height:32,child:pw.Image(councilLogo))), if (unicefLogo != null) pw.Padding(padding: const pw.EdgeInsets.only(left:3),child:pw.Container(width:32,height:32,child:pw.Image(unicefLogo))), pw.SizedBox(width:8), pw.Expanded(child:pw.Column(crossAxisAlignment:pw.CrossAxisAlignment.start,children:[if(municipalityName.isNotEmpty) pw.Text(municipalityName,style:pw.TextStyle(font:bold,fontSize:9)),if(councilName.isNotEmpty) pw.Text(councilName,style:pw.TextStyle(font:bold,fontSize:9)),if(projectName.isNotEmpty) pw.Text('$projectLabel: $projectName',style:pw.TextStyle(font:regular,fontSize:7)),pw.Text(english ? 'UNICEF' : 'اليونيسف (UNICEF)',style:pw.TextStyle(font:bold,fontSize:8))]))]),
+    doc.addPage(pw.MultiPage(pageFormat: PdfPageFormat.a3.landscape, margin: const pw.EdgeInsets.all(22), textDirection: english ? pw.TextDirection.ltr : pw.TextDirection.rtl, theme: pw.ThemeData.withFont(base: regular, bold: bold),
+      header: (_) => reportLetterhead(cycle: projectName, municipality: municipalityName, council: councilName, regular: regular, bold: bold, english: english, municipalityLogo: municipalityLogo, councilLogo: councilLogo, unicefLogo: unicefLogo),
+      build: (_) => [
       pw.SizedBox(height: 6),
       pw.Text(english ? (periodMode == 'month' ? 'Monthly Attendance Calendar' : 'Semi-Monthly Attendance Calendar') : (periodMode == 'month' ? 'التقرير الشهري التقويمي للحضور' : 'تقرير الحضور والغياب لنصف شهر'), style: pw.TextStyle(font: bold, fontSize: 14)),
       pw.SizedBox(height: 4),

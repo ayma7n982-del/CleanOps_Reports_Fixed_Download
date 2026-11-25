@@ -124,15 +124,18 @@ class ReportContent {
 
   static List<List<String>> rows(ReportSnapshot s, {bool english = false}) {
     String t(String ar, String en) => english ? en : ar;
+    String shown(String value) => value.isEmpty ? t('غير محدد', 'Unspecified') : value;
     return [
+      [t('اسم الدورة', 'Cycle'), shown(s.cycleLabel.isNotEmpty ? s.cycleLabel : s.selectedCycle ?? '')],
+      [t('اسم البلدية', 'Municipality'), shown(s.municipalityLabel)],
+      [t('مجلس الخدمات', 'Services council'), shown(s.councilLabel)],
+      [t('الجهة الداعمة', 'Supporting institution'), t('مؤسسة اليونسيف', 'UNICEF')],
       [t('المؤشر', 'Metric'), t('القيمة', 'Value')],
       [t('معرّف التقرير', 'Report ID'), s.reportId],
       [t('نوع التقرير', 'Report type'), s.reportType ?? 'all'],
       [t('الفترة', 'Period'), s.periodLabel],
       [t('الفلاتر', 'Filters'), s.filterLabel(english: english)],
-      [t('البلدية', 'Municipality'), s.selectedMunicipality ?? s.municipalityNames.join(' • ')],
       [t('المجموعة', 'Group'), s.selectedGroup ?? t('كل المجموعات المتاحة', 'All permitted groups')],
-      [t('الدورة', 'Cycle'), s.selectedCycle ?? t('كل الدورات', 'All cycles')],
       [t('تاريخ الإصدار', 'Generated at'), s.generatedAt.toIso8601String()],
       if (s.reviewer != null) [t('المعتمد', 'Approved by'), s.reviewer!],
       if (s.approvalTime != null) [t('تاريخ الاعتماد','Approved at'),s.approvalTime!],

@@ -1,3 +1,4 @@
+import '../../core/services/report_letterhead.dart';
 import 'dart:convert';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
@@ -199,14 +200,9 @@ class _MunicipalityAttendanceReportScreenState extends State<MunicipalityAttenda
         return raw == null || raw.isEmpty ? null : pw.MemoryImage(base64Decode(raw));
       } catch (_) { return null; }
     }
-    final municipality = _value(roster.first, ['municipalityName', 'municipality']).isNotEmpty
-        ? _value(roster.first, ['municipalityName', 'municipality'])
-        : prefs.getString('report_municipality_name') ?? 'البلدية';
-    final council = _value(roster.first, ['councilName']).isNotEmpty
-        ? _value(roster.first, ['councilName']) : prefs.getString('report_council_name') ?? 'المجلس';
-    final cycle = _value(roster.first, ['cycleName', 'cycleId', 'cycle']).isNotEmpty
-        ? _value(roster.first, ['cycleName', 'cycleId', 'cycle'])
-        : prefs.getString('report_project_name') ?? 'غير محددة';
+    final municipality = reportField(roster, ['municipalityName', 'municipality']);
+    final council = reportField(roster, ['councilName']);
+    final cycle = reportField(roster, ['cycleName', 'cycle']);
     final logos = [logo('report_municipality_logo_base64'), logo('report_council_logo_base64'), logo('report_unicef_logo_base64')];
     final days = List.generate(20, (i) => start.add(Duration(days: i)));
     String mark(Map<String, dynamic> person, DateTime day) => entries['${person['id']}|${_day(day)}'] ?? '—';
@@ -245,29 +241,19 @@ class _MunicipalityAttendanceReportScreenState extends State<MunicipalityAttenda
       return pw.Container(height: 28, alignment: pw.Alignment.center, color: background,
           child: txt(value, size: 8, strong: value != '—', color: color));
     }
-    pw.Widget heading(String title) => pw.Directionality(textDirection: pw.TextDirection.rtl,
-        child: pw.Column(children: [
-          pw.Container(padding: const pw.EdgeInsets.symmetric(horizontal: 11, vertical: 7),
-              decoration: pw.BoxDecoration(color: PdfColors.teal50,
-                  borderRadius: pw.BorderRadius.circular(9)),
-              child: pw.Row(children: [
-                for (var i = 0; i < 3; i++) pw.Expanded(child: pw.Row(children: [
-                  if (logos[i] != null) pw.Container(width: 35, height: 35,
-                      margin: const pw.EdgeInsets.only(left: 7), child: pw.Image(logos[i]!, fit: pw.BoxFit.contain)),
-                  pw.Expanded(child: txt([municipality, council, 'اليونيسف UNICEF'][i], strong: true, size: 9)),
-                ])),
-              ])),
+    pw.Widget heading(String title) => pw.Column(children: [
+          reportLetterhead(cycle: cycle, municipality: municipality, council: council, regular: regular, bold: bold, municipalityLogo: logos[0], councilLogo: logos[1], unicefLogo: logos[2]),
           pw.SizedBox(height: 8),
           pw.Container(padding: const pw.EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               decoration: pw.BoxDecoration(color: PdfColors.teal800,
                   borderRadius: pw.BorderRadius.circular(8)),
               child: pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [
                 txt(title, strong: true, size: 16, color: PdfColors.white),
-                txt('الدورة: $cycle   |   ${_day(start)} - ${_day(days.last)}',
+                txt('${_day(start)} - ${_day(days.last)}',
                     size: 9, color: PdfColors.white),
               ])),
           pw.SizedBox(height: 11),
-        ]));
+        ]);
     pw.Widget footer(pw.Context context) => pw.Directionality(textDirection: pw.TextDirection.rtl,
         child: pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [
           txt('ح: حضور  •  غ: غياب  •  إ: إجازة/إذن  •  م: مهمة  •  —: لا يوجد تسجيل'),

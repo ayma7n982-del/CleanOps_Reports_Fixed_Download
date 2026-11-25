@@ -1,3 +1,4 @@
+import '../../core/services/report_letterhead.dart';
 import 'dart:convert';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
@@ -240,9 +241,6 @@ class _GroupAttendanceReportScreenState extends State<GroupAttendanceReportScree
     final municipalityLogo = logo('report_municipality_logo_base64');
     final councilLogo = logo('report_council_logo_base64');
     final unicefLogo = logo('report_unicef_logo_base64');
-    final municipalityLabel = municipality.isNotEmpty ? municipality : (prefs.getString('report_municipality_name') ?? 'غير محددة');
-    final councilLabel = council.isNotEmpty ? council : (prefs.getString('report_council_name') ?? 'غير محدد');
-    final cycleLabel = cycle.isNotEmpty ? cycle : (prefs.getString('report_project_name') ?? 'غير محددة');
     final days = List.generate(20, (i) => start.add(Duration(days: i)));
     String status(String id, DateTime day) => statuses['$id|${DateFormat('yyyy-MM-dd').format(day)}'] ?? '';
     bool present(String s) => ['present', 'حضور', 'late', 'متأخر'].contains(s);
@@ -276,20 +274,12 @@ class _GroupAttendanceReportScreenState extends State<GroupAttendanceReportScree
       textDirection: pw.TextDirection.rtl,
       theme: pw.ThemeData.withFont(base: regular, bold: bold),
       header: (_) => pw.Directionality(textDirection: pw.TextDirection.rtl, child: pw.Column(children: [
-        pw.Container(padding: const pw.EdgeInsets.all(8), decoration: pw.BoxDecoration(
-          border: pw.Border.all(color: PdfColors.teal100), borderRadius: pw.BorderRadius.circular(8)),
-          child: pw.Row(children: [
-            for (final pair in [(municipalityLogo, municipalityLabel), (councilLogo, councilLabel), (unicefLogo, 'اليونيسف (UNICEF)')])
-              pw.Expanded(child: pw.Row(children: [
-                if (pair.$1 != null) pw.Container(width: 43, height: 43, margin: const pw.EdgeInsets.only(left: 7), child: pw.Image(pair.$1!, fit: pw.BoxFit.contain)),
-                pw.Expanded(child: label(pair.$2, size: 8, strong: true)),
-              ])),
-          ])),
+        reportLetterhead(cycle: cycle, municipality: municipality, council: council, regular: regular, bold: bold, municipalityLogo: municipalityLogo, councilLogo: councilLogo, unicefLogo: unicefLogo),
         pw.SizedBox(height: 8),
         label('تقرير حضور وغياب المجموعة', size: 16, strong: true),
         pw.SizedBox(height: 6),
         pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [
-          label('الدورة: $cycleLabel   •   البلدية: $municipalityLabel   •   المجموعة: $group', size: 9),
+          label('المجموعة: $group', size: 9),
           label('الفترة: ${DateFormat('yyyy-MM-dd').format(start)} - ${DateFormat('yyyy-MM-dd').format(days.last)}', size: 9),
         ]),
         pw.SizedBox(height: 8),

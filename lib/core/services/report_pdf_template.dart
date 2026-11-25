@@ -1,3 +1,4 @@
+import 'report_letterhead.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:intl/intl.dart';
@@ -70,18 +71,7 @@ class ReportPdfTemplate {
     final sections = ReportContent.breakdowns(snapshot, english: english);
     return [
       pw.Container(padding:const pw.EdgeInsets.all(14),decoration:pw.BoxDecoration(color:PdfColors.blueGrey900,borderRadius:pw.BorderRadius.circular(10)),child:pw.Column(crossAxisAlignment:pw.CrossAxisAlignment.start,children:[
-        pw.Row(crossAxisAlignment:pw.CrossAxisAlignment.center,children:[
-          if(municipalityLogo!=null) pw.Container(width:38,height:38,child:pw.Image(municipalityLogo!)),
-          if(councilLogo!=null) pw.Padding(padding:const pw.EdgeInsets.only(left:4),child:pw.Container(width:38,height:38,child:pw.Image(councilLogo!))),
-          if(unicefLogo!=null) pw.Padding(padding:const pw.EdgeInsets.only(left:4),child:pw.Container(width:38,height:38,child:pw.Image(unicefLogo!))),
-          if(logo!=null && municipalityLogo==null && councilLogo==null && unicefLogo==null) pw.Container(width:38,height:38,child:pw.Image(logo!)),
-          pw.SizedBox(width:8),
-          pw.Expanded(child:pw.Column(crossAxisAlignment:pw.CrossAxisAlignment.start,children:[if(municipalityName.isNotEmpty) pw.Text(municipalityName,style:pw.TextStyle(font:bold,fontSize:10,color:PdfColors.white)),if(councilName.isNotEmpty) pw.Text(councilName,style:pw.TextStyle(font:bold,fontSize:10,color:PdfColors.white)),if(projectName.isNotEmpty) pw.Text('${t('المشروع / الدورة: ','Project / cycle: ')}$projectName',style:pw.TextStyle(font:regular,fontSize:8,color:PdfColors.white)),pw.Text(title,style:pw.TextStyle(font:bold,fontSize:17,color:PdfColors.white))])),
-          pw.Container(padding:const pw.EdgeInsets.symmetric(horizontal:8,vertical:6),decoration:pw.BoxDecoration(color:PdfColors.cyan,borderRadius:pw.BorderRadius.circular(5)),child:pw.Text('UNICEF',style:pw.TextStyle(font:bold,fontSize:10,color:PdfColors.white))),
-        ]),
-        pw.SizedBox(height:7),
-        pw.Text(t('الجهة الداعمة: اليونيسف (UNICEF)','Supported by UNICEF'),style:pw.TextStyle(font:bold,fontSize:9,color:PdfColors.cyan)),
-        pw.Text('${t('البلديات: ','Municipalities: ')}${snapshot.municipalityNames.isEmpty ? (snapshot.selectedMunicipality ?? t('غير محددة','Unspecified')) : snapshot.municipalityNames.take(10).join(' • ')}',style:pw.TextStyle(font:bold,fontSize:8,color:PdfColors.white)),
+        pw.Text(title, style: pw.TextStyle(font: bold, fontSize: 17, color: PdfColors.white)),
         pw.Text(roleTitle,style:pw.TextStyle(font:bold,fontSize:9,color:PdfColors.amber)),
         pw.Text('${t('الفترة: ','Period: ')}${snapshot.periodLabel}',style:pw.TextStyle(font:regular,fontSize:8,color:PdfColors.white)),
         pw.Text(snapshot.filterLabel(english: english), style: pw.TextStyle(font: regular, fontSize: 8, color: PdfColors.white)),
@@ -135,29 +125,7 @@ class ReportPdfTemplate {
       _section(t('الاعتماد والتوقيع','Review and signatures'),[pw.Text('${t('معدّ التقرير: ','Prepared by: ')}${snapshot.preparer ?? user?.name ?? t('النظام','System')}',style:pw.TextStyle(font:regular,fontSize:9)),pw.Text(t('المراجع: ____________________','Reviewer: ____________________'),style:pw.TextStyle(font:regular,fontSize:9)),pw.Text(snapshot.reviewer == null ? t('المعتمد: ____________________    التاريخ: __________','Approved by: ____________________    Date: __________') : '${t('المعتمد','Approved by')}: ${snapshot.reviewer}    ${snapshot.approvalTime ?? ''}',style:pw.TextStyle(font:regular,fontSize:9))]),
     ];
   }
-  pw.Widget header(pw.Context context){
-    final municipalities = snapshot.municipalityNames.isEmpty ? (snapshot.selectedMunicipality ?? 'كل البلديات') : snapshot.municipalityNames.take(5).join(' • ');
-    return pw.Container(
-      padding: const pw.EdgeInsets.only(bottom: 7),
-      decoration: const pw.BoxDecoration(border: pw.Border(bottom: pw.BorderSide(color: PdfColors.grey300))),
-      child: pw.Row(crossAxisAlignment: pw.CrossAxisAlignment.center, children: [
-        if (municipalityLogo != null) pw.Container(width: 24, height: 24, child: pw.Image(municipalityLogo!)),
-        if (councilLogo != null) pw.Padding(padding: const pw.EdgeInsets.only(left: 3), child: pw.Container(width: 24, height: 24, child: pw.Image(councilLogo!))),
-        if (unicefLogo != null) pw.Padding(padding: const pw.EdgeInsets.only(left: 3), child: pw.Container(width: 24, height: 24, child: pw.Image(unicefLogo!))),
-        if (logo != null && municipalityLogo == null && councilLogo == null && unicefLogo == null) pw.Container(width: 24, height: 24, child: pw.Image(logo!)),
-        pw.SizedBox(width: 6),
-        pw.Expanded(child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
-          if(municipalityName.isNotEmpty) pw.Text(municipalityName, style: pw.TextStyle(font: bold, fontSize: 8, color: PdfColors.cyan800)),
-          if(councilName.isNotEmpty) pw.Text(councilName, style: pw.TextStyle(font: bold, fontSize: 8, color: PdfColors.cyan800)),
-          if(projectName.isNotEmpty) pw.Text('${t('المشروع / الدورة: ','Project / cycle: ')}$projectName', style: pw.TextStyle(font: regular, fontSize: 6.5)),
-          pw.Text(t('اليونيسف • UNICEF','UNICEF'), style: pw.TextStyle(font: bold, fontSize: 8, color: PdfColors.blue800)),
-          pw.Text('${t('البلديات: ','Municipalities: ')}$municipalities', maxLines: 1, style: pw.TextStyle(font: regular, fontSize: 6.5)),
-          pw.Text(title, maxLines: 1, style: pw.TextStyle(font: bold, fontSize: 8.5)),
-        ])),
-        pw.Text('${t('رقم التقرير: ','Report ID: ')}${snapshot.reportId}', style: pw.TextStyle(font: regular, fontSize: 7)),
-      ]),
-    );
-  }
+  pw.Widget header(pw.Context context) => reportLetterhead(cycle: projectName, municipality: municipalityName, council: councilName, regular: regular, bold: bold, english: english, municipalityLogo: municipalityLogo, councilLogo: councilLogo, unicefLogo: unicefLogo);
   pw.Widget footer(pw.Context context)=>pw.Container(padding:const pw.EdgeInsets.only(top:5),decoration:const pw.BoxDecoration(border:pw.Border(top:pw.BorderSide(color:PdfColors.grey300))),child:pw.Row(children:[pw.Expanded(child:pw.Text('${t('صادر عن: ','Issued by: ')}${snapshot.preparer ?? user?.name ?? t('النظام','System')}',style:pw.TextStyle(font:regular,fontSize:7))),pw.Text(t('صفحة ${context.pageNumber} من ${context.pagesCount}','Page ${context.pageNumber} of ${context.pagesCount}'),style:pw.TextStyle(font:bold,fontSize:7))]));
   pw.MultiPage page()=>pw.MultiPage(maxPages:500,pageFormat:PdfPageFormat.a4,margin:const pw.EdgeInsets.fromLTRB(28,32,28,32),textDirection:english ? pw.TextDirection.ltr : pw.TextDirection.rtl,header:header,footer:footer,theme:pw.ThemeData.withFont(base:regular,bold:bold),build:(_)=>build());
 }
