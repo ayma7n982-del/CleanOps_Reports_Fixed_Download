@@ -249,7 +249,7 @@ class _MonthlyAttendanceReportScreenState extends State<MonthlyAttendanceReportS
       pw.Container(width: 90, padding: const pw.EdgeInsets.all(3), child: pw.Text(english ? 'Worker / Supervisor' : 'العامل / المشرف', style: pw.TextStyle(font: bold, fontSize: 6))),
       for (var d = (periodMode == 'second' ? 16 : 1); d <= (periodMode == 'first' ? 15 : daysInMonth); d++) pw.Container(width: 22, padding: const pw.EdgeInsets.all(1), child: pw.Column(children: [pw.Text(_weekday(DateTime(month.year, month.month, d), !english), style: pw.TextStyle(font: regular, fontSize: 5)), pw.Text('$d', style: pw.TextStyle(font: bold, fontSize: 6))])),
     ];
-    final rows = <pw.TableRow>[pw.TableRow(children: headers), for (final id in matrix.ids) pw.TableRow(children: [
+    final rows = <pw.TableRow>[pw.TableRow(repeat: true, children: headers), for (final id in matrix.ids) pw.TableRow(children: [
       pw.Container(width: 90, padding: const pw.EdgeInsets.all(3), child: pw.Text(matrix.labels[id]!, style: pw.TextStyle(font: regular, fontSize: 6))),
       for (var d = (periodMode == 'second' ? 16 : 1); d <= (periodMode == 'first' ? 15 : daysInMonth); d++) pw.Container(width: 22, padding: const pw.EdgeInsets.all(2), alignment: pw.Alignment.center, child: pw.Text(_pdfMark(matrix.statuses['$id|$d'], english), style: pw.TextStyle(font: bold, fontSize: 6, color: _pdfColor(matrix.statuses['$id|$d'])))),
     ])];
@@ -257,7 +257,7 @@ class _MonthlyAttendanceReportScreenState extends State<MonthlyAttendanceReportS
         .where((value) => value.isNotEmpty).toSet();
     final councils = roster.map((row) => '${row['councilName'] ?? ''}'.trim())
         .where((value) => value.isNotEmpty).toSet();
-    final projects = roster.map((row) => '${row['cycleName'] ?? row['cycleId'] ?? ''}'.trim())
+    final projects = roster.map((row) => '${row['cycleName'] ?? row['cycle'] ?? ''}'.trim())
         .where((value) => value.isNotEmpty).toSet();
     final prefs = await ReportBrandingStore.read(
       municipality: municipalities.length == 1 ? municipalities.single : '',

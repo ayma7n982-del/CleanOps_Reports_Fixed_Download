@@ -150,15 +150,6 @@ class _GroupAttendanceReportScreenState extends State<GroupAttendanceReportScree
       statuses['${_personId(r)}|${DateFormat('yyyy-MM-dd').format(day)}'] = '${r['status'] ?? ''}';
     }
     final metadata = [...visibleRoster, ...relevant].where((r) => _group(r) == selected).toList();
-    String firstValue(List<String> fields) {
-      for (final row in metadata) {
-        for (final field in fields) {
-          final value = '${row[field] ?? ''}'.trim();
-          if (value.isNotEmpty) return value;
-        }
-      }
-      return '';
-    }
     return Scaffold(
       appBar: AppBar(title: const AppText('حضور وغياب المجموعة - 20 يومًا')),
       body: Directionality(textDirection: ui.TextDirection.rtl, child: ListView(
@@ -188,9 +179,9 @@ class _GroupAttendanceReportScreenState extends State<GroupAttendanceReportScree
               try {
                 final pdf = await _buildPdf(
                   persons: persons, statuses: statuses, group: groups[selected] ?? selected!,
-                  municipality: firstValue(['municipalityName', 'municipality']),
-                  council: firstValue(['councilName']),
-                  cycle: firstValue(['cycleName', 'cycleId', 'cycle']),
+                  municipality: reportField(metadata, ['municipalityName', 'municipality']),
+                  council: reportField(metadata, ['councilName']),
+                  cycle: reportField(metadata, ['cycleName', 'cycle']),
                 );
                 if (!context.mounted) return;
                 await Printing.layoutPdf(onLayout: (_) async => pdf);
@@ -205,9 +196,9 @@ class _GroupAttendanceReportScreenState extends State<GroupAttendanceReportScree
               try {
                 final pdf = await _buildPdf(
                   persons: persons, statuses: statuses, group: groups[selected] ?? selected!,
-                  municipality: firstValue(['municipalityName', 'municipality']),
-                  council: firstValue(['councilName']),
-                  cycle: firstValue(['cycleName', 'cycleId', 'cycle']),
+                  municipality: reportField(metadata, ['municipalityName', 'municipality']),
+                  council: reportField(metadata, ['councilName']),
+                  cycle: reportField(metadata, ['cycleName', 'cycle']),
                 );
                 final path = await savePdfBytes(pdf, 'group_attendance_${selected}_${DateFormat('yyyyMMdd').format(start)}.pdf');
                 if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(path == null ? 'تعذر حفظ PDF' : 'تم إنشاء PDF: $path')));

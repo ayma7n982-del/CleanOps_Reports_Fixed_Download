@@ -70,8 +70,9 @@ class ReportPdfTemplate {
     final metrics = ReportContent.metrics(snapshot);
     final sections = ReportContent.breakdowns(snapshot, english: english);
     return [
-      pw.Container(padding:const pw.EdgeInsets.all(14),decoration:pw.BoxDecoration(color:PdfColors.blueGrey900,borderRadius:pw.BorderRadius.circular(10)),child:pw.Column(crossAxisAlignment:pw.CrossAxisAlignment.start,children:[
+      pw.Container(width: double.infinity, padding:const pw.EdgeInsets.all(14),decoration:pw.BoxDecoration(color:PdfColors.blueGrey900,borderRadius:pw.BorderRadius.circular(10)),child:pw.Column(crossAxisAlignment:pw.CrossAxisAlignment.start,children:[
         pw.Text(title, style: pw.TextStyle(font: bold, fontSize: 17, color: PdfColors.white)),
+        pw.Text("${t('رقم التقرير', 'Report ID')}: ${snapshot.reportId}",style:pw.TextStyle(font:regular,fontSize:9,color:PdfColors.white)),
         pw.Text(roleTitle,style:pw.TextStyle(font:bold,fontSize:9,color:PdfColors.amber)),
         pw.Text('${t('الفترة: ','Period: ')}${snapshot.periodLabel}',style:pw.TextStyle(font:regular,fontSize:8,color:PdfColors.white)),
         pw.Text(snapshot.filterLabel(english: english), style: pw.TextStyle(font: regular, fontSize: 8, color: PdfColors.white)),

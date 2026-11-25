@@ -203,6 +203,11 @@ class ReportService {
         if (name.isNotEmpty) cycleAliases.add(name);
       }
     }
+    void collectIdentity(Map<String, dynamic> row) {
+      councilsInReport.add('${row['councilName'] ?? ''}');
+      final name = '${row['cycleName'] ?? ''}'.trim();
+      if (name.isNotEmpty) cyclesInReport.add(name);
+    }
     if (Firebase.apps.isNotEmpty) {
       try {
         final snap = await FirebaseFirestore.instance.collection('work_cycles')
@@ -239,6 +244,7 @@ class ReportService {
           final grp = '${m['groupName'] ?? m['groupId'] ?? 'غير محددة'}';
           if (mun != 'غير محددة') availableMunicipalities.add(mun);
           if (!_matchesFilters(m, municipality: municipality, group: group, cycle: cycle, cycleAliases: cycleAliases)) continue;
+          collectIdentity(m);
           if (mun != 'غير محددة') municipalities.add(mun);
           if (grp != 'غير محددة' && grp.isNotEmpty) groups.add(grp);
           final role = '${m['role'] ?? ''}';
@@ -275,6 +281,7 @@ class ReportService {
       final grp = '${m['groupName'] ?? m['groupId'] ?? 'غير محددة'}';
       if (grp != 'غير محددة') groups.add(grp);
       if (mun != 'غير محددة') municipalities.add(mun);
+      collectIdentity(m);
       final workerId = '${m['workerId'] ?? m['userId'] ?? ''}';
       if (workerId.isNotEmpty) workers.add(workerId);
       if (entity == 'trip' || entity == 'trips') {
@@ -360,9 +367,8 @@ class ReportService {
           if (!ReportRecordFilters.matchesSearch(m, search) || !ReportRecordFilters.matchesContainerStatus(m, containerStatus, now)) continue;
           containerRecords.add(Map<String, dynamic>.from(m));
           if (mun != 'غير محددة') municipalities.add(mun);
-          councilsInReport.add('${m['councilName'] ?? ''}');
-      cyclesInReport.add('${m['cycleName'] ?? ''}');
-      if (grp != 'غير محددة') groups.add(grp);
+          collectIdentity(m);
+          if (grp != 'غير محددة') groups.add(grp);
           containersTotal++; containersByMunicipality[mun]=(containersByMunicipality[mun]??0)+1; containersByGroup[grp]=(containersByGroup[grp]??0)+1;
           final status='${m['status']??'unknown'}'; containerByStatus[status]=(containerByStatus[status]??0)+1;
           if(status=='full') containersFull++; else if(status=='partial') containersPartial++; else if(status=='empty') containersEmpty++;

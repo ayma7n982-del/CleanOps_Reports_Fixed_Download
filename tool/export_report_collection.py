@@ -1,12 +1,13 @@
 """Export the Arabic report catalogue using Flutter's production PDF builders.
 
-Run at the repository root with Flutter and pdfunite installed. Temporary test
+Run at the repository root with Flutter and pypdf installed. Temporary test
 entry points live beside the source so private screen exporters can be exercised
 without opening accounts, contacting Firebase, or changing the application API.
 """
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import subprocess
+from pypdf import PdfWriter
 
 screens = Path('lib/presentation/screens')
 fixture = """
@@ -24,6 +25,7 @@ screen_cases = {
     'attendance_reports_home_screen': """
       final state = _AttendanceReportsHomeScreenState()..selectedDate = day;
       await save('10', await state._pdfBytes([entry]));
+      await save('10-leave', await state._pdfBytes([{...entry,'status':'leave'}], leavesOnly:true));
     """,
     'monthly_attendance_report_screen': """
       final state = _MonthlyAttendanceReportScreenState()..month = day..roster = [person];
@@ -56,6 +58,15 @@ titles = {
     'municipalities': 'تقرير البلديات', 'groups': 'تقرير المجموعات',
 }
 extra = """
+    final archived = ReportArchive.read({...ReportArchive.submission(snapshotFor('all')),
+      'id':'مثال-معتمد','approvedByName':'مراجع تجريبي','approvedAt':'2026-11-01'});
+    await save('09-approved', await reports.buildOperationalPdfBytes(snapshot:archived,
+      user:user,title:'التقرير التنفيذي الشامل • نسخة معتمدة تجريبية'));
+    final legacy = ReportArchive.read({'id':'مثال-أرشيف','createdAt':'2026-11-01',
+      'municipality':person['municipalityName'],'cycleName':person['cycleName'],
+      'councilName':person['councilName'],'snapshot':{'trips':4,'attendance':3}});
+    await save('09-legacy', await reports.buildOperationalPdfBytes(snapshot:legacy,
+      user:user,title:'ملخص أرشيفي • نسخة تجريبية'));
     await save('15', await DailyWorkReportPdf.build({...person, '_entity':'work_report',
       'workDate': day.toIso8601String(), 'status':'draft', 'shiftSummary':'بيانات توضيحية'}));
     final analytics = DecisionAnalytics.calculate(
@@ -105,7 +116,7 @@ void main() {
                 entry(path, path.read_text(), body)
             source = Path('test/report_pdf_export_test.dart').read_text()
             setup = source[source.index('    final directory ='):source.index('    final snapshot = snapshotFor')]
-            setup = (setup.replace("'Smoke Municipality'", "'بلدية تجريبية'").replace("'Cycle 1'", "'دورة توضيحية • بيانات تجريبية'")
+            setup = (setup.replace("Group A","المجموعة الأولى").replace("Group B","المجموعة الثانية").replace("Manager Test","معد التقرير التجريبي").replace("'Smoke Municipality'", "'بلدية تجريبية'").replace("'Cycle 1'", "'دورة توضيحية • بيانات تجريبية'")
                      .replace("reportType: type,", "councilLabel: 'مجلس خدمات تجريبي', reportType: type,"))
             ops = ''.join(f"    await save('0{i}', await reports.buildOperationalPdfBytes(snapshot:snapshotFor('{k}'), user:user, title:'{v}'));\n"
                           for i, (k, v) in enumerate(titles.items(), 1))
@@ -118,9 +129,26 @@ import 'package:solid_waste_operations/core/services/daily_work_report_pdf.dart'
 """)
             subprocess.run(['flutter', 'test', '--reporter', 'expanded', *map(str, paths)], check=True)
             parts = sorted(directory.glob('*.pdf'))
-            if len(parts) != 21:
-                raise RuntimeError(f'Expected 21 reports, got {len(parts)}')
-            subprocess.run(['pdfunite', *map(str, parts), str(directory/'combined.pdf')], check=True)
+            if len(parts) != 24:
+                raise RuntimeError(f'Expected 24 reports, got {len(parts)}')
+            labels = {f'0{i}': title for i, title in enumerate(titles.values(), 1)}
+            labels.update({
+                '09-approved': 'النسخة المعتمدة', '09-legacy': 'الملخص الأرشيفي',
+                '10': 'الحضور والغياب التفصيلي', '10-leave': 'الإجازات والأذونات',
+                '11-month': 'الحضور الشهري', '11-first': 'النصف الأول من الشهر',
+                '11-second': 'النصف الثاني من الشهر', '12': 'حضور المجموعة',
+                '13': 'حضور البلدية', '14': 'حضور جميع البلديات', '15': 'الأعمال اليومية',
+                '16-all': 'لوحة القرارات الشاملة', '16-operations': 'العمليات الميدانية',
+                '16-strategic': 'التخطيط الاستراتيجي', '16-health': 'القرارات الصحية والبيئية',
+                '16-supply': 'سلسلة الإمداد',
+            })
+            assert set(labels) == {p.stem for p in parts}
+            writer = PdfWriter()
+            writer.add_metadata({'/Title':'تقارير إدارة النفايات', '/Subject':'بيانات تجريبية'})
+            for key, label in labels.items():
+                writer.append(directory / (key + '.pdf'), outline_item=label)
+            writer.write(directory/'combined.pdf')
+            writer.close()
             (directory/'combined.pdf').replace(out/'all-reports.pdf')
         finally:
             for path in paths:

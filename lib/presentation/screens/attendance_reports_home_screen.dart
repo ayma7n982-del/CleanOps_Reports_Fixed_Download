@@ -88,7 +88,7 @@ class _AttendanceReportsHomeScreenState extends State<AttendanceReportsHomeScree
     for (final person in roster) {
       final id = '${person['id'] ?? ''}';
       if (id.isEmpty || recordedIds.contains(id)) continue;
-      records.add({'workerId': id, 'workerName': person['name'] ?? person['username'] ?? id, 'workerRole': person['workerRole'] ?? person['role'] ?? 'worker', 'groupId': person['groupId'] ?? '', 'groupName': person['groupName'] ?? person['groupId'] ?? '', 'status': 'no_entry', 'ppeComplete': false, 'createdAt': selectedDate.toIso8601String(), 'isRosterOnly': true});
+      records.add({for (final key in ['cycleName','cycle','municipalityName','municipality','councilName']) key: person[key], 'workerId': id, 'workerName': person['name'] ?? person['username'] ?? id, 'workerRole': person['workerRole'] ?? person['role'] ?? 'worker', 'groupId': person['groupId'] ?? '', 'groupName': person['groupName'] ?? person['groupId'] ?? '', 'status': 'no_entry', 'ppeComplete': false, 'createdAt': selectedDate.toIso8601String(), 'isRosterOnly': true});
     }
     if (widget.leavesOnly) records.removeWhere((record) => !const ['leave', 'on_leave', 'إجازة', 'permission', 'إذن خاص'].contains(record['status']));
     records.sort((a,b) => '${a['workerName'] ?? ''}'.compareTo('${b['workerName'] ?? ''}'));
@@ -187,12 +187,12 @@ class _AttendanceReportsHomeScreenState extends State<AttendanceReportsHomeScree
     return role == 'donor_manager';
   }
 
-  Future<Uint8List> _pdfBytes(List<Map<String, dynamic>> records) async {
+  Future<Uint8List> _pdfBytes(List<Map<String, dynamic>> records, {bool leavesOnly = false}) async {
     final regular = pw.Font.ttf(await rootBundle.load('assets/fonts/NotoSansArabic-Regular.ttf'));
     final bold = pw.Font.ttf(await rootBundle.load('assets/fonts/NotoSansArabic-Bold.ttf'));
     final en = exportLanguage == 'en';
     final rows = <pw.TableRow>[
-      pw.TableRow(children: [if (showGroups) _cell(en ? 'Group' : 'المجموعة', bold), _cell(en ? 'Worker / Supervisor' : 'العامل / المشرف', bold), _cell(en ? 'Role' : 'الصفة', bold), _cell(en ? 'Status' : 'الحالة', bold), _cell(en ? 'Clock-in' : 'وقت الحضور', bold), _cell(en ? 'Clock-out' : 'وقت الانصراف', bold), _cell(en ? 'PPE' : 'معدات الوقاية', bold)]),
+      pw.TableRow(repeat: true, children: [if (showGroups) _cell(en ? 'Group' : 'المجموعة', bold), _cell(en ? 'Worker / Supervisor' : 'العامل / المشرف', bold), _cell(en ? 'Role' : 'الصفة', bold), _cell(en ? 'Status' : 'الحالة', bold), _cell(en ? 'Clock-in' : 'وقت الحضور', bold), _cell(en ? 'Clock-out' : 'وقت الانصراف', bold), _cell(en ? 'PPE' : 'معدات الوقاية', bold)]),
       for (final r in records) pw.TableRow(children: [if (showGroups) _cell('${r['groupName'] ?? r['groupId'] ?? '—'}', regular), _cell('${r['workerName'] ?? r['workerId'] ?? '—'}', regular), _cell(_role('${r['workerRole'] ?? 'worker'}', en: en), regular), _cell(_status('${r['status'] ?? ''}', en: en), regular), _cell(_timeLabel(r['checkInAt'] ?? r['checkInTime']), regular), _cell(_timeLabel(r['checkOutAt'] ?? r['checkOutTime']), regular), _cell(r['ppeComplete'] == true ? (en ? 'Complete' : 'مكتملة') : '—', regular)]),
     ];
     final municipalityName = reportField(records, ['municipalityName', 'municipality']);
@@ -209,7 +209,7 @@ class _AttendanceReportsHomeScreenState extends State<AttendanceReportsHomeScree
       header: (_) => reportLetterhead(cycle: projectName, municipality: municipalityName, council: councilName, regular: regular, bold: bold, english: en, municipalityLogo: municipalityLogo, councilLogo: councilLogo, unicefLogo: unicefLogo),
       build: (_) => [
       pw.SizedBox(height: 8),
-      pw.Text(en ? 'Detailed Attendance and Absence Report' : 'تقرير الحضور والغياب التفصيلي', style: pw.TextStyle(font: bold, fontSize: 16)),
+      pw.Text(leavesOnly ? (en ? 'Leave and Permission Register' : 'سجل الإجازات والأذونات') : (en ? 'Detailed Attendance and Absence Report' : 'تقرير الحضور والغياب التفصيلي'), style: pw.TextStyle(font: bold, fontSize: 16)),
       pw.SizedBox(height: 5), pw.Text('${en ? 'Date' : 'التاريخ'}: ${DateFormat('yyyy-MM-dd').format(selectedDate)}', style: pw.TextStyle(font: regular, fontSize: 9)),
       pw.Container(
         padding: const pw.EdgeInsets.symmetric(vertical: 8, horizontal: 10),
@@ -230,8 +230,8 @@ class _AttendanceReportsHomeScreenState extends State<AttendanceReportsHomeScree
     return Uint8List.fromList(await doc.save());
   }
   pw.Widget _cell(String text, pw.Font font) => pw.Padding(padding: const pw.EdgeInsets.all(5), child: pw.Text(text, style: pw.TextStyle(font: font, fontSize: 8)));
-  Future<void> _preview(List<Map<String, dynamic>> rows) async { setState(() => busy = true); try { final bytes = await _pdfBytes(rows); if (mounted) await Printing.layoutPdf(onLayout: (_) async => bytes); } catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: AppText('تعذرت المعاينة: $e'))); } finally { if (mounted) setState(() => busy = false); } }
-  Future<void> _export(List<Map<String, dynamic>> rows) async { setState(() => busy = true); try { final bytes = await _pdfBytes(rows); final path = await savePdfBytes(bytes, 'daily_attendance_${DateFormat('yyyyMMdd').format(selectedDate)}_$exportLanguage.pdf'); if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: AppText(path == null ? 'تعذر حفظ PDF' : 'تم إنشاء PDF: $path'))); } catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: AppText('تعذر التصدير: $e'))); } finally { if (mounted) setState(() => busy = false); } }
+  Future<void> _preview(List<Map<String, dynamic>> rows) async { setState(() => busy = true); try { final bytes = await _pdfBytes(rows, leavesOnly: widget.leavesOnly); if (mounted) await Printing.layoutPdf(onLayout: (_) async => bytes); } catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: AppText('تعذرت المعاينة: $e'))); } finally { if (mounted) setState(() => busy = false); } }
+  Future<void> _export(List<Map<String, dynamic>> rows) async { setState(() => busy = true); try { final bytes = await _pdfBytes(rows, leavesOnly: widget.leavesOnly); final path = await savePdfBytes(bytes, 'daily_attendance_${DateFormat('yyyyMMdd').format(selectedDate)}_$exportLanguage.pdf'); if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: AppText(path == null ? 'تعذر حفظ PDF' : 'تم إنشاء PDF: $path'))); } catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: AppText('تعذر التصدير: $e'))); } finally { if (mounted) setState(() => busy = false); } }
   Widget _kpi(String label, int value) => SizedBox(width: 105, child: Card(child: Padding(padding: const EdgeInsets.all(12), child: Column(children: [Text(label), Text('$value', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900))]))));
   String _role(String value, {bool en = false}) => switch (value) {'group_supervisor' => en ? 'Supervisor' : 'مشرف', 'worker_with_cart' => en ? 'Worker with cart' : 'عامل بكارة', 'worker' => en ? 'Worker' : 'عامل', _ => value};
   String _status(String value, {bool en = false}) {

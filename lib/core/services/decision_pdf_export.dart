@@ -81,7 +81,12 @@ Future<Uint8List> buildDecisionPdf({required DecisionAnalytics data,
     SupplyChainAnalytics? supply}) async {
   final regular = pw.Font.ttf(await rootBundle.load('assets/fonts/NotoSansArabic-Regular.ttf'));
   final bold = pw.Font.ttf(await rootBundle.load('assets/fonts/NotoSansArabic-Bold.ttf'));
-  final doc = pw.Document(title: 'لوحة الإجراءات والقرارات الذكية',
+  final title = const {
+    'operations': 'قرارات العمليات الميدانية', 'strategic': 'التخطيط الاستراتيجي',
+    'health': 'القرارات الصحية والبيئية', 'supply': 'تقرير سلسلة الإمداد',
+  }[section] ?? 'لوحة الإجراءات والقرارات الذكية';
+  final identityRecords = [for (final group in data.groups) ...[group.row, ...group.workers]];
+  final doc = pw.Document(title: title,
     author: coordinator);
   final attendance = await _ringImage(data.attendanceRate,
     portions: data.workers == 0 ? [] : [data.present / data.workers,
@@ -133,7 +138,7 @@ Future<Uint8List> buildDecisionPdf({required DecisionAnalytics data,
   final content = <pw.Widget>[
     pw.Container(padding: const pw.EdgeInsets.all(18), color: _navy,
       child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.stretch, children: [
-        text('لوحة الإجراءات والقرارات الذكية', size: 21, strong: true, color: PdfColors.white),
+        text(title, size: 21, strong: true, color: PdfColors.white),
         pw.SizedBox(height: 8),
         text('المسؤول: $coordinator • الدورة: ${data.cycleName}', color: PdfColors.white),
         text('تاريخ التقرير: ${decisionReportDate(data.now)}\n'
@@ -312,7 +317,7 @@ Future<Uint8List> buildDecisionPdf({required DecisionAnalytics data,
   doc.addPage(pw.MultiPage(pageFormat: PdfPageFormat.a4, maxPages: 500,
     margin: const pw.EdgeInsets.all(28), textDirection: pw.TextDirection.rtl,
     theme: pw.ThemeData.withFont(base: regular, bold: bold),
-    header: (_) => reportLetterhead(cycle: data.cycleName, municipality: reportField(data.groups.map((g) => g.row), ['municipalityName', 'municipality']), council: reportField(data.groups.map((g) => g.row), ['councilName']), regular: regular, bold: bold),
+    header: (_) => reportLetterhead(cycle: data.cycleId.isEmpty ? '' : data.cycleName, municipality: reportField(identityRecords, ['municipalityName', 'municipality']), council: reportField(identityRecords, ['councilName']), regular: regular, bold: bold),
     footer: (c) => pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
       children: [text('قراءة تحليلية للسجلات المتاحة • $quality', size: 7),
         text('${c.pageNumber} / ${c.pagesCount}', size: 8)]),
