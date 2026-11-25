@@ -153,6 +153,8 @@ void main() {
       tripRecords: [for(var i=0;i<12;i++) {'id':'T-${i+1}','locationName':'مسار ${i%3+1}',
         'groupName':i<7?'المجموعة الأولى':'المجموعة الثانية','status':i<10?'completed':'active'}],
 """ + setup[end:]
+            setup = setup.replace("'Trip growth', 25, 'الحالي 5؛ السابق 4.', 'Current 5; previous 4.'",
+                                  "'Trip growth', 40, 'آخر يوم مسجل: 7 نقلات، واليوم السابق: 5.', 'Latest recorded day: 7 trips; previous day: 5.'")
             setup = setup.replace("search: 'MAIN'", "search: ''")
             ops = ''.join(f"    await save('0{i}', await reports.buildOperationalPdfBytes(snapshot:snapshotFor('{k}'), user:user, title:'{v}'));\n"
                           for i, (k, v) in enumerate(titles.items(), 1))

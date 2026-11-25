@@ -287,7 +287,7 @@ class _MonthlyAttendanceReportScreenState extends State<MonthlyAttendanceReportS
       ]), regular, bold, english: english),
       pw.SizedBox(height: 10),
       pw.Directionality(textDirection: english ? pw.TextDirection.ltr : pw.TextDirection.rtl, child: pw.Table(border: pw.TableBorder.all(color: PdfColors.grey400, width: .35), columnWidths: {0: const pw.FixedColumnWidth(120), for (var d=1; d<= (periodMode == 'first' ? 15 : daysInMonth - (periodMode == 'second' ? 15 : 0)); d++) d: const pw.FlexColumnWidth()}, children: rows)),
-      pw.SizedBox(height: 8), pw.Text(english ? 'Present: ✓   Absent: ×   Excused: E   Unexcused: U   No entry: —' : 'حضور: ✓   غياب: ×   بعذر: م   دون عذر: غ   لا يوجد تسجيل: —', style: pw.TextStyle(font: regular, fontSize: 7)),
+      pw.SizedBox(height: 8), pw.Text(english ? 'P Present • A Absent • L Leave • T Late • D Duty • E Excused • U Unexcused • ! Conflict • ? Other • — No entry' : 'ح حضور • ب غياب • إ إجازة • ت تأخر • ك تكليف • م بعذر • غ دون عذر • ! تعارض • ؟ حالة أخرى • — دون تسجيل', style: pw.TextStyle(font: regular, fontSize: 7)),
     ]));
     return Uint8List.fromList(await doc.save());
   }
@@ -313,7 +313,16 @@ class _MonthlyAttendanceReportScreenState extends State<MonthlyAttendanceReportS
     const en = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
     return (arabic ? ar : en)[date.weekday - 1];
   }
-  String _pdfMark(String? s, bool english) { if (s == 'conflict') return '!'; if (s == 'present' || s == 'حضور') return '✓'; if (s == 'absent' || s == 'غياب') return '×'; if (s == 'excused_absence') return english ? 'E' : 'م'; if (s == 'unexcused_absence') return english ? 'U' : 'غ'; return '—'; }
+  String _pdfMark(String? status, bool english) => switch (status) {
+    'present' || 'حضور' => english ? 'P' : 'ح',
+    'absent' || 'غياب' => english ? 'A' : 'ب',
+    'leave' || 'on_leave' || 'إجازة' || 'permission' || 'إذن خاص' => english ? 'L' : 'إ',
+    'late' || 'متأخر' => english ? 'T' : 'ت',
+    'mission' || 'on_duty' || 'مهمة' => english ? 'D' : 'ك',
+    'excused_absence' => english ? 'E' : 'م',
+    'unexcused_absence' => english ? 'U' : 'غ',
+    'conflict' => '!', null || '' => '—', _ => english ? '?' : '؟',
+  };
   PdfColor _pdfColor(String? s) { if (s == 'present' || s == 'حضور') return PdfColors.green700; if (s == 'absent' || s == 'غياب' || s == 'excused_absence' || s == 'unexcused_absence') return PdfColors.red700; return PdfColors.grey600; }
 
   Widget _legend(String text, Color color) => Row(mainAxisSize: MainAxisSize.min, children: [Container(width: 10, height: 10, decoration: BoxDecoration(color: color, shape: BoxShape.circle)), const SizedBox(width: 4), Text(text, style: const TextStyle(fontSize: 11))]);
