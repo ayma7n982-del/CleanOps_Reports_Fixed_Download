@@ -1,3 +1,4 @@
+import 'package:flutter/services.dart' show rootBundle;
 import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -75,8 +76,20 @@ class ReportBrandingStore {
         } catch (_) { /* Use the cached identity when the server is unavailable. */ }
       }
     }
-    return resolve(values, municipality: municipality, council: council, project: project,
+    final identity = resolve(values, municipality: municipality, council: council, project: project,
         allowLocalMunicipality: allowLocalMunicipality, allowLocalCouncil: allowLocalCouncil);
+    final defaults = {
+      if (municipality.contains('بني سهيلا') && !municipality.contains('•')) 'municipality': 'municipality',
+      if (council.contains('مجلس الخدمات المشترك لإدارة النفايات الصلبة') && !council.contains('•')) 'council': 'council',
+      'unicef': 'unicef',
+    };
+    for (final name in defaults.keys) {
+      final key = 'report_${name}_logo_base64';
+      if (identity.getString(key) != null) continue;
+      final bytes = await rootBundle.load('assets/report_logos/$name.jpg');
+      identity._values[key] = base64Encode(bytes.buffer.asUint8List(bytes.offsetInBytes, bytes.lengthInBytes));
+    }
+    return identity;
   }
 
   /// Existing config rules permit publishing only by donor_manager.

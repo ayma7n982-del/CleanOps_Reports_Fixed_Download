@@ -1,3 +1,4 @@
+import '../../core/services/report_distribution.dart';
 import '../../core/services/report_letterhead.dart';
 import 'dart:convert';
 import 'dart:typed_data';
@@ -288,7 +289,8 @@ class _GroupAttendanceReportScreenState extends State<GroupAttendanceReportScree
           label('اعتماد مجلس الخدمات: ______________', size: 8),
         ]),
       ])),
-      build: (_) => [pw.Directionality(textDirection: pw.TextDirection.rtl, child: pw.Table(
+      build: (_) => [distributionChart('توزيع أيام المجموعة', {'حضور':presence,'غياب':absence,'إجازة':leaveCount,'مهمة':missionCount,
+        'حالات أخرى أو دون تسجيل':all.length-presence-absence-leaveCount-missionCount},regular,bold), pw.Directionality(textDirection: pw.TextDirection.rtl, child: pw.Table(
         border: pw.TableBorder.all(color: PdfColors.teal100, width: .5),
         columnWidths: {0: const pw.FixedColumnWidth(32), 1: const pw.FixedColumnWidth(130), 2: const pw.FixedColumnWidth(55),
           for (var i = 3; i < 23; i++) i: const pw.FixedColumnWidth(30),

@@ -1,3 +1,4 @@
+import '../../core/services/report_distribution.dart';
 import '../../core/services/report_letterhead.dart';
 import '../widgets/app_navigation_bar.dart';
 import 'dart:ui' as ui;
@@ -211,6 +212,8 @@ class _AttendanceReportsHomeScreenState extends State<AttendanceReportsHomeScree
       pw.SizedBox(height: 8),
       pw.Text(leavesOnly ? (en ? 'Leave and Permission Register' : 'سجل الإجازات والأذونات') : (en ? 'Detailed Attendance and Absence Report' : 'تقرير الحضور والغياب التفصيلي'), style: pw.TextStyle(font: bold, fontSize: 16)),
       pw.SizedBox(height: 5), pw.Text('${en ? 'Date' : 'التاريخ'}: ${DateFormat('yyyy-MM-dd').format(selectedDate)}', style: pw.TextStyle(font: regular, fontSize: 9)),
+      distributionChart(en ? 'Distribution of displayed records' : 'توزيع حالات السجلات المعروضة',
+          reportCounts(records.map((r) => _status('${r['status'] ?? ''}', en: en))), regular, bold, english: en),
       pw.Container(
         padding: const pw.EdgeInsets.symmetric(vertical: 8, horizontal: 10),
         decoration: pw.BoxDecoration(color: PdfColors.blue50, borderRadius: pw.BorderRadius.circular(6)),

@@ -1,3 +1,4 @@
+import '../../core/services/report_distribution.dart';
 import '../../core/services/report_letterhead.dart';
 import 'dart:convert';
 import 'dart:typed_data';
@@ -284,6 +285,8 @@ class _MunicipalityAttendanceReportScreenState extends State<MunicipalityAttenda
             )),
           ])),
           pw.SizedBox(height: 18),
+          distributionChart('توزيع أيام الأفراد خلال الفترة', {
+            'حضور': count(all,'ح'), 'غياب': count(all,'غ'), 'إجازة': count(all,'إ'), 'مهمة': count(all,'م'), 'دون تسجيل': count(all,'—')}, regular,bold),
           txt('ملخص المجموعات', strong: true, size: 12),
           pw.SizedBox(height: 8),
           pw.Directionality(textDirection: pw.TextDirection.rtl, child: pw.Table(

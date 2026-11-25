@@ -1,3 +1,5 @@
+import 'dart:convert';
+import 'report_branding_store.dart';
 import 'report_letterhead.dart';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
@@ -86,6 +88,16 @@ Future<Uint8List> buildDecisionPdf({required DecisionAnalytics data,
     'health': 'القرارات الصحية والبيئية', 'supply': 'تقرير سلسلة الإمداد',
   }[section] ?? 'لوحة الإجراءات والقرارات الذكية';
   final identityRecords = [for (final group in data.groups) ...[group.row, ...group.workers]];
+  final municipality = reportField(identityRecords, ['municipalityName', 'municipality']);
+  final council = reportField(identityRecords, ['councilName']);
+  final branding = await ReportBrandingStore.read(municipality: municipality, council: council,
+      allowLocalMunicipality: false, allowLocalCouncil: false);
+  pw.ImageProvider? logo(String name) {
+    try {
+      final value = branding.getString('report_${name}_logo_base64');
+      return value == null ? null : pw.MemoryImage(base64Decode(value));
+    } catch (_) { return null; }
+  }
   final doc = pw.Document(title: title,
     author: coordinator);
   final attendance = await _ringImage(data.attendanceRate,
@@ -317,7 +329,7 @@ Future<Uint8List> buildDecisionPdf({required DecisionAnalytics data,
   doc.addPage(pw.MultiPage(pageFormat: PdfPageFormat.a4, maxPages: 500,
     margin: const pw.EdgeInsets.all(28), textDirection: pw.TextDirection.rtl,
     theme: pw.ThemeData.withFont(base: regular, bold: bold),
-    header: (_) => reportLetterhead(cycle: data.cycleId.isEmpty ? '' : data.cycleName, municipality: reportField(identityRecords, ['municipalityName', 'municipality']), council: reportField(identityRecords, ['councilName']), regular: regular, bold: bold),
+    header: (_) => reportLetterhead(cycle: data.cycleId.isEmpty ? '' : data.cycleName, municipality: municipality, council: council, regular: regular, bold: bold, municipalityLogo: logo('municipality'), councilLogo: logo('council'), unicefLogo: logo('unicef')),
     footer: (c) => pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
       children: [text('قراءة تحليلية للسجلات المتاحة • $quality', size: 7),
         text('${c.pageNumber} / ${c.pagesCount}', size: 8)]),

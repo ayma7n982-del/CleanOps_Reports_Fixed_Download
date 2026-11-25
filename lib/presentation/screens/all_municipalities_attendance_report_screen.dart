@@ -1,3 +1,4 @@
+import '../../core/services/report_distribution.dart';
 import '../../core/services/report_letterhead.dart';
 import 'dart:convert';
 import 'dart:typed_data';
@@ -254,7 +255,7 @@ class _AllMunicipalitiesAttendanceReportScreenState
   Future<Uint8List> _pdf(List<_MunicipalitySummary> cities, AppUser actor) async {
     final regular = pw.Font.ttf(await rootBundle.load('assets/fonts/NotoSansArabic-Regular.ttf'));
     final bold = pw.Font.ttf(await rootBundle.load('assets/fonts/NotoSansArabic-Bold.ttf'));
-    final prefs = await ReportBrandingStore.read(council: actor.role == 'jsc_coordinator' ? actor.scope : '', allowLocalMunicipality: false, allowLocalCouncil: false);
+    final prefs = await ReportBrandingStore.read(municipality: reportNames(cities.map((city) => city.name)), council: reportField(roster, ['councilName']), allowLocalMunicipality: false, allowLocalCouncil: false);
     pw.ImageProvider? logo(String key) {
       try {
         final raw = prefs.getString(key);
@@ -283,7 +284,7 @@ class _AllMunicipalitiesAttendanceReportScreenState
           pw.SizedBox(height: 2), txt('${day.day}/${day.month}', strong: true, size: 7.4, color: PdfColors.white),
         ]));
     pw.Widget header(String title, String municipality) => pw.Column(children: [
-          reportLetterhead(cycle: cycle, municipality: municipality, council: council, regular: regular, bold: bold, municipalityLogo: null, councilLogo: councilLogo, unicefLogo: unicefLogo),
+          reportLetterhead(cycle: cycle, municipality: municipality, council: council, regular: regular, bold: bold, municipalityLogo: cities.length == 1 ? logo('report_municipality_logo_base64') : null, councilLogo: councilLogo, unicefLogo: unicefLogo),
           pw.SizedBox(height: 8),
           pw.Container(padding: const pw.EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               decoration: pw.BoxDecoration(color: PdfColors.teal800,
@@ -317,6 +318,8 @@ class _AllMunicipalitiesAttendanceReportScreenState
         theme: pw.ThemeData.withFont(base: regular, bold: bold),
         header: (_) => header('تقرير حضور وغياب البلديات الشامل', reportNames(cities.map((c) => c.name))), footer: footer,
         build: (_) => [
+          distributionChart('توزيع أيام الأفراد في البلديات', {'حضور':total.present,'غياب':total.absent,'إجازة':total.leave,
+            'مهمة':total.mission,'دون تسجيل':total.noEntry},regular,bold),
           pw.Directionality(textDirection: pw.TextDirection.rtl, child: pw.Row(children: [
             metric('البلديات', '${cities.length}'),
             metric('المجموعات', '${cities.fold<int>(0, (n, c) => n + c.groups.length)}'),

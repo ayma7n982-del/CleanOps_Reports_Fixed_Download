@@ -19,7 +19,7 @@ pw.Widget reportLetterhead({required String cycle, required String municipality,
   pw.Widget partner(String label, String name, pw.ImageProvider? logo) => pw.Expanded(
     child: pw.Row(children: [
       if (logo != null) pw.Padding(padding: const pw.EdgeInsets.symmetric(horizontal: 4),
-          child: pw.Image(logo, width: 24, height: 24, fit: pw.BoxFit.contain)),
+          child: pw.Image(logo, width: 44, height: 38, fit: pw.BoxFit.contain)),
       pw.Expanded(child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
         pw.Text(label, style: pw.TextStyle(font: regular, color: PdfColors.blueGrey700, fontSize: 8)),
         pw.Text(value(name), style: pw.TextStyle(font: bold, color: PdfColors.blueGrey900, fontSize: 10)),

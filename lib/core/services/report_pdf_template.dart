@@ -1,3 +1,4 @@
+import 'report_distribution.dart';
 import 'report_letterhead.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -52,7 +53,8 @@ class ReportPdfTemplate {
     final metrics = ReportContent.metrics(snapshot);
     final ratios = ReportContent.ratios(snapshot);
     final breakdown = <List<String>>[];
-    for (final group in ReportContent.breakdowns(snapshot, english: english)) {
+    final groups = ReportContent.breakdowns(snapshot, english: english);
+    for (final group in groups) {
       final sum = group.values.values.fold<int>(0, (a, b) => a + b);
       if (group.values.isEmpty) breakdown.add([group.title, t('لا توجد سجلات', 'No records'), '—', '—']);
       for (final entry in group.values.entries) {
@@ -78,6 +80,12 @@ class ReportPdfTemplate {
             color: PdfColors.teal50, child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
               ink(metric.label(english), size: 8.5), ink(metric.value, strong: true, size: 15, color: PdfColors.teal900),
             ])))]),
+      if (snapshot.tripsByDay.isNotEmpty)
+        ink("${t('متوسط النقلات لكل يوم له سجل', 'Trips per recorded day')}: ${(snapshot.tripsByDay.values.fold<int>(0, (a,b) => a+b) / snapshot.tripsByDay.length).toStringAsFixed(1)}", strong: true),
+      if (groups.isNotEmpty) distributionChart(groups.first.title, groups.first.values, regular, bold, english: english),
+      if (snapshot.legacyCounts?['absence'] is num && snapshot.legacyCounts?['attendance'] is num)
+        distributionChart(t('الحضور والغياب المؤرشف','Archived attendance'), {
+          t('حضور','Present'): snapshot.attendance, t('غياب','Absent'): snapshot.absence}, regular, bold, english: english),
       if (ratios.isNotEmpty) ...[
         section(t('مؤشرات الأداء وأساس احتسابها', 'Performance indicators and calculation basis')),
         grid([t('المؤشر','Indicator'), t('القيمة','Value'), t('أساس الاحتساب','Basis')],

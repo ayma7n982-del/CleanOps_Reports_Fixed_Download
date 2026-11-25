@@ -1,3 +1,4 @@
+import '../../core/services/report_distribution.dart';
 import '../../core/services/report_letterhead.dart';
 import '../widgets/app_navigation_bar.dart';
 import 'dart:typed_data';
@@ -280,6 +281,10 @@ class _MonthlyAttendanceReportScreenState extends State<MonthlyAttendanceReportS
       pw.Text(english ? (periodMode == 'month' ? 'Monthly Attendance Calendar' : 'Semi-Monthly Attendance Calendar') : (periodMode == 'month' ? 'التقرير الشهري التقويمي للحضور' : 'تقرير الحضور والغياب لنصف شهر'), style: pw.TextStyle(font: bold, fontSize: 14)),
       pw.SizedBox(height: 4),
       pw.Text('${_monthLabel(!english)} • ${periodMode == 'second' ? 16 : 1}–${periodMode == 'first' ? 15 : daysInMonth}', style: pw.TextStyle(font: regular, fontSize: 9)),
+      distributionChart(english ? 'Calendar marks by person-day' : 'توزيع علامات التقويم لكل فرد ويوم', reportCounts([
+        for (final id in matrix.ids) for (var d = (periodMode == 'second' ? 16 : 1); d <= (periodMode == 'first' ? 15 : daysInMonth); d++)
+          _pdfMark(matrix.statuses['$id|$d'], english),
+      ]), regular, bold, english: english),
       pw.SizedBox(height: 10),
       pw.Directionality(textDirection: english ? pw.TextDirection.ltr : pw.TextDirection.rtl, child: pw.Table(border: pw.TableBorder.all(color: PdfColors.grey400, width: .35), columnWidths: {0: const pw.FixedColumnWidth(120), for (var d=1; d<= (periodMode == 'first' ? 15 : daysInMonth - (periodMode == 'second' ? 15 : 0)); d++) d: const pw.FlexColumnWidth()}, children: rows)),
       pw.SizedBox(height: 8), pw.Text(english ? 'Present: ✓   Absent: ×   Excused: E   Unexcused: U   No entry: —' : 'حضور: ✓   غياب: ×   بعذر: م   دون عذر: غ   لا يوجد تسجيل: —', style: pw.TextStyle(font: regular, fontSize: 7)),
