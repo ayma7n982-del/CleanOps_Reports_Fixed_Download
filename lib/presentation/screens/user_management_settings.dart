@@ -81,7 +81,7 @@ class _UserManagementSettingsPageState extends State<UserManagementSettingsPage>
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const AppText('تأكيد حذف المستخدم'),
-        content: AppText('هل تريد تعطيل المستخدم "$name" وإخفاءه من النظام؟ سيبقى حسابه محفوظًا للأرشفة، لكنه لن يُحسب ضمن المستخدمين النشطين.'),
+        content: AppText('هل تريد حذف حساب الدخول والملف الشخصي للمستخدم "$name" نهائيًا؟ تبقى سجلات الحضور والعمل التاريخية.'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const AppText('إلغاء')),
           TextButton(onPressed: () => Navigator.pop(dialogContext, true), child: const AppText('حذف', style: TextStyle(color: Colors.red))),
@@ -92,7 +92,7 @@ class _UserManagementSettingsPageState extends State<UserManagementSettingsPage>
     setState(() => deletingUser = true);
     try {
       await context.read<OperationsAdminService>().deleteManagedUser(id, actorId: actor.id);
-      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: AppText('تم تعطيل المستخدم وإخفاؤه من النظام بعد تأكيد Firebase.')));
+      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: AppText('أكد Firebase حذف حساب الدخول والملف الشخصي.')));
     } catch (e) {
       if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: AppText('لم يكتمل حذف المستخدم: $e')));
     } finally {

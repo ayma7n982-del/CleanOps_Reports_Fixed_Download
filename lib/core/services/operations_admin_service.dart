@@ -429,32 +429,21 @@ class OperationsAdminService {
         FirebaseAuth.instance.currentUser?.uid != actorId) {
       throw const UserProvisionException('لا توجد صلاحية لحذف هذا الحساب.');
     }
-    final actorSnap = await _users.doc(actorId).get(const GetOptions(source: Source.server));
-    final actorRole = actorSnap.data()?['role'];
-    if (actorSnap.data()?['isActive'] == false ||
-        !const ['donor_manager', 'municipality_coordinator'].contains(actorRole)) {
-      throw const UserProvisionException('حساب المدير غير نشط أو لا يملك صلاحية الحذف.');
-    }
-    final ref = _users.doc(uid);
-    final before = await ref.get(const GetOptions(source: Source.server));
-    final target = before.data();
-    if (target == null) throw const UserProvisionException('المستخدم غير موجود.');
-    if (target['status'] == 'deleted' && target['isActive'] == false) return;
-    if (actorRole == 'municipality_coordinator' &&
-        (target['municipalityCoordinatorId'] != actorId ||
-         !const ['worker', 'group_supervisor'].contains(target['role']))) {
-      throw const UserProvisionException('لا يمكن حذف مستخدم خارج نطاق البلدية.');
-    }
-    await _updateWorkforceProfile(uid, {
-      'isActive': false,
-      'status': 'deleted',
-      'updatedBy': actorId,
-      'updatedAt': FieldValue.serverTimestamp(),
-    });
-    final verified = await ref.get(const GetOptions(source: Source.server));
-    if (verified.data()?['isActive'] != false ||
-        verified.data()?['status'] != 'deleted') {
-      throw const UserProvisionException('لم يؤكد Firebase إخفاء المستخدم وتعطيله.');
+    try {
+      final functions = FirebaseFunctions.instanceFor(region: 'us-central1');
+      final result = await functions
+          .httpsCallable('deleteManagedUser', options: HttpsCallableOptions(timeout: const Duration(seconds: 125)))
+          .call<Map<String, dynamic>>({'userId': uid});
+      if (result.data['deletedAuth'] != true || result.data['deletedProfile'] != true) {
+        throw const UserProvisionException('لم يؤكد Firebase اكتمال حذف الحساب والملف.');
+      }
+    } on FirebaseFunctionsException catch (error) {
+      throw UserProvisionException(switch (error.code) {
+        'not-found' => 'دالة حذف المستخدم غير متاحة في مشروع Firebase.',
+        'permission-denied' => error.message ?? 'لا تملك صلاحية حذف هذا المستخدم.',
+        'deadline-exceeded' || 'unavailable' => 'تعذر تأكيد الحذف. تحقق من الاتصال وأعد المحاولة.',
+        _ => 'تعذر حذف الحساب: ${error.message ?? error.code}',
+      });
     }
   }
 

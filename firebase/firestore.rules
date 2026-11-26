@@ -962,7 +962,23 @@ service cloud.firestore {
         || row.get('_entity', '') in ['work_report', 'report_approval'];
     }
 
+    function canArchiveGroup() {
+      let group = resource.data;
+      let owner = group.get('municipalityCoordinatorId', group.get('coordinatorId', ''));
+      let municipality = group.get('municipalityName', group.get('municipality', ''));
+      return activeSignedIn() && (isL4() || (isL2() &&
+        (owner == request.auth.uid || (owner == '' && municipality != '' && municipality == userDoc().get('scope', '')))));
+    }
+
     match /operations/{id} {
+      allow update: if resource.data._entity == 'group' && canArchiveGroup()
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['status','isDeleted','isActive','deletedAt','deletedBy','updatedAt'])
+        && request.resource.data.status == 'deleted'
+        && request.resource.data.isDeleted == true && request.resource.data.isActive == false
+        && request.resource.data.deletedBy == request.auth.uid
+        && request.resource.data.deletedAt == request.time && request.resource.data.updatedAt == request.time;
+
       allow read: if operationReadAllowed();
       allow create: if signedIn() && !managedReport(request.resource.data) && (
         (request.resource.data._entity == 'worker'
@@ -995,11 +1011,13 @@ service cloud.firestore {
         // expression limit on real trips and incorrectly denies supervisors.
         (role() == 'group_supervisor' && validSupervisorTripUpdate())
         || (isL4() && (resource.data._entity == 'report' || resource.data._entity == 'user'))
-        || (isL2() && (resource.data._entity == 'group' || resource.data._entity == 'worker' || validOperationsCartAssignmentUpdate(id)))
+        || (isL2() && ((resource.data._entity == 'group' && request.resource.data._entity == 'group'
+          && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['isDeleted','deletedAt','deletedBy'])
+          && request.resource.data.get('status', '') != 'deleted') || resource.data._entity == 'worker' || validOperationsCartAssignmentUpdate(id)))
         || (isL3() && (resource.data._entity == 'heavy_machinery' || resource.data._entity == 'notification' || resource.data._entity == 'report'))
         || (role() == 'group_supervisor' && (resource.data._entity == 'trip_photo' || (resource.data._entity == 'attendance' && userDoc().isActive != false && resource.data.groupId == userDoc().groupId && request.resource.data.groupId == resource.data.groupId && request.resource.data.workerId == resource.data.workerId && request.resource.data.reportedBy == resource.data.reportedBy && resource.data.reportedBy == request.auth.uid && request.resource.data.status in ['present','absent','leave','permission','excused_absence','unexcused_absence','external_task']) || resource.data._entity == 'street_photo' || resource.data._entity == 'notification' || resource.data._entity == 'report'))
       );
-      allow delete: if isL2() && resource.data._entity == 'group';
+      allow delete: if false;
     }
 
     match /admin_requests/{id} {

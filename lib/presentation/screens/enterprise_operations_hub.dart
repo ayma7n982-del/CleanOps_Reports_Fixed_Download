@@ -1126,14 +1126,14 @@ class GroupsCommandCenterPage extends StatelessWidget {
               for (final d in groupsSnap.data!.docs) {
                 final x = d.data();
                 if ('${x['_entity'] ?? ''}' != 'group') continue;
-                if (x['isDeleted'] == true || '${x['status'] ?? ''}'.toLowerCase() == 'deleted') continue;
                 if (u.role == 'municipality_coordinator' && !_belongsToCoordinator(x, u.id, u.scope)) continue;
                 final number = '${x['number'] ?? x['groupNumber'] ?? x['groupId'] ?? ''}'.trim();
                 final name = '${x['name'] ?? x['groupName'] ?? number}'.trim();
-                visible.add({...x, 'id': d.id, '_docId': d.id, '_isSynthetic': false, 'name': name, 'number': number});
                 knownKeys.add(number.toLowerCase());
                 knownKeys.add(name.toLowerCase());
                 knownKeys.add(d.id.toLowerCase());
+                if (x['isDeleted'] == true || x['status'] == 'deleted') continue;
+                visible.add({...x, 'id': d.id, '_docId': d.id, '_isSynthetic': false, 'name': name, 'number': number});
               }
               // Show groups that exist in worker records but were never written to the
               // operations group registry; this is the main legacy/missing-group case.
@@ -1201,11 +1201,11 @@ class GroupsCommandCenterPage extends StatelessWidget {
                           tooltip: 'إدارة المجموعة',
                           onSelected: (v) {
                             if (v == 'edit') _editGroup(context, id, x, u.id, u.scope);
-                            if (v == 'delete') _confirmDeleteGroup(context, id, number, name, count, synthetic);
+                            if (v == 'delete') _confirmDeleteGroup(context, id, number, name, groupMembers.length, u.id);
                           },
                           itemBuilder: (_) => [
                             PopupMenuItem(value: 'edit', child: AppText(synthetic ? 'تسجيل / تعديل المجموعة' : 'تعديل المجموعة')),
-                            if (!synthetic) const PopupMenuItem(value: 'delete', child: AppText('حذف المجموعة')),
+                            if (!synthetic && const ['donor_manager', 'municipality_coordinator'].contains(u.role)) const PopupMenuItem(value: 'delete', child: AppText('حذف المجموعة')),
                           ],
                         ) : null,
                       );
@@ -1307,16 +1307,25 @@ class GroupsCommandCenterPage extends StatelessWidget {
     } finally { number.dispose(); name.dispose(); status.dispose(); }
   }
 
-  Future<void> _confirmDeleteGroup(BuildContext context, String id, String number, String name, int count, bool synthetic) async {
+  Future<void> _confirmDeleteGroup(BuildContext context, String id, String number, String name, int count, String actorId) async {
+    if (count > 0) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: AppText('انقل الأعضاء النشطين إلى مجموعة أخرى قبل حذف المجموعة.')));
+      return;
+    }
     final confirmed = await showDialog<bool>(context: context, builder: (dialogContext) => AlertDialog(
       title: const AppText('تأكيد حذف المجموعة'),
-      content: AppText('سيتم حذف سجل المجموعة «${name.isEmpty ? number : name}». عدد العمال النشطين المرتبطين بها: $count. لن تُحذف سجلات العمال تلقائيًا. هل تريد المتابعة؟'),
+      content: AppText('سيُزال سجل المجموعة «${name.isEmpty ? number : name}» من القائمة النشطة. تبقى سجلاتها التاريخية.'),
       actions: [TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const AppText('إلغاء')), TextButton(onPressed: () => Navigator.pop(dialogContext, true), child: const AppText('حذف', style: TextStyle(color: Colors.red)))],
     ));
     if (confirmed != true || !context.mounted) return;
     try {
-      await FirebaseFirestore.instance.collection('operations').doc(id).delete();
-      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: AppText('تم حذف سجل المجموعة. لم يتم حذف العمال المرتبطين بها.')));
+      final ref = FirebaseFirestore.instance.collection('operations').doc(id);
+      await ref.update({'status': 'deleted', 'isActive': false, 'isDeleted': true,
+        'deletedBy': actorId, 'deletedAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp()});
+      final verified = await ref.get(const GetOptions(source: Source.server));
+      if (verified.data()?['isDeleted'] != true) throw StateError('لم يؤكد Firebase حذف المجموعة.');
+      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: AppText('تم حذف المجموعة من القائمة النشطة وحفظ سجلها التاريخي.')));
     } catch (e) {
       if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: AppText('تعذر حذف المجموعة: $e')));
     }
