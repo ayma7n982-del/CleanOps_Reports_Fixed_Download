@@ -1173,3 +1173,29 @@ test('review snapshots and states are writable only through the report callable'
   await assertSucceeds(setDoc(doc(db('manager'),'operations','generic-note'),{_entity:'report',title:'note'}));
   await assertFails(updateDoc(doc(db('manager'),'operations','generic-note'),{reportKind:'work_report'}));
 });
+
+test('archives a group in scope and preserves its Firestore record', async () => {
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    const admin = ctx.firestore();
+    await setDoc(doc(admin, 'operations', 'group-owned'), {
+      _entity: 'group', status: 'active', isActive: true, isDeleted: false,
+      municipalityCoordinatorId: 'coordinator',
+    });
+    await setDoc(doc(admin, 'operations', 'group-other'), {
+      _entity: 'group', status: 'active', isActive: true, isDeleted: false,
+      municipalityCoordinatorId: 'other-coordinator',
+    });
+  });
+  const archive = (uid) => ({
+    status: 'deleted', isActive: false, isDeleted: true, deletedBy: uid,
+    deletedAt: serverTimestamp(), updatedAt: serverTimestamp(),
+  });
+  const own = doc(db('coordinator'), 'operations', 'group-owned');
+  const other = doc(db('coordinator'), 'operations', 'group-other');
+  await assertFails(deleteDoc(own));
+  await assertFails(updateDoc(other, archive('coordinator')));
+  await assertFails(updateDoc(doc(db('head-a'), 'operations', 'group-owned'), archive('head-a')));
+  await assertSucceeds(updateDoc(own, archive('coordinator')));
+  assert.equal((await getDoc(own)).data().isDeleted, true);
+  await assertSucceeds(updateDoc(doc(db('manager'), 'operations', 'group-other'), archive('manager')));
+});
