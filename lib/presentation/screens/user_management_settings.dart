@@ -92,7 +92,7 @@ class _UserManagementSettingsPageState extends State<UserManagementSettingsPage>
     setState(() => deletingUser = true);
     try {
       await context.read<OperationsAdminService>().deleteManagedUser(id, actorId: actor.id);
-      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: AppText('أكد Firebase حذف حساب الدخول والملف الشخصي.')));
+      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: AppText('عُطّل الحساب وسُجّل طلب الحذف. يكتمل الحذف بعد معالجة الطلب.')));
     } catch (e) {
       if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: AppText('لم يكتمل حذف المستخدم: $e')));
     } finally {
@@ -210,7 +210,7 @@ class _UserManagementSettingsPageState extends State<UserManagementSettingsPage>
                         subtitle: Text('${d.data()['username'] ?? ''} • ${roleNames['${d.data()['role']}'] ?? d.data()['role'] ?? ''}'),
                         trailing: (actor.role == 'donor_manager' || actor.role == 'municipality_coordinator') && d.id != actor.id
                             ? Wrap(children: [
-                                IconButton(tooltip: 'حذف المستخدم', onPressed: deletingUser ? null : () => _confirmDeleteManagedUser(context, d.id, '${d.data()['name'] ?? d.id}', actor), icon: const Icon(Icons.delete_forever_rounded, color: Colors.red)),
+                                IconButton(tooltip: d.data()['status'] == 'pending_deletion' ? 'الحذف قيد المعالجة' : 'حذف المستخدم', onPressed: deletingUser || d.data()['status'] == 'pending_deletion' ? null : () => _confirmDeleteManagedUser(context, d.id, '${d.data()['name'] ?? d.id}', actor), icon: const Icon(Icons.delete_forever_rounded, color: Colors.red)),
                                 Switch(
                                   value: d.data()['isActive'] != false,
                                   onChanged: (v) async {

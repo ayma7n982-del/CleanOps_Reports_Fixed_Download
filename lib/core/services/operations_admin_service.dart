@@ -3,7 +3,6 @@ import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:cloud_functions/cloud_functions.dart';
 import '../models/core_models.dart';
 import 'operational_insights.dart';
 import 'workforce_repository.dart';
@@ -429,22 +428,31 @@ class OperationsAdminService {
         FirebaseAuth.instance.currentUser?.uid != actorId) {
       throw const UserProvisionException('لا توجد صلاحية لحذف هذا الحساب.');
     }
-    try {
-      final functions = FirebaseFunctions.instanceFor(region: 'us-central1');
-      final result = await functions
-          .httpsCallable('deleteManagedUser', options: HttpsCallableOptions(timeout: const Duration(seconds: 125)))
-          .call<Map<String, dynamic>>({'userId': uid});
-      if (result.data['deletedAuth'] != true || result.data['deletedProfile'] != true) {
-        throw const UserProvisionException('لم يؤكد Firebase اكتمال حذف الحساب والملف.');
-      }
-    } on FirebaseFunctionsException catch (error) {
-      throw UserProvisionException(switch (error.code) {
-        'not-found' => 'دالة حذف المستخدم غير متاحة في مشروع Firebase.',
-        'permission-denied' => error.message ?? 'لا تملك صلاحية حذف هذا المستخدم.',
-        'deadline-exceeded' || 'unavailable' => 'تعذر تأكيد الحذف. تحقق من الاتصال وأعد المحاولة.',
-        _ => 'تعذر حذف الحساب: ${error.message ?? error.code}',
+    final profile = _users.doc(uid);
+    final request = firestore.collection('admin_requests').doc();
+    await firestore.runTransaction((transaction) async {
+      final snapshot = await transaction.get(profile);
+      final target = snapshot.data();
+      if (target == null) throw const UserProvisionException('ملف المستخدم غير موجود.');
+      if (target['status'] == 'pending_deletion') return;
+      transaction.set(request, {
+        'id': request.id,
+        'type': 'delete_user',
+        'requestedBy': actorId,
+        'targetUserId': uid,
+        'status': 'pending',
+        'createdAt': FieldValue.serverTimestamp(),
       });
-    }
+      transaction.update(profile, {
+        'status': 'pending_deletion',
+        'isActive': false,
+        'deletionRequestId': request.id,
+        'deletionRequestedBy': actorId,
+        'deletionRequestedAt': FieldValue.serverTimestamp(),
+        'updatedBy': actorId,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+    });
   }
 
   /// Level 4 only: activate / deactivate any account (blocks its next login).
