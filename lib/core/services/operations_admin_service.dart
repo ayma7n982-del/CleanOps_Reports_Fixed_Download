@@ -3,7 +3,6 @@ import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:cloud_functions/cloud_functions.dart';
 import '../models/core_models.dart';
 import 'operational_insights.dart';
 import 'workforce_repository.dart';
@@ -28,8 +27,11 @@ class OperationsAdminService {
   CollectionReference<Map<String, dynamic>> get _dumpsites => firestore.collection('dumpsites');
 
   Stream<QuerySnapshot<Map<String, dynamic>>> activeCycles({String? focusRecordId}) =>
-      focusRecordId == null ? _cycles.limit(50).snapshots()
+      focusRecordId == null ? _cycles.where('status', isEqualTo: 'active').limit(50).snapshots()
           : _cycles.where(FieldPath.documentId, isEqualTo: focusRecordId).snapshots();
+
+  Stream<QuerySnapshot<Map<String, dynamic>>> managedCycles({String? focusRecordId}) =>
+      focusRecordId == null ? _cycles.snapshots() : activeCycles(focusRecordId: focusRecordId);
 
   Stream<QuerySnapshot<Map<String, dynamic>>> dumpsites({bool includeInactive = false, String? focusRecordId}) {
     if (focusRecordId != null) {
@@ -80,6 +82,15 @@ class OperationsAdminService {
   }
 
   Future<void> deleteWorkCycle(String cycleId) async {
+    final assigned = await _users.where('cycleId', isEqualTo: cycleId)
+        .get(const GetOptions(source: Source.server));
+    if (assigned.docs.any((doc) {
+      final user = doc.data();
+      return user['isActive'] != false && user['isDeleted'] != true &&
+          user['status'] != 'deleted' && user['status'] != 'pending_deletion';
+    })) {
+      throw const UserProvisionException('انقل المستخدمين النشطين المرتبطين بالدورة قبل حذفها.');
+    }
     await _cycles.doc(cycleId).delete();
   }
 
@@ -429,33 +440,31 @@ class OperationsAdminService {
         FirebaseAuth.instance.currentUser?.uid != actorId) {
       throw const UserProvisionException('لا توجد صلاحية لحذف هذا الحساب.');
     }
-    final actorSnap = await _users.doc(actorId).get(const GetOptions(source: Source.server));
-    final actorRole = actorSnap.data()?['role'];
-    if (actorSnap.data()?['isActive'] == false ||
-        !const ['donor_manager', 'municipality_coordinator'].contains(actorRole)) {
-      throw const UserProvisionException('حساب المدير غير نشط أو لا يملك صلاحية الحذف.');
-    }
-    final ref = _users.doc(uid);
-    final before = await ref.get(const GetOptions(source: Source.server));
-    final target = before.data();
-    if (target == null) throw const UserProvisionException('المستخدم غير موجود.');
-    if (target['status'] == 'deleted' && target['isActive'] == false) return;
-    if (actorRole == 'municipality_coordinator' &&
-        (target['municipalityCoordinatorId'] != actorId ||
-         !const ['worker', 'group_supervisor'].contains(target['role']))) {
-      throw const UserProvisionException('لا يمكن حذف مستخدم خارج نطاق البلدية.');
-    }
-    await _updateWorkforceProfile(uid, {
-      'isActive': false,
-      'status': 'deleted',
-      'updatedBy': actorId,
-      'updatedAt': FieldValue.serverTimestamp(),
+    final profile = _users.doc(uid);
+    final request = firestore.collection('admin_requests').doc();
+    await firestore.runTransaction((transaction) async {
+      final snapshot = await transaction.get(profile);
+      final target = snapshot.data();
+      if (target == null) throw const UserProvisionException('ملف المستخدم غير موجود.');
+      if (target['status'] == 'pending_deletion') return;
+      transaction.set(request, {
+        'id': request.id,
+        'type': 'delete_user',
+        'requestedBy': actorId,
+        'targetUserId': uid,
+        'status': 'pending',
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+      transaction.update(profile, {
+        'status': 'pending_deletion',
+        'isActive': false,
+        'deletionRequestId': request.id,
+        'deletionRequestedBy': actorId,
+        'deletionRequestedAt': FieldValue.serverTimestamp(),
+        'updatedBy': actorId,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
     });
-    final verified = await ref.get(const GetOptions(source: Source.server));
-    if (verified.data()?['isActive'] != false ||
-        verified.data()?['status'] != 'deleted') {
-      throw const UserProvisionException('لم يؤكد Firebase إخفاء المستخدم وتعطيله.');
-    }
   }
 
   /// Level 4 only: activate / deactivate any account (blocks its next login).

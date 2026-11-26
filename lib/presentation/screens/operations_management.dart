@@ -85,6 +85,8 @@ class _CyclesTabState extends State<_CyclesTab> with RecoverableForm<_CyclesTab>
   DateTime start = DateTime.now();
   DateTime end = DateTime.now().add(const Duration(days: 1));
   bool busy = false;
+  bool showArchived = false;
+  final changingCycles = <String>{};
 
   @override
   void dispose() {
@@ -175,8 +177,15 @@ class _CyclesTabState extends State<_CyclesTab> with RecoverableForm<_CyclesTab>
         ),
         const SizedBox(height: 14),
         ],
+        if (widget.focusRecordId == null)
+          SwitchListTile(
+            title: const AppText('الدورات المؤرشفة'),
+            subtitle: AppText(showArchived ? 'عرض الأرشيف' : 'عرض الدورات التشغيلية'),
+            value: showArchived,
+            onChanged: (value) => setState(() => showArchived = value),
+          ),
         StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-          stream: svc.activeCycles(focusRecordId: widget.focusRecordId),
+          stream: svc.managedCycles(focusRecordId: widget.focusRecordId),
           builder: (_, snap) {
             if (snap.hasError) {
               return Card(
@@ -196,12 +205,13 @@ class _CyclesTabState extends State<_CyclesTab> with RecoverableForm<_CyclesTab>
             }
             if (snap.connectionState == ConnectionState.waiting && !snap.hasData) return const Padding(padding: EdgeInsets.all(28), child: Center(child: CircularProgressIndicator()));
             if (!snap.hasData) return const Card(child: Padding(padding: EdgeInsets.all(18), child: Center(child: AppText('تعذر تحميل الدورات. تحقق من الاتصال ثم أعد المحاولة.'))));
-            final docs = [...snap.data!.docs]..sort((a, b) =>
+            final docs = snap.data!.docs.where((d) => widget.focusRecordId != null ||
+                (d.data()['status'] == 'archived') == showArchived).toList()..sort((a, b) =>
                 '${a.data()['nameAr'] ?? a.data()['name'] ?? a.id}'.compareTo('${b.data()['nameAr'] ?? b.data()['name'] ?? b.id}'));
-            if (docs.isEmpty) return const Card(child: Padding(padding: EdgeInsets.all(18), child: Center(child: AppText('لا توجد دورات مسجلة بعد.'))));
+            if (docs.isEmpty) return Card(child: Padding(padding: const EdgeInsets.all(18), child: Center(child: AppText(showArchived ? 'لا توجد دورات مؤرشفة.' : 'لا توجد دورات تشغيلية.'))));
             return AiSectionCard(
               title: 'سجل الدورات',
-              subtitle: 'الدورة النشطة والدورات المؤرشفة',
+              subtitle: showArchived ? 'تبقى البيانات التاريخية متاحة للتقارير' : 'دورات العمل المتاحة للتشغيل',
               feature: 'reports',
               child: Column(
                 children: docs.map((d) {
@@ -233,19 +243,19 @@ class _CyclesTabState extends State<_CyclesTab> with RecoverableForm<_CyclesTab>
                             color: active ? aiGreen.withOpacity(.12) : Colors.grey.withOpacity(.12),
                             borderRadius: BorderRadius.circular(20),
                           ),
-                          child: AppText(active ? 'ACTIVE' : 'ARCHIVED', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: active ? Colors.green : Colors.grey)),
+                          child: AppText(active ? 'نشطة' : x['status'] == 'archived' ? 'مؤرشفة' : 'مغلقة', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: active ? Colors.green : Colors.grey)),
                         ),
                         if (active)
                           IconButton(
-                            tooltip: 'Archive',
-                            onPressed: () => svc.archiveCycle(d.id, archivedBy: context.read<AuthService>().currentUser!.id),
+                            tooltip: 'أرشفة الدورة',
+                            onPressed: changingCycles.contains(d.id) ? null : () => _archiveCycle(d.id),
                             icon: const Icon(Icons.archive_outlined),
                           ),
                         if (context.read<AuthService>().currentUser!.can('cycle', 'delete'))
                           IconButton(
                             tooltip: tr('حذف'),
                             color: Colors.red,
-                            onPressed: () => _confirmDeleteCycle(context, d.id),
+                            onPressed: changingCycles.contains(d.id) ? null : () => _confirmDeleteCycle(context, d.id),
                             icon: const Icon(Icons.delete, color: Colors.red),
                           ),
                       ],
@@ -260,12 +270,28 @@ class _CyclesTabState extends State<_CyclesTab> with RecoverableForm<_CyclesTab>
     ));
   }
 
+  Future<void> _archiveCycle(String id) async {
+    if (changingCycles.contains(id)) return;
+    setState(() => changingCycles.add(id));
+    try {
+      final actor = context.read<AuthService>().currentUser!;
+      await context.read<OperationsAdminService>().archiveCycle(id, archivedBy: actor.id);
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: AppText('أُرشفت الدورة وتبقى بياناتها متاحة في التقارير.')));
+    } catch (error) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: AppText('تعذرت أرشفة الدورة: $error')));
+    } finally {
+      if (mounted) setState(() => changingCycles.remove(id));
+    }
+  }
+
   Future<void> _confirmDeleteCycle(BuildContext context, String id) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: AppText(tr('تأكيد الحذف')),
-        content: AppText(tr('هل أنت متأكد من أنك تريد حذف هذه البيانات نهائياً؟ قد يؤثر ذلك على العمال المرتبطين بها.')),
+        content: const AppText('سيُحذف تعريف الدورة نهائيًا. تبقى سجلات العمل والحضور والنقلات التاريخية. اختر الأرشفة إذا كنت تريد الاحتفاظ بتعريف الدورة في سجل الدورات.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(false),
@@ -278,7 +304,8 @@ class _CyclesTabState extends State<_CyclesTab> with RecoverableForm<_CyclesTab>
         ],
       ),
     );
-    if (confirmed != true || !mounted) return;
+    if (confirmed != true || !mounted || changingCycles.contains(id)) return;
+    setState(() => changingCycles.add(id));
     try {
       await context.read<OperationsAdminService>().deleteWorkCycle(id);
       if (mounted) {
@@ -288,6 +315,8 @@ class _CyclesTabState extends State<_CyclesTab> with RecoverableForm<_CyclesTab>
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: AppText('${tr('تعذر الحذف')}: $e')));
       }
+    } finally {
+      if (mounted) setState(() => changingCycles.remove(id));
     }
   }
 }

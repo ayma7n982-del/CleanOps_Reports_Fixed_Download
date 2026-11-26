@@ -81,6 +81,25 @@ try {
       continue;
     }
 
+    const operations = db.collection('operations');
+    const [linked, canonical] = await Promise.all([
+      operations.where('userId', '==', targetId).get(),
+      operations.doc(targetId).get(),
+    ]);
+    const projections = new Map();
+    for (const record of [...linked.docs, canonical]) {
+      if (record.data()?._entity === 'worker') projections.set(record.id, record.ref);
+    }
+    const refs = [...projections.values()];
+    for (let offset = 0; offset < refs.length; offset += 400) {
+      const batch = db.batch();
+      for (const ref of refs.slice(offset, offset + 400)) {
+        batch.update(ref, { isActive: false, isDeleted: true, status: 'deleted',
+          deletedAt: FieldValue.serverTimestamp() });
+      }
+      await batch.commit();
+    }
+
     let deletedAuth = false;
     try {
       await auth.deleteUser(targetId);

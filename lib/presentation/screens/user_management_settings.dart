@@ -81,7 +81,7 @@ class _UserManagementSettingsPageState extends State<UserManagementSettingsPage>
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const AppText('تأكيد حذف المستخدم'),
-        content: AppText('هل تريد تعطيل المستخدم "$name" وإخفاءه من النظام؟ سيبقى حسابه محفوظًا للأرشفة، لكنه لن يُحسب ضمن المستخدمين النشطين.'),
+        content: AppText('هل تريد حذف حساب الدخول والملف الشخصي للمستخدم "$name" نهائيًا؟ تبقى سجلات الحضور والعمل التاريخية.'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const AppText('إلغاء')),
           TextButton(onPressed: () => Navigator.pop(dialogContext, true), child: const AppText('حذف', style: TextStyle(color: Colors.red))),
@@ -92,7 +92,7 @@ class _UserManagementSettingsPageState extends State<UserManagementSettingsPage>
     setState(() => deletingUser = true);
     try {
       await context.read<OperationsAdminService>().deleteManagedUser(id, actorId: actor.id);
-      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: AppText('تم تعطيل المستخدم وإخفاؤه من النظام بعد تأكيد Firebase.')));
+      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: AppText('عُطّل الحساب وسُجّل طلب الحذف. يكتمل الحذف بعد معالجة الطلب.')));
     } catch (e) {
       if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: AppText('لم يكتمل حذف المستخدم: $e')));
     } finally {
@@ -158,7 +158,10 @@ class _UserManagementSettingsPageState extends State<UserManagementSettingsPage>
                         StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
                           stream: FirebaseFirestore.instance.collection('operations').where('_entity', isEqualTo: 'group').limit(200).snapshots(),
                           builder: (context, groupSnap) {
-                            final docs = groupSnap.data?.docs ?? const <QueryDocumentSnapshot<Map<String, dynamic>>>[];
+                            final docs = (groupSnap.data?.docs ?? const <QueryDocumentSnapshot<Map<String, dynamic>>>[])
+                                .where((doc) => doc.data()['isDeleted'] != true &&
+                                    doc.data()['isActive'] != false && doc.data()['status'] != 'deleted')
+                                .toList();
                             final ids = docs.map((d) => d.id).toSet();
                             return Column(children: [
                               DropdownButtonFormField<String>(
@@ -210,7 +213,7 @@ class _UserManagementSettingsPageState extends State<UserManagementSettingsPage>
                         subtitle: Text('${d.data()['username'] ?? ''} • ${roleNames['${d.data()['role']}'] ?? d.data()['role'] ?? ''}'),
                         trailing: (actor.role == 'donor_manager' || actor.role == 'municipality_coordinator') && d.id != actor.id
                             ? Wrap(children: [
-                                IconButton(tooltip: 'حذف المستخدم', onPressed: deletingUser ? null : () => _confirmDeleteManagedUser(context, d.id, '${d.data()['name'] ?? d.id}', actor), icon: const Icon(Icons.delete_forever_rounded, color: Colors.red)),
+                                IconButton(tooltip: d.data()['status'] == 'pending_deletion' ? 'الحذف قيد المعالجة' : 'حذف المستخدم', onPressed: deletingUser || d.data()['status'] == 'pending_deletion' ? null : () => _confirmDeleteManagedUser(context, d.id, '${d.data()['name'] ?? d.id}', actor), icon: const Icon(Icons.delete_forever_rounded, color: Colors.red)),
                                 Switch(
                                   value: d.data()['isActive'] != false,
                                   onChanged: (v) async {
