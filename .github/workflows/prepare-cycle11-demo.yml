@@ -1,0 +1,28 @@
+name: Prepare Cycle 11 demo in Firebase
+on:
+  push:
+    branches: [admin/prepare-cycle11-demo-20261126]
+    paths:
+      - 'scripts/prepare_cycle11_demo.mjs'
+      - '.github/workflows/prepare-cycle11-demo.yml'
+permissions:
+  contents: read
+concurrency:
+  group: firebase-cycle11-demo
+  cancel-in-progress: false
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    environment: firebase-production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --check scripts/prepare_cycle11_demo.mjs
+      - run: npm install --no-save firebase-admin@13
+      - name: Populate and verify only the Cycle 11 demo
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: node scripts/prepare_cycle11_demo.mjs
