@@ -158,7 +158,10 @@ class _UserManagementSettingsPageState extends State<UserManagementSettingsPage>
                         StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
                           stream: FirebaseFirestore.instance.collection('operations').where('_entity', isEqualTo: 'group').limit(200).snapshots(),
                           builder: (context, groupSnap) {
-                            final docs = groupSnap.data?.docs ?? const <QueryDocumentSnapshot<Map<String, dynamic>>>[];
+                            final docs = (groupSnap.data?.docs ?? const <QueryDocumentSnapshot<Map<String, dynamic>>>[])
+                                .where((doc) => doc.data()['isDeleted'] != true &&
+                                    doc.data()['isActive'] != false && doc.data()['status'] != 'deleted')
+                                .toList();
                             final ids = docs.map((d) => d.id).toSet();
                             return Column(children: [
                               DropdownButtonFormField<String>(

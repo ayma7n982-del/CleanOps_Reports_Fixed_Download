@@ -27,7 +27,7 @@ class OperationsAdminService {
   CollectionReference<Map<String, dynamic>> get _dumpsites => firestore.collection('dumpsites');
 
   Stream<QuerySnapshot<Map<String, dynamic>>> activeCycles({String? focusRecordId}) =>
-      focusRecordId == null ? _cycles.limit(50).snapshots()
+      focusRecordId == null ? _cycles.where('status', isEqualTo: 'active').limit(50).snapshots()
           : _cycles.where(FieldPath.documentId, isEqualTo: focusRecordId).snapshots();
 
   Stream<QuerySnapshot<Map<String, dynamic>>> managedCycles({String? focusRecordId}) =>
