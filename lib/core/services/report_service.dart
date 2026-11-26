@@ -154,7 +154,12 @@ class ReportService {
   final DataService data;
   ReportService(this.data);
 
+  List<Map<String, dynamic>>? _verifiedOperations;
+  Object? _verifiedScope;
+  DateTime? _verifiedAt;
+
   Future<ReportSnapshot> load({
+    bool reuseOperations = false,
     int days = 7,
     DateTime? startDate,
     DateTime? endDate,
@@ -181,8 +186,17 @@ class ReportService {
     final groups = <String>{}, municipalities = <String>{}, workers = <String>{}, supervisors = <String>{};
 
     final refreshBefore = data.lastDataRefresh;
-    final cached = await data.refreshOperations(limit: 10000);
-    final refreshed = data.online && data.lastDataRefresh != refreshBefore;
+    final scope = (user?.id, user?.role, user?.scope, user?.groupId);
+    final reuse = reuseOperations && data.online && _verifiedScope == scope &&
+        identical(data.operations, _verifiedOperations) && _verifiedAt != null &&
+        now.difference(_verifiedAt!) < const Duration(seconds: 60);
+    final cached = reuse ? data.operations : await data.refreshOperations(limit: 10000);
+    final refreshed = reuse || (data.online && data.lastDataRefresh != refreshBefore);
+    if (!reuse && reuseOperations) {
+      _verifiedOperations = refreshed ? cached : null;
+      _verifiedScope = scope;
+      _verifiedAt = refreshed ? DateTime.now() : null;
+    }
     var sourceMayBeIncomplete = data.online && (data.operationsCapped || !refreshed);
     final cycleKeys = <String>{};
     final cycleIdsByName = <String, String>{};

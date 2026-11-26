@@ -75,6 +75,9 @@ class _UserManagementSettingsPageState extends State<UserManagementSettingsPage>
   }
 
   bool deletingUser = false;
+  (String, String, String?)? _usersScope;
+  late Stream<QuerySnapshot<Map<String, dynamic>>> _users;
+
 
   Future<void> _confirmDeleteManagedUser(BuildContext context, String id, String name, AppUser actor) async {
     final confirmed = await showDialog<bool>(
@@ -106,6 +109,12 @@ class _UserManagementSettingsPageState extends State<UserManagementSettingsPage>
     if (actor == null || (actor.role != 'donor_manager' && actor.role != 'municipality_coordinator')) {
       return const Scaffold(body: Center(child: AppText('لا تملك صلاحية إدارة المستخدمين.')));
     }
+    final scope = (actor.id, actor.role, widget.focusRecordId);
+    if (_usersScope != scope) {
+      _usersScope = scope;
+      _users = context.read<OperationsAdminService>().managedUsers(
+          actorId: actor.id, actorRole: actor.role, focusRecordId: widget.focusRecordId);
+    }
     final roles = actor.role == 'donor_manager'
         ? const ['donor_manager', 'jsc_coordinator', 'municipality_coordinator']
         : const ['group_supervisor', 'worker'];
@@ -117,9 +126,10 @@ class _UserManagementSettingsPageState extends State<UserManagementSettingsPage>
       textDirection: context.watch<LocaleController>().isArabic ? TextDirection.rtl : TextDirection.ltr,
       child: Scaffold(
         appBar: AppBar(bottom: const AppNavigationBar(), title: const AppText('إدارة المستخدمين'), actions: const [Padding(padding: EdgeInsetsDirectional.only(end: 14), child: AiFeatureIcon('users', size: 16))]),
-        body: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
-          children: [
+        body: CustomScrollView(slivers: [
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+            sliver: SliverList.list(children: [
           if (widget.focusRecordId == null) ...[
             AiHero(user: actor, eyebrow: 'إدارة المستخدمين', title: 'إنشاء حساب تشغيلي كامل', subtitle: 'أنشئ حسابًا وحدد دوره ونطاق عمله. تُحمى بيانات تسجيل الدخول تلقائيًا.'),
             const SizedBox(height: 14),
@@ -192,25 +202,32 @@ class _UserManagementSettingsPageState extends State<UserManagementSettingsPage>
             const AppText('الأمان: كلمة المرور تُرسل مباشرة إلى Firebase Authentication ولا تُخزن في Firestore أو LocalStore.', style: TextStyle(color: cleanOpsMuted, fontSize: 11)),
             const SizedBox(height: 16),
           ],
-            AiSectionCard(
-              title: 'المستخدمون (تحديث مباشر)', feature: 'users',
-              child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                stream: context.read<OperationsAdminService>().managedUsers(actorId: actor.id, actorRole: actor.role, focusRecordId: widget.focusRecordId),
+            const ListTile(title: AppText('المستخدمون (تحديث مباشر)')),
+          ])),
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 120),
+            sliver: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                key: ValueKey(scope),
+                stream: _users,
                 builder: (_, snap) {
-                  if (snap.hasError) return AppText('تعذر تحميل المستخدمين: ${snap.error}');
-                  if (!snap.hasData) return const Center(child: Padding(padding: EdgeInsets.all(12), child: CircularProgressIndicator()));
+                  if (snap.hasError) return SliverToBoxAdapter(child: AppText('تعذر تحميل المستخدمين: ${snap.error}'));
+                  if (!snap.hasData) return const SliverToBoxAdapter(child: Center(child: CircularProgressIndicator()));
                   final docs = snap.data!.docs.where((d) => d.data()['status'] != 'deleted').toList()
                     ..sort((a, b) => '${a.data()['name'] ?? ''}'.compareTo('${b.data()['name'] ?? ''}'));
-                  if (docs.isEmpty) return const AppText('لا يوجد مستخدمون بعد.');
-                  return Column(children: [
-                    for (final d in docs)
-                      ListTile(
+                  if (docs.isEmpty) return const SliverToBoxAdapter(child: AppText('لا يوجد مستخدمون بعد.'));
+                  return SliverList.builder(
+                    itemCount: docs.length,
+                    itemBuilder: (context, index) {
+                      final d = docs[index];
+                      return ListTile(
                         dense: true,
                         contentPadding: EdgeInsets.zero,
-                        leading: Icon(d.data()['isActive'] == false ? Icons.person_off_rounded : Icons.person_rounded,
-                            color: d.data()['isActive'] == false ? Colors.red : Colors.green),
                         title: Text('${d.data()['name'] ?? d.id}'),
-                        subtitle: Text('${d.data()['username'] ?? ''} • ${roleNames['${d.data()['role']}'] ?? d.data()['role'] ?? ''}'),
+                        subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          Text('${roleNames['${d.data()['role']}'] ?? d.data()['role'] ?? ''}'),
+                          Text('${d.data()['username'] ?? ''}', textDirection: TextDirection.ltr,
+                              maxLines: 1, overflow: TextOverflow.ellipsis),
+                        ]),
                         trailing: (actor.role == 'donor_manager' || actor.role == 'municipality_coordinator') && d.id != actor.id
                             ? Wrap(children: [
                                 IconButton(tooltip: d.data()['status'] == 'pending_deletion' ? 'الحذف قيد المعالجة' : 'حذف المستخدم', onPressed: deletingUser || d.data()['status'] == 'pending_deletion' ? null : () => _confirmDeleteManagedUser(context, d.id, '${d.data()['name'] ?? d.id}', actor), icon: const Icon(Icons.delete_forever_rounded, color: Colors.red)),
@@ -225,13 +242,13 @@ class _UserManagementSettingsPageState extends State<UserManagementSettingsPage>
                                   })
                               ])
                             : null,
-                      ),
-                  ]);
+                      );
+                    },
+                  );
                 },
               ),
             ),
-          ],
-        ),
+        ]),
       ),
     );
   }

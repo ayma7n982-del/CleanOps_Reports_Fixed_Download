@@ -50,11 +50,13 @@ class _ReportsCenterState extends State<ReportsCenterScreen> {
   bool _loading = true, _previewing = false;
 
   @override void initState() { super.initState(); _reload(); }
+  late ReportService _reports = ReportService(context.read<DataService>());
+
   void _reload() {
-    final data = context.read<DataService>(); final user = context.read<AuthService>().currentUser;
+    final user = context.read<AuthService>().currentUser;
     _loading = true;
     _recordsPage = 0;
-    final request = ReportService(data).load(days: days, startDate: startDate, endDate: endDate, user: user, municipality: municipality, group: group, cycle: cycle, reportType: reportType, reportId: 'operational-v2', search: search, containerStatus: reportType == 'containers' ? containerStatus : 'all');
+    final request = _reports.load(reuseOperations: true, days: days, startDate: startDate, endDate: endDate, user: user, municipality: municipality, group: group, cycle: cycle, reportType: reportType, reportId: 'operational-v2', search: search, containerStatus: reportType == 'containers' ? containerStatus : 'all');
     future = request;
     request.then((snapshot) {
       if (mounted && identical(future, request)) setState(() { lastSnapshot = snapshot; _loading = false; });
@@ -65,6 +67,11 @@ class _ReportsCenterState extends State<ReportsCenterScreen> {
   void _refresh() {
     if (!mounted) return;
     setState(_reload);
+  }
+
+  void _refreshSource() {
+    _reports = ReportService(context.read<DataService>());
+    _refresh();
   }
 
   void _applyPeriodPreset(String preset) {
@@ -180,7 +187,7 @@ class _ReportsCenterState extends State<ReportsCenterScreen> {
     return Directionality(textDirection: rtl ? TextDirection.rtl : TextDirection.ltr, child: Scaffold(
       appBar: widget.embedded ? null : AppBar(bottom: const AppNavigationBar(), title: const AppText('التقارير')),
       bottomNavigationBar: widget.embedded ? null : _quickPreview(),
-      body: RefreshIndicator(onRefresh: () async { _refresh(); await future; }, child: ListView(
+      body: RefreshIndicator(onRefresh: () async { _refreshSource(); await future; }, child: ListView(
         padding: const EdgeInsets.fromLTRB(14, 14, 14, 120), children: [
           _hero(lastSnapshot),
           const SizedBox(height: 12),
@@ -190,7 +197,7 @@ class _ReportsCenterState extends State<ReportsCenterScreen> {
           const SizedBox(height: 12),
           FutureBuilder<ReportSnapshot>(future: future, builder: (context, snap) {
             if (snap.connectionState != ConnectionState.done) return const Padding(padding: EdgeInsets.all(24), child: Center(child: CircularProgressIndicator()));
-            if (snap.hasError) return Column(children: [const AppText('تعذر تحميل التقارير.'), TextButton(onPressed: _refresh, child: const AppText('إعادة المحاولة'))]);
+            if (snap.hasError) return Column(children: [const AppText('تعذر تحميل التقارير.'), TextButton(onPressed: _refreshSource, child: const AppText('إعادة المحاولة'))]);
             if (!snap.hasData) return const SizedBox.shrink();
             return _body(snap.data!);
           }),
@@ -214,33 +221,32 @@ class _ReportsCenterState extends State<ReportsCenterScreen> {
   }
 
   Widget _reportTabs() {
-    const reports = <(String, String, IconData)>[
-      ('all', 'نظرة عامة', Icons.dashboard_customize_rounded),
-      ('trips', 'الترحيلات', Icons.local_shipping_outlined),
-      ('containers', 'الحاويات', Icons.delete_sweep_outlined),
-      ('absence', 'الحضور والغياب', Icons.fact_check_outlined),
-      ('work', 'العمل والتشغيل', Icons.assignment_turned_in_outlined),
-      ('municipalities', 'البلديات', Icons.location_city_outlined),
-      ('groups', 'المجموعات', Icons.groups_outlined),
-      ('cycles', 'دورات العمل', Icons.event_repeat_outlined),
+    const reports = <(String, String, String, String, IconData)>[
+      ('all', 'نظرة عامة', 'ملخص المؤشرات', 'reports', Icons.dashboard_customize_rounded),
+      ('trips', 'الترحيلات', 'رحلات نقل النفايات', 'trips', Icons.local_shipping_outlined),
+      ('containers', 'الحاويات', 'الحالة والامتلاء', 'containers', Icons.delete_sweep_outlined),
+      ('absence', 'الحضور والغياب', 'السجلات ونسب الالتزام', 'attendance', Icons.fact_check_outlined),
+      ('work', 'العمل والتشغيل', 'الأنشطة اليومية', 'operations', Icons.assignment_turned_in_outlined),
+      ('municipalities', 'البلديات', 'النتائج حسب البلدية', 'dumpsite', Icons.location_city_outlined),
+      ('groups', 'المجموعات', 'النتائج حسب المجموعة', 'workers', Icons.groups_outlined),
+      ('cycles', 'دورات العمل', 'المتابعة حسب الدورة', 'cycle', Icons.event_repeat_outlined),
     ];
     return AiSectionCard(
       title: '1. اختر نوع التقرير',
-      subtitle: 'اختر تقريرًا واحدًا؛ ستتغير المؤشرات والنتائج تلقائيًا.',
       feature: 'reports',
-      child: Wrap(
-        spacing: 8,
-        runSpacing: 8,
-        children: [
-          for (final item in reports)
-            ChoiceChip(
-              avatar: Icon(item.$3, size: 18),
-              label: AppText(item.$2),
-              selected: reportType == item.$1,
-              onSelected: (_) => _selectReport(item.$1),
-            ),
-        ],
-      ),
+      child: EcoShortcutGrid(cards: [
+        for (final item in reports)
+          EcoShortcutCard(
+            title: item.$2,
+            subtitle: item.$3,
+            feature: item.$4,
+            icon: item.$5,
+            selected: reportType == item.$1,
+            onTap: () {
+              if (reportType != item.$1) _selectReport(item.$1);
+            },
+          ),
+      ]),
     );
   }
 
@@ -279,7 +285,7 @@ class _ReportsCenterState extends State<ReportsCenterScreen> {
       const SizedBox(height: 3),
       AppText(s.filterLabel(), style: const TextStyle(color: cleanOpsMuted, fontSize: 12)),
     ])),
-    IconButton(tooltip: 'تحديث النتائج', onPressed: _refresh, icon: const Icon(Icons.refresh_rounded)),
+    IconButton(tooltip: 'تحديث النتائج', onPressed: _refreshSource, icon: const Icon(Icons.refresh_rounded)),
   ]);
 
   Widget _records(ReportSnapshot s) {
@@ -324,7 +330,7 @@ class _ReportsCenterState extends State<ReportsCenterScreen> {
         AppText(s?.periodLabel ?? _periodPresetLabel(),
             style: const TextStyle(color: Color(0xFFFFDA90))),
       ])),
-      IconButton(onPressed: _refresh,
+      IconButton(onPressed: _refreshSource,
           icon: const Icon(Icons.refresh, color: Colors.white)),
     ]),
   );
@@ -450,12 +456,11 @@ class _ReportsCenterState extends State<ReportsCenterScreen> {
 
   Widget _filters(ReportSnapshot? s) {
     final filterCount = _activeFilterCount;
-    final advancedSelected = group != null || cycle != null;
     return AiSectionCard(
       title: '2. حدّد النطاق',
       subtitle: reportType == 'containers'
           ? 'تعرض الحاويات وفق آخر حالة مسجلة.'
-          : 'ابدأ بالفترة والموقع، واستخدم الخيارات الإضافية عند الحاجة.',
+          : 'اختر الفترة والبلدية والمجموعة والدورة.',
       feature: 'reports',
       trailing: filterCount == 0 ? null : Chip(label: AppText('$filterCount فلاتر نشطة')),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -498,11 +503,17 @@ class _ReportsCenterState extends State<ReportsCenterScreen> {
           ]),
         const SizedBox(height: 12),
         Wrap(spacing: 10, runSpacing: 10, crossAxisAlignment: WrapCrossAlignment.center, children: [
+          if (reportType != 'containers') ...[
+            _dateField(true),
+            _dateField(false),
+          ],
+          _drop<String>('لغة التصدير', exportLanguage, const {'ar':'العربية','en':'English'},
+              (value) { if (value != null) setState(() => exportLanguage = value); }),
           _drop<String>(
-            'الموقع',
+            'البلدية',
             municipality,
             <String?,String>{
-              null:'كل المواقع المتاحة',
+              null:'كل البلديات المتاحة',
               if (municipality != null) municipality!:municipality!,
               ...{for(final x in s?.availableMunicipalities ?? <String>[]) x:x},
             },
@@ -542,39 +553,29 @@ class _ReportsCenterState extends State<ReportsCenterScreen> {
         ]),
         if (filterCount > 0) ...[const SizedBox(height: 12), _filterChips()],
         const SizedBox(height: 4),
-        ExpansionTile(
-          key: ValueKey('$reportType-$advancedSelected'),
-          initiallyExpanded: advancedSelected,
-          tilePadding: EdgeInsets.zero,
-          childrenPadding: const EdgeInsets.only(bottom: 8),
-          title: const AppText('تصفية حسب المجموعة والدورة'),
-          subtitle: const AppText('اختياري — اتركها كما هي لعرض الكل'),
-          children: [
-            Wrap(spacing: 8, runSpacing: 8, children: [
-              _drop<String>(
-                'المجموعة',
-                group,
-                <String?,String>{
-                  null:'كل المجموعات',
-                  if (group != null) group!:group!,
-                  ...{for(final x in _availableGroups()) x:x},
-                },
-                (v) { setState(() => group = v); _refresh(); },
-              ),
-              if (reportType != 'containers')
-                _drop<String>(
-                  'الدورة',
-                  cycle,
-                  <String?,String>{
-                    null:'كل الدورات',
-                    if (cycle != null) cycle!:cycle!,
-                    ...{for(final x in s?.cycles ?? <String>[]) x:x},
-                  },
-                  (v) { setState(() => cycle = v); _refresh(); },
-                ),
-            ]),
-          ],
-        ),
+        Wrap(spacing: 8, runSpacing: 8, children: [
+          _drop<String>(
+            'المجموعة',
+            group,
+            <String?,String>{
+              null:'كل المجموعات',
+              if (group != null) group!:group!,
+              ...{for(final x in _availableGroups()) x:x},
+            },
+            (v) { setState(() => group = v); _refresh(); },
+          ),
+          if (reportType != 'containers')
+            _drop<String>(
+              'الدورة',
+              cycle,
+              <String?,String>{
+                null:'كل الدورات',
+                if (cycle != null) cycle!:cycle!,
+                ...{for(final x in s?.cycles ?? <String>[]) x:x},
+              },
+              (v) { setState(() => cycle = v); _refresh(); },
+            ),
+        ]),
         Row(children: [
           Expanded(child: AppText(
             reportType == 'containers'
@@ -593,14 +594,39 @@ class _ReportsCenterState extends State<ReportsCenterScreen> {
     );
   }
 
+  Widget _dateField(bool from) {
+    final value = from ? startDate : endDate;
+    final label = from ? tr('من تاريخ') : tr('إلى تاريخ');
+    return OutlinedButton.icon(
+      icon: const Icon(Icons.calendar_month_outlined),
+      label: Text('$label: ${MaterialLocalizations.of(context).formatCompactDate(value)}'),
+      onPressed: () async {
+        final date = await showDatePicker(context: context, initialDate: value,
+            firstDate: DateTime(2020), lastDate: DateTime(DateTime.now().year + 5, 12, 31));
+        if (date == null || !mounted) return;
+        setState(() {
+          periodPreset = 'custom';
+          if (from) {
+            startDate = date;
+            if (endDate.isBefore(date)) endDate = date;
+          } else {
+            endDate = date;
+            if (startDate.isAfter(date)) startDate = date;
+          }
+          _reload();
+        });
+      },
+    );
+  }
+
   List<String> _availableGroups() {
     final ops = context.read<DataService>().operations;
     final values = <String>{};
+    final currentUser = context.read<AuthService>().currentUser;
+    if (currentUser == null) return [];
     for (final e in ops) {
       if (e['isDeleted'] == true) continue;
       if (e['_entity'] != 'group' && e['_entity'] != 'trip' && e['_entity'] != 'attendance' && e['_entity'] != 'work_report' && !(e['_entity'] == 'report' && e['reportKind'] == 'work_report')) continue;
-      final currentUser = context.read<AuthService>().currentUser;
-      if (currentUser == null) continue;
       if (currentUser.role == 'municipality_coordinator') {
         final owner = '${e['municipalityCoordinatorId'] ?? ''}';
         final scope = currentUser.scope.trim();
