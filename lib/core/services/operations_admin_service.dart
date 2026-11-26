@@ -30,6 +30,9 @@ class OperationsAdminService {
       focusRecordId == null ? _cycles.limit(50).snapshots()
           : _cycles.where(FieldPath.documentId, isEqualTo: focusRecordId).snapshots();
 
+  Stream<QuerySnapshot<Map<String, dynamic>>> managedCycles({String? focusRecordId}) =>
+      focusRecordId == null ? _cycles.snapshots() : activeCycles(focusRecordId: focusRecordId);
+
   Stream<QuerySnapshot<Map<String, dynamic>>> dumpsites({bool includeInactive = false, String? focusRecordId}) {
     if (focusRecordId != null) {
       return _dumpsites.where(FieldPath.documentId, isEqualTo: focusRecordId).snapshots();
@@ -79,6 +82,15 @@ class OperationsAdminService {
   }
 
   Future<void> deleteWorkCycle(String cycleId) async {
+    final assigned = await _users.where('cycleId', isEqualTo: cycleId)
+        .get(const GetOptions(source: Source.server));
+    if (assigned.docs.any((doc) {
+      final user = doc.data();
+      return user['isActive'] != false && user['isDeleted'] != true &&
+          user['status'] != 'deleted' && user['status'] != 'pending_deletion';
+    })) {
+      throw const UserProvisionException('انقل المستخدمين النشطين المرتبطين بالدورة قبل حذفها.');
+    }
     await _cycles.doc(cycleId).delete();
   }
 

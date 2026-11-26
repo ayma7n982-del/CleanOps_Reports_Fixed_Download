@@ -101,8 +101,36 @@ class _ReportsCenterState extends State<ReportsCenterScreen> {
     _refresh();
   }
 
+  Future<void> _pickReportYear() async {
+    final now = DateTime.now();
+    final selected = await showDialog<DateTime>(
+      context: context,
+      builder: (dialog) => AlertDialog(
+        title: const AppText('اختر سنة التقرير'),
+        content: SizedBox(
+          width: 320,
+          height: 280,
+          child: YearPicker(
+            firstDate: DateTime(2020),
+            lastDate: DateTime(now.year, 12, 31),
+            selectedDate: DateTime(startDate.year.clamp(2020, now.year).toInt()),
+            onChanged: (year) => Navigator.pop(dialog, year),
+          ),
+        ),
+      ),
+    );
+    if (selected == null || !mounted) return;
+    setState(() {
+      periodPreset = 'yearly';
+      startDate = DateTime(selected.year);
+      endDate = DateTime(selected.year, 12, 31);
+    });
+    _refresh();
+  }
+
   String _periodPresetLabel() {
     if (reportType == 'containers') return 'آخر حالة مسجلة للحاويات';
+    if (periodPreset == 'yearly') return 'سنة ${startDate.year}';
     if (periodPreset == 'monthly') return 'هذا الشهر';
     if (periodPreset == 'daily') return 'اليوم';
     if (periodPreset == 'weekly') return 'آخر 7 أيام';
@@ -444,6 +472,11 @@ class _ReportsCenterState extends State<ReportsCenterScreen> {
                 selected: periodPreset == entry.key,
                 onSelected: (_) => _applyPeriodPreset(entry.key),
               ),
+            ChoiceChip(
+              label: AppText(periodPreset == 'yearly' ? _periodPresetLabel() : 'سنة كاملة'),
+              selected: periodPreset == 'yearly',
+              onSelected: (_) => _pickReportYear(),
+            ),
             ChoiceChip(
               avatar: const Icon(Icons.date_range_rounded, size: 18),
               label: AppText(periodPreset == 'custom' ? _periodPresetLabel() : 'فترة محددة'),

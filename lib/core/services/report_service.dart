@@ -199,7 +199,7 @@ class ReportService {
     if (Firebase.apps.isNotEmpty) {
       try {
         final snap = await FirebaseFirestore.instance.collection('work_cycles')
-            .orderBy('startDate', descending: true).limit(50).get();
+            .orderBy('startDate', descending: true).get();
         cycles = [for (final doc in snap.docs) '${doc.data()['name'] ?? doc.id}'];
         cycleCount = snap.docs.length;
         for (final doc in snap.docs) {
