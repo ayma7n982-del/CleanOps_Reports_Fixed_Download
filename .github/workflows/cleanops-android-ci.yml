@@ -1,4 +1,4 @@
-name: CleanOps Android APK
+name: CleanOps Firebase Fix APK
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
@@ -7,7 +7,7 @@ concurrency:
 
 on:
   push:
-    branches: [main]
+    branches: [build/firebase-deletion-apk]
     paths:
       - 'lib/**'
       - 'test/**'
@@ -84,7 +84,6 @@ jobs:
       - name: Run Flutter tests
         run: flutter test
       - name: Build Android debug APK
-        if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[build-apk]') }} # Build only when explicitly requested
         env:
           GRADLE_OPTS: -Dorg.gradle.daemon=false -Dorg.gradle.parallel=false -Dorg.gradle.caching=false -Dkotlin.incremental=false
         run: |
@@ -103,7 +102,6 @@ jobs:
           echo "Android Gradle output directories:"
           ls -la build/app/outputs/apk/debug/ android/app/build/outputs/apk/debug/ 2>/dev/null || true
       - name: Upload installable debug APK
-        if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[build-apk]') }} # Build only when explicitly requested
         uses: actions/upload-artifact@v4
         with:
           name: CleanOps-Android-debug-APK
