@@ -41,13 +41,16 @@ class ContainerItem {
   factory ContainerItem.fromMap(Map<String, dynamic> x) {
     final gps = x['gpsCoordinates'];
     String dateText(dynamic raw) => raw is Timestamp ? raw.toDate().toIso8601String() : raw is DateTime ? raw.toIso8601String() : '${raw ?? ''}';
-    double number(Object? v) => v is num ? v.toDouble() : double.tryParse('$v') ?? 0;
+    double? number(Object? value) => double.tryParse('$value');
+    final lat = gps is GeoPoint ? gps.latitude : number(gps is Map ? gps['lat'] ?? gps['latitude'] : x['latitude']);
+    final lng = gps is GeoPoint ? gps.longitude : number(gps is Map ? gps['lng'] ?? gps['longitude'] : x['longitude']);
+    final valid = lat != null && lng != null && lat.abs() <= 90 && lng.abs() <= 180;
     return ContainerItem(
       id: '${x['id'] ?? ''}',
       locationName: '${x['locationName'] ?? ''}',
-      latitude: gps is Map ? number(gps['lat'] ?? gps['latitude']) : number(x['latitude']),
-      longitude: gps is Map ? number(gps['lng'] ?? gps['longitude']) : number(x['longitude']),
-      status: '${x['status'] ?? 'empty'}',
+      latitude: valid ? lat! : 0,
+      longitude: valid ? lng! : 0,
+      status: '${x['status'] ?? ''}',
       issueStatus: '${x['issueStatus'] ?? 'none'}',
       municipalityId: '${x['municipalityId'] ?? ''}',
       groupId: '${x['groupId'] ?? ''}',

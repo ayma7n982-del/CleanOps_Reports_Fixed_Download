@@ -4,6 +4,7 @@ import '../feature_navigation.dart';
 import '../widgets/container_status_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 import '../../core/localization.dart';
@@ -26,7 +27,7 @@ class ContainerManagementScreen extends StatelessWidget {
       textDirection: context.watch<LocaleController>().isArabic ? TextDirection.rtl : TextDirection.ltr,
       child: Scaffold(
         appBar: AppBar(bottom: const AppNavigationBar(),
-          title: AppText(user.role == 'group_supervisor' ? 'حاويات مجموعتي' : 'إدارة الحاويات'),
+          title: AppText(user.role == 'group_supervisor' ? 'حاويات مجموعتي' : user.role == 'donor_manager' ? 'متابعة الحاويات' : 'إدارة الحاويات'),
           actions: [
             if (user.role == 'jsc_coordinator' || user.role == 'group_supervisor') IconButton(onPressed: () => _openEditor(context), icon: const Icon(Icons.add_box_rounded)),
           ],
@@ -104,8 +105,9 @@ class _SupervisorContainersBodyState extends State<_SupervisorContainersBody> {
                 padding: const EdgeInsets.all(12),
                 child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                   AppText(item.locationName.isEmpty ? 'حاوية بدون اسم موقع' : item.locationName, style: const TextStyle(fontWeight: FontWeight.bold)),
-                  AppText('الحالة: ${item.status == 'full' ? 'ممتلئة' : item.status == 'partial' ? 'نصف ممتلئة' : 'فارغة'} • ${item.issueStatus == 'reported' ? 'مشكلة مسجلة' : item.issueStatus == 'resolving' ? 'قيد المعالجة' : 'لا توجد مشكلة'}'),
+                  AppText('الحالة: ${containerStatusLabels[item.status] ?? 'غير محددة'} • ${item.issueStatus == 'reported' ? 'مشكلة مسجلة' : item.issueStatus == 'resolving' ? 'قيد المعالجة' : 'لا توجد مشكلة'}'),
                   ContainerUpdateDetails(item: item),
+                  _LocationButton(item: item),
                   const SizedBox(height: 8),
                   if (context.read<AuthService>().currentUser?.role == 'jsc_coordinator') OutlinedButton.icon(onPressed: () => ContainerManagementScreen._openEditor(context, item), icon: const Icon(Icons.edit_location_alt_outlined), label: const AppText('تعديل موقع الحاوية')),
                   Row(children: [
@@ -144,9 +146,9 @@ class _ContainerBody extends StatelessWidget {
         children: [
           AiSectionCard(
             title: 'حالة الحاويات',
-            subtitle: user.role == 'group_supervisor' || user.role == 'worker' ? 'اختر حاوية مجموعتك وحدّث حالتها اليومية.' : 'المتابعة حسب البلدية والمجموعة مع دورة المشكلة كاملة.',
+            subtitle: user.role == 'donor_manager' ? 'توزيع الحاويات حسب آخر حالة مسجلة' : user.role == 'group_supervisor' || user.role == 'worker' ? 'اختر حاوية مجموعتك وحدّث حالتها اليومية.' : 'المتابعة حسب البلدية والمجموعة مع دورة المشكلة كاملة.',
             feature: 'containers',
-            child: Wrap(spacing: 8, runSpacing: 8, children: [
+            child: user.role == 'donor_manager' ? _StatusSummary(items: list) : Wrap(spacing: 8, runSpacing: 8, children: [
               _CountChip('فارغة', list.where((x) => x.status == 'empty').length, green),
               _CountChip('نصف ممتلئة', list.where((x) => x.status == 'partial').length, orange),
               _CountChip('ممتلئة', list.where((x) => x.status == 'full').length, red),
@@ -166,6 +168,40 @@ class _ContainerBody extends StatelessWidget {
   }
 }
 
+Color _fillColor(String status) => switch (status) {
+  'full' => red, 'partial' => orange, 'empty' => green, _ => cleanOpsMuted,
+};
+
+class _StatusSummary extends StatelessWidget {
+  final List<ContainerItem> items;
+  const _StatusSummary({required this.items});
+
+  @override
+  Widget build(BuildContext context) {
+    final counts = {for (final status in containerStatusLabels.keys) status: 0};
+    for (final item in items) {
+      final key = counts.containsKey(item.status) ? item.status : 'unknown';
+      counts[key] = (counts[key] ?? 0) + 1;
+    }
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text('${tr('إجمالي الحاويات')}: ${items.length}', style: const TextStyle(fontWeight: FontWeight.bold)),
+      for (final entry in counts.entries) ...[
+        const SizedBox(height: 8),
+        Row(children: [
+          Expanded(child: AppText(containerStatusLabels[entry.key] ?? 'غير محددة')),
+          Text('${entry.value}  ·  ${items.isEmpty ? 0 : (100 * entry.value / items.length).round()}%'),
+        ]),
+        LinearProgressIndicator(
+          value: items.isEmpty ? 0 : entry.value / items.length,
+          color: _fillColor(entry.key),
+        ),
+      ],
+      const SizedBox(height: 10),
+      _CountChip('مشكلات', items.where((c) => c.issueStatus == 'reported' || c.issueStatus == 'resolving').length, orange),
+    ]);
+  }
+}
+
 class _CountChip extends StatelessWidget {
   final String label; final int count; final Color color;
   const _CountChip(this.label, this.count, this.color);
@@ -176,18 +212,20 @@ class _CountChip extends StatelessWidget {
   );
 }
 
-class _ContainerTile extends StatelessWidget {
-  final ContainerItem item; final AppUser user;
-  const _ContainerTile({required this.item, required this.user});
-
-  Color get statusColor => item.status == 'full' ? red : item.status == 'partial' ? orange : green;
-  String get statusLabel => item.status == 'full' ? 'ممتلئة' : item.status == 'partial' ? 'نصف ممتلئة' : 'فارغة';
-  String get issueLabel => switch (item.issueStatus) {
+String _issueLabel(String value) => switch (value) {
     'reported' => 'مشكلة مسجلة',
     'resolving' => 'إجراء تصحيحي - قيد المعالجة',
     'verified_resolved' => 'توكيد حل المشكلة',
     _ => 'لا توجد مشكلة',
   };
+
+class _ContainerTile extends StatelessWidget {
+  final ContainerItem item; final AppUser user;
+  const _ContainerTile({required this.item, required this.user});
+
+  Color get statusColor => _fillColor(item.status);
+  String get statusLabel => containerStatusLabels[item.status] ?? 'غير محددة';
+  String get issueLabel => _issueLabel(item.issueStatus);
   Color get issueColor => switch (item.issueStatus) { 'reported' => red, 'resolving' => orange, 'verified_resolved' => green, _ => cleanOpsMuted };
 
   @override
@@ -204,13 +242,17 @@ class _ContainerTile extends StatelessWidget {
             const SizedBox(width: 10),
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               AppText(item.locationName.isEmpty ? 'حاوية بدون اسم موقع' : item.locationName, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 15)),
-              AppText('GPS: ${item.latitude.toStringAsFixed(5)}, ${item.longitude.toStringAsFixed(5)} • المجموعة ${item.groupId.isEmpty ? '—' : item.groupId}', style: const TextStyle(color: cleanOpsMuted, fontSize: 10)),
+              Text('${tr('المجموعة')}: ${item.groupId.isEmpty ? '—' : item.groupId}', style: const TextStyle(color: cleanOpsMuted, fontSize: 10)),
             ])),
             _StatusPill(statusLabel, statusColor),
           ]),
           const SizedBox(height: 10),
           Row(children: [Icon(Icons.feedback_outlined, size: 15, color: issueColor), const SizedBox(width: 6), Expanded(child: AppText(issueLabel, style: TextStyle(color: issueColor, fontSize: 11, fontWeight: FontWeight.w800))), if (item.feedbackNotes.isNotEmpty) const Icon(Icons.notes_outlined, size: 15, color: cleanOpsMuted)]),
           ContainerUpdateDetails(item: item),
+          if (user.role == 'donor_manager')
+            const Row(children: [Icon(Icons.satellite_alt_outlined, size: 18), SizedBox(width: 6), Flexible(child: AppText('عرض الموقع والبيانات'))]),
+          if (user.role != 'donor_manager' && user.role != 'jsc_coordinator')
+            _LocationButton(item: item),
           if (item.feedbackNotes.isNotEmpty) ...[const SizedBox(height: 5), AppText(item.feedbackNotes, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: cleanOpsMuted, fontSize: 10))],
         ]),
       ),
@@ -235,7 +277,7 @@ class _ContainerTile extends StatelessWidget {
 class _StatusPill extends StatelessWidget {
   final String text; final Color color;
   const _StatusPill(this.text, this.color);
-  @override Widget build(BuildContext context) => Container(padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5), decoration: BoxDecoration(color: color.withOpacity(.12), borderRadius: BorderRadius.circular(20), border: Border.all(color: color.withOpacity(.25))), child: AppText(text, style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.w900)));
+  @override Widget build(BuildContext context) => Container(padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5), decoration: BoxDecoration(color: color.withOpacity(.12), borderRadius: BorderRadius.circular(20), border: Border.all(color: color.withOpacity(.25))), child: AppText(text, style: TextStyle(color: color, fontSize: 14, fontWeight: FontWeight.w900)));
 }
 
 class _SupervisorContainerActions extends StatefulWidget {
@@ -376,14 +418,73 @@ class _ContainerDetails extends StatelessWidget {
   final ContainerItem item;
   const _ContainerDetails({required this.item});
   @override
-  Widget build(BuildContext context) => SafeArea(child: Padding(
+  Widget build(BuildContext context) => SafeArea(child: SingleChildScrollView(
     padding: const EdgeInsets.all(18),
     child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      AppText(item.locationName, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+      AppText(item.locationName.isEmpty ? 'حاوية بدون اسم موقع' : item.locationName, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+      Align(alignment: AlignmentDirectional.centerStart, child: _StatusPill(containerStatusLabels[item.status] ?? 'غير محددة', _fillColor(item.status))),
+      const SizedBox(height: 8),
+      _ContainerLocation(item: item),
+      const SizedBox(height: 12),
+      Text('${tr('رقم الحاوية')}: ${item.id}'),
+      if (item.municipalityId.isNotEmpty) Text('${tr('معرّف البلدية')}: ${item.municipalityId}'),
+      if (item.groupId.isNotEmpty) Text('${tr('المجموعة')}: ${item.groupId}'),
+      AppText(_issueLabel(item.issueStatus)),
+      if (item.feedbackNotes.isNotEmpty) Text(item.feedbackNotes),
       ContainerUpdateDetails(item: item),
       const SizedBox(height: 12),
       if (context.read<AuthService>().currentUser?.role == 'jsc_coordinator') FilledButton.icon(onPressed: () => showModalBottomSheet<void>(context: context, isScrollControlled: true, builder: (_) => _SupervisorContainerActions(item: item)), icon: const Icon(Icons.check_circle_outline), label: const AppText('تسجيل حالة الامتلاء')),
       if (context.read<AuthService>().currentUser?.role == 'jsc_coordinator') OutlinedButton.icon(onPressed: () => ContainerManagementScreen._openEditor(context, item), icon: const Icon(Icons.edit_location_alt_outlined), label: const AppText('تعديل موقع الحاوية')),
     ]),
   ));
+}
+
+class _LocationButton extends StatelessWidget {
+  final ContainerItem item;
+  const _LocationButton({required this.item});
+
+  @override
+  Widget build(BuildContext context) => TextButton.icon(
+    onPressed: () => showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => _ContainerDetails(item: item),
+    ),
+    icon: const Icon(Icons.satellite_alt_outlined),
+    label: const AppText('عرض الموقع والبيانات'),
+  );
+}
+
+class _ContainerLocation extends StatelessWidget {
+  final ContainerItem item;
+  const _ContainerLocation({required this.item});
+
+  @override
+  Widget build(BuildContext context) {
+    final lat = item.latitude;
+    final lng = item.longitude;
+    if (!lat.isFinite || !lng.isFinite || lat.abs() > 90 || lng.abs() > 180 || (lat == 0 && lng == 0)) {
+      return const AppText('لا تتوفر إحداثيات مسجّلة لهذه الحاوية.');
+    }
+    final point = LatLng(lat, lng);
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      SizedBox(height: 220, child: ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: FlutterMap(
+          options: MapOptions(initialCenter: point, initialZoom: 17, maxZoom: 19),
+          children: [
+            TileLayer(
+              urlTemplate: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+              userAgentPackageName: 'com.solidwaste.solid_waste_operations',
+              maxNativeZoom: 19,
+            ),
+            MarkerLayer(markers: [Marker(point: point, alignment: Alignment.topCenter, width: 44, height: 44,
+              child: const Icon(Icons.location_pin, size: 44, color: Colors.redAccent, shadows: [Shadow(color: Colors.white, blurRadius: 4)]))]),
+            const RichAttributionWidget(attributions: [TextSourceAttribution('Esri, Maxar, Earthstar Geographics and GIS User Community')]),
+          ],
+        ),
+      )),
+      SelectableText('GPS  ${lat.toStringAsFixed(6)}, ${lng.toStringAsFixed(6)}', textDirection: TextDirection.ltr),
+    ]);
+  }
 }
