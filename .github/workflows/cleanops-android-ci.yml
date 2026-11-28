@@ -7,7 +7,7 @@ concurrency:
 
 on:
   push:
-    branches: [main]
+    branches: [build/cleanops-apk-85305f2]
     paths:
       - 'lib/**'
       - 'test/**'
