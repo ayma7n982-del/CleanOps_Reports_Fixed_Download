@@ -10,6 +10,7 @@ import '../../core/localization.dart';
 import '../../core/constants/app_constants.dart';
 import '../../core/services/auth_service.dart';
 import '../../core/services/operations_admin_service.dart';
+import '../../core/services/simulation_seeder_service.dart';
 import '../widgets/app_design.dart';
 import '../widgets/location_picker.dart';
 
@@ -217,6 +218,7 @@ class _CyclesTabState extends State<_CyclesTab> with RecoverableForm<_CyclesTab>
                 children: docs.map((d) {
                   final x = d.data();
                   final active = x['status'] == 'active';
+                  final trial = SimulationSeederService.isTrialCycle(d.id, x);
                   return Container(
                     margin: const EdgeInsets.only(bottom: 8),
                     padding: const EdgeInsets.all(12),
@@ -255,7 +257,9 @@ class _CyclesTabState extends State<_CyclesTab> with RecoverableForm<_CyclesTab>
                           IconButton(
                             tooltip: tr('حذف'),
                             color: Colors.red,
-                            onPressed: changingCycles.contains(d.id) ? null : () => _confirmDeleteCycle(context, d.id),
+                            onPressed: changingCycles.contains(d.id)
+                                ? null
+                                : () => _confirmDeleteCycle(d.id, trial: trial),
                             icon: const Icon(Icons.delete, color: Colors.red),
                           ),
                       ],
@@ -286,12 +290,14 @@ class _CyclesTabState extends State<_CyclesTab> with RecoverableForm<_CyclesTab>
     }
   }
 
-  Future<void> _confirmDeleteCycle(BuildContext context, String id) async {
+  Future<void> _confirmDeleteCycle(String id, {required bool trial}) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: AppText(tr('تأكيد الحذف')),
-        content: const AppText('سيُحذف تعريف الدورة نهائيًا. تبقى سجلات العمل والحضور والنقلات التاريخية. اختر الأرشفة إذا كنت تريد الاحتفاظ بتعريف الدورة في سجل الدورات.'),
+        content: AppText(trial
+            ? 'سيُحذف تعريف الدورة التجريبية وتُجدول ملفات العمال المرتبطين بها للحذف. يحتفظ المشرفون ومنسق البلدية بحساباتهم وصلاحياتهم. تبقى سجلات العمل والحضور والنقلات.'
+            : 'سيُحذف تعريف الدورة نهائيًا. تبقى سجلات العمل والحضور والنقلات التاريخية. اختر الأرشفة للاحتفاظ بتعريف الدورة في السجل.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(false),
@@ -307,9 +313,17 @@ class _CyclesTabState extends State<_CyclesTab> with RecoverableForm<_CyclesTab>
     if (confirmed != true || !mounted || changingCycles.contains(id)) return;
     setState(() => changingCycles.add(id));
     try {
-      await context.read<OperationsAdminService>().deleteWorkCycle(id);
+      final actor = context.read<AuthService>().currentUser!;
+      final pending = await context.read<OperationsAdminService>().deleteWorkCycle(
+        id, actorId: actor.id, deleteTrialWorkers: trial,
+      );
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: AppText(tr('تم الحذف بنجاح'))));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: AppText(
+          pending > 0
+              ? 'حُذفت الدورة وجُدول حذف $pending من ملفات العمال المرتبطين بها.'
+              : tr('تم الحذف بنجاح'),
+        )));
+        if (widget.focusRecordId != null) Navigator.pop(context, true);
       }
     } catch (e) {
       if (mounted) {

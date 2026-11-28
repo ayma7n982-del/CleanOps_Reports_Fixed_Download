@@ -11,7 +11,35 @@ class SimulationSeederService {
   static List<Map<String, dynamic>> _containers = <Map<String, dynamic>>[];
   static List<Map<String, dynamic>> _trips = <Map<String, dynamic>>[];
 
+  static const localSearchCollection = 'local_simulation';
+  static const cycle11Title = 'الدورة 11 التجريبية – أكتوبر 2026';
+
   static bool get hasSimulation => _municipalities.isNotEmpty;
+  static List<Map<String, dynamic>> get searchCycles => [
+    if (hasSimulation)
+      {'id': 'local_cycle_11', 'name': '$cycle11Title (محلية)', 'cycleNumber': 11},
+  ];
+
+  static bool isTrialCycle(String id, Map<String, dynamic> data) {
+    if (data['isSimulation'] == true || id == 'sim_cycle_11_oct_2026') {
+      return true;
+    }
+    // Older imports may only have the trial designation in the cycle name.
+    return ['nameAr', 'name', 'title'].any(
+      (field) => RegExp(r'(?:^|\s)(?:ال)?تجريبي[ةه](?:\s|$)')
+          .hasMatch('${data[field] ?? ''}'),
+    );
+  }
+  /// Trial workers are roster entries. Only the trial supervisors and
+  /// municipality coordinator belong in the sign-in account directory.
+  static bool isTrialWorker(Map<String, dynamic> user) {
+    return user['role'] == 'worker' &&
+        isTrialCycle('${user['cycleId'] ?? ''}', {
+          'isSimulation': user['isSimulation'],
+          'name': user['cycleName'],
+        });
+  }
+
   static List<Map<String, dynamic>> get municipalities => List<Map<String, dynamic>>.unmodifiable(_municipalities);
   static List<Map<String, dynamic>> get groups => List<Map<String, dynamic>>.unmodifiable(_groups);
   static List<Map<String, dynamic>> get workers => List<Map<String, dynamic>>.unmodifiable(_workers);

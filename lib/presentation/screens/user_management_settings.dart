@@ -7,6 +7,7 @@ import '../../core/constants/gaza_municipalities.dart';
 import '../../core/models/core_models.dart';
 import '../../core/services/auth_service.dart';
 import '../../core/services/operations_admin_service.dart';
+import '../../core/services/simulation_seeder_service.dart';
 import '../widgets/app_design.dart';
 import '../../core/constants/app_constants.dart';
 
@@ -212,7 +213,11 @@ class _UserManagementSettingsPageState extends State<UserManagementSettingsPage>
                 builder: (_, snap) {
                   if (snap.hasError) return SliverToBoxAdapter(child: AppText('تعذر تحميل المستخدمين: ${snap.error}'));
                   if (!snap.hasData) return const SliverToBoxAdapter(child: Center(child: CircularProgressIndicator()));
-                  final docs = snap.data!.docs.where((d) => d.data()['status'] != 'deleted').toList()
+                  final docs = snap.data!.docs.where((d) {
+                    final user = d.data();
+                    return user['status'] != 'deleted' &&
+                        !SimulationSeederService.isTrialWorker(user);
+                  }).toList()
                     ..sort((a, b) => '${a.data()['name'] ?? ''}'.compareTo('${b.data()['name'] ?? ''}'));
                   if (docs.isEmpty) return const SliverToBoxAdapter(child: AppText('لا يوجد مستخدمون بعد.'));
                   return SliverList.builder(

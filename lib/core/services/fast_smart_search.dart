@@ -1,3 +1,5 @@
+import 'simulation_seeder_service.dart';
+
 /// A lightweight, offline-capable Arabic search index.
 /// Only the supplied, already-authorized records are indexed.
 class FastSearchRecord {
@@ -16,7 +18,12 @@ class FastSearchRecord {
     required this.category,
     required this.data,
   }) : title = _displayTitle(data, id) {
-    final parts = <String>[category, title, id];
+    final parts = <String>[
+      category, title, id,
+      if (collection == 'work_cycles' &&
+          SimulationSeederService.isTrialCycle(id, data))
+        'الدورة التجريبية محاكاة',
+    ];
     const fields = <String>[
       'name', 'nameAr', 'fullName', 'displayName', 'username', 'workerName',
       'groupName', 'groupNumber', 'groupId', 'municipalityName',
@@ -25,7 +32,7 @@ class FastSearchRecord {
       'containerName', 'containerNumber', 'equipmentName', 'machine',
       'plateNumber', 'type', 'model', 'title', 'description', 'detail',
       'status', 'machineStatus', 'issueStatus', 'role', 'cycleName',
-      'number', 'notes', 'body',
+      'number', 'cycleNumber', 'monthName', 'notes', 'body',
     ];
     for (final key in fields) {
       final value = data[key];

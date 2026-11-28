@@ -14,7 +14,7 @@ void main() {
     expect(main, contains('bottomSheetTheme: const BottomSheetThemeData('));
     expect(main, contains('appBarTheme: const AppBarTheme('));
     expect(main, contains('Color(0xFF087F6B)'));
-    expect(main, contains('home: const SplashScreen()'));
+    expect(main, contains('home: home,'));
   });
 
   test('every role shortcut uses the same actual EcoShortcutCard', () {
@@ -65,9 +65,11 @@ void main() {
   test('native and Flutter splash use the same brand and keep auth routing',
       () {
     final main = source('lib/main.dart');
-    expect(main, contains('EcoBootSplash(progress: controller.value)'));
-    expect(main, contains('Future.delayed(const Duration(milliseconds: 2450)'));
-    expect(main, contains('Navigator.pushReplacement('));
+    expect(main, contains('body: EcoBootSplash()'));
+    expect(main, contains('await WidgetsBinding.instance.endOfFrame;'));
+    expect(main, contains('home = const EnterpriseLoginScreen();'));
+    expect(main, contains('home = const SetupWizardPage();'));
+    expect(main, contains('home = const AppShell();'));
 
     final v31 = source('android/app/src/main/res/values-v31/styles.xml');
     expect(v31, contains('windowSplashScreenAnimatedIcon'));

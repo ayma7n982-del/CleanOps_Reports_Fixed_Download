@@ -1,5 +1,7 @@
 import '../widgets/app_navigation_bar.dart';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../../core/services/auth_service.dart';
 import '../../core/services/simulation_seeder_service.dart';
 import '../widgets/app_design.dart';
 import '../../core/localization.dart';
@@ -13,8 +15,44 @@ class SimulationPreviewScreen extends StatefulWidget {
 }
 
 class _SimulationPreviewScreenState extends State<SimulationPreviewScreen> {
+  bool _deleting = false;
+
+  Future<void> _deleteSimulation() async {
+    setState(() => _deleting = true);
+    try {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const AppText('حذف الدورة التجريبية المحلية'),
+          content: const AppText('سيُحذف جميع العمال والمشرفين والمجموعات والسجلات في هذه المحاكاة من الجهاز.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: AppText(tr('إلغاء')),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: AppText(tr('حذف')),
+            ),
+          ],
+        ),
+      );
+      if (!mounted || confirmed != true) return;
+      final actor = context.read<AuthService>().currentUser;
+      if (actor?.role != 'donor_manager' || !actor!.can('cycle', 'delete')) return;
+      await SimulationSeederService.deleteSimulationData();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: AppText('حُذفت الدورة التجريبية المحلية وجميع بياناتها.')),
+      );
+    } finally {
+      if (mounted) setState(() => _deleting = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final actor = context.watch<AuthService>().currentUser;
     final counts = SimulationSeederService.counts;
     final groups = SimulationSeederService.groups;
     final workers = SimulationSeederService.workers;
@@ -23,6 +61,13 @@ class _SimulationPreviewScreenState extends State<SimulationPreviewScreen> {
       appBar: AppBar(bottom: const AppNavigationBar(),
         title: const AppText('معاينة المحاكاة — الدورة 11'),
         actions: [
+          if (SimulationSeederService.hasSimulation &&
+              actor?.role == 'donor_manager' && actor!.can('cycle', 'delete'))
+            IconButton(
+              tooltip: 'حذف الدورة التجريبية المحلية',
+              onPressed: _deleting ? null : _deleteSimulation,
+              icon: const Icon(Icons.delete_outline),
+            ),
           IconButton(
             tooltip: 'تحديث العرض',
             onPressed: () => setState(() {}),
