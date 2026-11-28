@@ -40,15 +40,15 @@ class _ChangePasswordDialog extends StatefulWidget {
 
 class _ChangePasswordDialogState extends State<_ChangePasswordDialog> {
   final _form = GlobalKey<FormState>();
-  final _current = TextEditingController();
   final _new = TextEditingController();
   final _confirm = TextEditingController();
   bool _saving = false;
   String? _error;
+  bool _canReset = false;
+  bool _resetSent = false;
 
   @override
   void dispose() {
-    _current.dispose();
     _new.dispose();
     _confirm.dispose();
     super.dispose();
@@ -60,21 +60,37 @@ class _ChangePasswordDialogState extends State<_ChangePasswordDialog> {
     setState(() {
       _saving = true;
       _error = null;
+      _canReset = false;
     });
 
-    final error = await widget.auth.changePassword(
-      currentPassword: _current.text,
-      newPassword: _new.text,
-    );
+    final result = await widget.auth.changePassword(_new.text);
     if (!mounted) return;
-    if (error == null) {
+    if (result.error == null) {
       Navigator.of(context).pop(true);
       return;
     }
     setState(() {
       _saving = false;
-      _error = error;
+      _error = result.error;
+      _canReset = result.canReset;
     });
+  }
+
+  Future<void> _sendResetLink() async {
+    if (_saving) return;
+    setState(() => _saving = true);
+    final sent = await widget.auth.sendCurrentAccountPasswordReset();
+    if (!mounted) return;
+    setState(() {
+      _saving = false;
+      _resetSent = sent;
+      _canReset = !sent;
+      _error = sent ? null : 'تعذر إرسال الرابط. تحقق من اتصالك وحاول مرة أخرى.';
+    });
+    if (sent) {
+      _new.clear();
+      _confirm.clear();
+    }
   }
 
   TextFormField _passwordField({
@@ -103,65 +119,55 @@ class _ChangePasswordDialogState extends State<_ChangePasswordDialog> {
       child: AlertDialog(
         scrollable: true,
         title: const AppText('تغيير كلمة المرور'),
-        content: Form(
-          key: _form,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              _passwordField(
-                controller: _current,
-                label: 'كلمة المرور الحالية',
-                validator: (value) => value == null || value.isEmpty
-                    ? 'أدخل كلمة المرور الحالية.'
-                    : null,
-              ),
-              _passwordField(
-                controller: _new,
-                label: 'كلمة المرور الجديدة',
-                validator: (value) {
-                  if (value == null || value.length < 8) {
-                    return 'أدخل ٨ أحرف على الأقل.';
-                  }
-                  if (value == _current.text) {
-                    return 'اختر كلمة مرور مختلفة عن الحالية.';
-                  }
-                  return null;
-                },
-              ),
-              _passwordField(
-                controller: _confirm,
-                label: 'تأكيد كلمة المرور الجديدة',
-                action: TextInputAction.done,
-                validator: (value) => value == _new.text
-                    ? null
-                    : 'كلمتا المرور غير متطابقتين.',
-              ),
-              if (_error != null)
-                Padding(
-                  padding: const EdgeInsets.only(top: 12),
-                  child: AppText(
-                    _error!,
-                    style: TextStyle(color: Theme.of(context).colorScheme.error),
-                  ),
+        content: _resetSent
+            ? const AppText('أُرسل رابط إعادة التعيين إلى بريد حسابك.')
+            : Form(
+                key: _form,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _passwordField(
+                      controller: _new,
+                      label: 'كلمة المرور الجديدة',
+                      validator: (value) => value == null || value.length < 8
+                          ? 'أدخل ٨ أحرف على الأقل.'
+                          : null,
+                    ),
+                    _passwordField(
+                      controller: _confirm,
+                      label: 'تأكيد كلمة المرور الجديدة',
+                      action: TextInputAction.done,
+                      validator: (value) => value == _new.text
+                          ? null
+                          : 'كلمتا المرور غير متطابقتين.',
+                    ),
+                    if (_error != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 12),
+                        child: AppText(
+                          _error!,
+                          style: TextStyle(color: Theme.of(context).colorScheme.error),
+                        ),
+                      ),
+                  ],
                 ),
-            ],
-          ),
-        ),
+              ),
         actions: [
           TextButton(
             onPressed: _saving ? null : () => Navigator.of(context).pop(),
-            child: const AppText('إلغاء'),
+            child: AppText(_resetSent ? 'إغلاق' : 'إلغاء'),
           ),
-          FilledButton(
-            onPressed: _saving ? null : _save,
-            child: _saving
-                ? const SizedBox.square(
-                    dimension: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const AppText('حفظ'),
-          ),
+          if (!_resetSent)
+            FilledButton(
+              onPressed: _saving ? null : (_canReset ? _sendResetLink : _save),
+              child: _saving
+                  ? const SizedBox.square(
+                      dimension: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : AppText(_canReset ? 'إرسال رابط إعادة التعيين' : 'حفظ'),
+            ),
         ],
       ),
     );

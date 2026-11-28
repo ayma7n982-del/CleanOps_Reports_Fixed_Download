@@ -215,45 +215,62 @@ class AuthService extends ChangeNotifier {
     }
   }
 
-  Future<String?> changePassword({
-    required String currentPassword,
-    required String newPassword,
-  }) async {
-    final auth = Firebase.apps.isEmpty ? null : FirebaseAuth.instance;
-    final account = auth?.currentUser;
-    if (account == null || currentUser?.id != account.uid) {
-      return 'سجّل الدخول عبر الإنترنت لتغيير كلمة المرور.';
-    }
-
-    final email = account.email;
-    if (email == null || !account.providerData.any(
-      (provider) => provider.providerId == EmailAuthProvider.PROVIDER_ID,
-    )) {
-      return 'هذا الحساب لا يستخدم تسجيل الدخول بكلمة مرور.';
+  Future<({String? error, bool canReset})> changePassword(
+    String newPassword,
+  ) async {
+    final account = _signedInPasswordAccount;
+    if (account == null) {
+      return (
+        error: 'سجّل الدخول عبر الإنترنت بحساب يستخدم كلمة مرور.',
+        canReset: false,
+      );
     }
 
     try {
-      await account.reauthenticateWithCredential(
-        EmailAuthProvider.credential(email: email, password: currentPassword),
-      );
-      if (auth?.currentUser?.uid != account.uid || currentUser?.id != account.uid) {
-        return 'تغيّرت جلسة الدخول. افتح خيارات حسابك مرة أخرى.';
-      }
       await account.updatePassword(newPassword);
-      return null;
+      return (error: null, canReset: false);
     } on FirebaseAuthException catch (e) {
-      return switch (e.code) {
-        'wrong-password' || 'invalid-credential' => 'كلمة المرور الحالية غير صحيحة.',
+      final canReset = e.code == 'requires-recent-login' &&
+          !account.email!.toLowerCase().endsWith('.local');
+      final message = switch (e.code) {
         'weak-password' || 'password-does-not-meet-requirements' =>
           'كلمة المرور الجديدة لا تستوفي شروط الأمان.',
         'network-request-failed' => 'تعذر الاتصال. تحقق من الإنترنت وحاول مرة أخرى.',
         'too-many-requests' => 'محاولات كثيرة. انتظر قليلًا وحاول مرة أخرى.',
+        'requires-recent-login' when canReset =>
+          'انتهت صلاحية الجلسة لتغيير كلمة المرور. اطلب رابط إعادة التعيين عبر البريد.',
         'requires-recent-login' || 'user-token-expired' || 'invalid-user-token' =>
-          'سجّل الدخول مجددًا ثم حاول تغيير كلمة المرور.',
+          'سجّل الدخول مجددًا ثم افتح خيار تغيير كلمة المرور.',
         _ => 'تعذر تغيير كلمة المرور. حاول مرة أخرى.',
       };
+      return (error: message, canReset: canReset);
     } catch (_) {
-      return 'تعذر تغيير كلمة المرور. حاول مرة أخرى.';
+      return (error: 'تعذر تغيير كلمة المرور. حاول مرة أخرى.', canReset: false);
+    }
+  }
+
+  User? get _signedInPasswordAccount {
+    if (Firebase.apps.isEmpty) return null;
+    final account = FirebaseAuth.instance.currentUser;
+    if (account == null ||
+        currentUser?.id != account.uid ||
+        account.email == null ||
+        !account.providerData.any(
+          (provider) => provider.providerId == EmailAuthProvider.PROVIDER_ID,
+        )) {
+      return null;
+    }
+    return account;
+  }
+
+  Future<bool> sendCurrentAccountPasswordReset() async {
+    final email = _signedInPasswordAccount?.email;
+    if (email == null || email.toLowerCase().endsWith('.local')) return false;
+    try {
+      await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
+      return true;
+    } catch (_) {
+      return false;
     }
   }
 
