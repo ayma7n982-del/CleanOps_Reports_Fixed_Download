@@ -5,6 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import '../models/core_models.dart';
 import 'operational_insights.dart';
+import 'simulation_seeder_service.dart';
 import 'workforce_repository.dart';
 
 /// Human-readable error (Arabic) thrown by direct user provisioning.
@@ -81,17 +82,67 @@ class OperationsAdminService {
     });
   }
 
-  Future<void> deleteWorkCycle(String cycleId) async {
-    final assigned = await _users.where('cycleId', isEqualTo: cycleId)
-        .get(const GetOptions(source: Source.server));
-    if (assigned.docs.any((doc) {
-      final user = doc.data();
-      return user['isActive'] != false && user['isDeleted'] != true &&
-          user['status'] != 'deleted' && user['status'] != 'pending_deletion';
-    })) {
-      throw const UserProvisionException('انقل المستخدمين النشطين المرتبطين بالدورة قبل حذفها.');
+  Future<int> deleteWorkCycle(String cycleId, {
+    required String actorId,
+    required bool deleteTrialUsers,
+  }) async {
+    final cycleRef = _cycles.doc(cycleId);
+    const server = GetOptions(source: Source.server);
+    final cycle = (await cycleRef.get(server)).data();
+    if (cycle == null) return 0;
+    final members = _users.where('cycleId', isEqualTo: cycleId);
+    final assigned = await members.get(server);
+    if (!deleteTrialUsers) {
+      if (assigned.docs.any((doc) {
+        final user = doc.data();
+        return user['isActive'] != false && user['isDeleted'] != true &&
+            user['status'] != 'deleted' && user['status'] != 'pending_deletion';
+      })) {
+        throw const UserProvisionException('انقل المستخدمين النشطين المرتبطين بالدورة قبل حذفها.');
+      }
+      await cycleRef.delete();
+      return 0;
     }
-    await _cycles.doc(cycleId).delete();
+
+    if (!SimulationSeederService.isTrialCycle(cycleId, cycle) ||
+        FirebaseAuth.instance.currentUser?.uid != actorId ||
+        assigned.docs.any((doc) => doc.id == actorId ||
+            !const ['worker', 'group_supervisor'].contains(doc.data()['role']))) {
+      throw const UserProvisionException(
+        'تعذر حذف الدورة التجريبية. تحقق من صلاحيتك ومن ارتباطها بحسابات عمال ومشرفين فقط.',
+      );
+    }
+
+    // Stop normal assignments before queuing account deletions. If a request
+    // fails, the archived cycle stays searchable and can be retried.
+    await firestore.runTransaction((transaction) async {
+      final current = (await transaction.get(cycleRef)).data();
+      if (current == null || !SimulationSeederService.isTrialCycle(cycleId, current)) {
+        throw const UserProvisionException('لم تعد الدورة التجريبية متاحة للحذف.');
+      }
+      if (current['status'] == 'active') {
+        transaction.update(cycleRef, {
+          'status': 'archived',
+          'archivedBy': actorId,
+          'archivedAt': FieldValue.serverTimestamp(),
+        });
+      }
+    });
+
+    for (final doc in (await members.get(server)).docs) {
+      await deleteManagedUser(doc.id, actorId: actorId, expectedCycleId: cycleId);
+    }
+    final remaining = (await members.get(server)).docs;
+    if (remaining.any((doc) {
+      final user = doc.data();
+      return user['status'] != 'deleted' &&
+          (user['status'] != 'pending_deletion' || user['isActive'] != false ||
+              '${user['deletionRequestId'] ?? ''}'.isEmpty);
+    })) {
+      throw const UserProvisionException('تغيّر ارتباط بعض الحسابات. أعد محاولة حذف الدورة.');
+    }
+    await cycleRef.delete();
+    return remaining.where((doc) => doc.data()['status'] == 'pending_deletion').length;
   }
 
   Future<void> addDumpsite({
@@ -420,9 +471,16 @@ class OperationsAdminService {
   Future<void> _updateWorkforceProfile(
     String uid, Map<String, dynamic> changes, {
     void Function(Map<String, dynamic> profile)? validate,
+    String? activeCycleId,
   }) async {
     final ref = _users.doc(uid);
     await firestore.runTransaction((tx) async {
+      if (activeCycleId != null) {
+        final cycle = await tx.get(_cycles.doc(activeCycleId));
+        if (cycle.data()?['status'] != 'active') {
+          throw StateError('دورة العمل الجديدة غير نشطة.');
+        }
+      }
       final snapshot = await tx.get(ref);
       final profile = snapshot.data();
       if (profile == null) throw StateError('المستخدم غير موجود.');
@@ -434,7 +492,10 @@ class OperationsAdminService {
 
   /// Soft-delete on Spark: no Cloud Functions or GitHub during the action.
   /// Keep the Auth account for audit; Security Rules block inactive accounts.
-  Future<void> deleteManagedUser(String userId, {required String actorId}) async {
+  Future<void> deleteManagedUser(String userId, {
+    required String actorId,
+    String? expectedCycleId,
+  }) async {
     final uid = userId.trim();
     if (uid.isEmpty || actorId.trim().isEmpty || uid == actorId ||
         FirebaseAuth.instance.currentUser?.uid != actorId) {
@@ -445,8 +506,18 @@ class OperationsAdminService {
     await firestore.runTransaction((transaction) async {
       final snapshot = await transaction.get(profile);
       final target = snapshot.data();
+      if (expectedCycleId != null) {
+        // A transferred or concurrently removed account is no longer a member.
+        if (target == null || target['cycleId'] != expectedCycleId) return;
+        if (!const ['worker', 'group_supervisor'].contains(target['role'])) {
+          throw const UserProvisionException('تتضمن الدورة حسابًا إداريًا. راجع ارتباط الحساب بالدورة.');
+        }
+        if (target['status'] == 'deleted') return;
+      }
       if (target == null) throw const UserProvisionException('ملف المستخدم غير موجود.');
-      if (target['status'] == 'pending_deletion') return;
+      if (target['status'] == 'pending_deletion' &&
+          (expectedCycleId == null ||
+              (target['isActive'] == false && '${target['deletionRequestId'] ?? ''}'.isNotEmpty))) return;
       transaction.set(request, {
         'id': request.id,
         'type': 'delete_user',
@@ -670,10 +741,6 @@ class OperationsAdminService {
       throw StateError('انتهت الجلسة أو لا تملك صلاحية النقل.');
     }
     final targetGroup = await _requireManagedGroup(toGroupId, actorId);
-    final cycle = await _cycles.doc(toCycleId).get(const GetOptions(source: Source.server));
-    if (!cycle.exists || cycle.data()?['status'] != 'active') {
-      throw StateError('دورة العمل الجديدة غير نشطة.');
-    }
     final ref = _users.doc(userId);
     final snap = await ref.get(const GetOptions(source: Source.server));
     _requireOwnWorker(snap.data(), actorId);
@@ -683,7 +750,7 @@ class OperationsAdminService {
       'cycleId': toCycleId,
       'updatedBy': actorId,
       'updatedAt': FieldValue.serverTimestamp(),
-    }, validate: (profile) => _requireOwnWorker(profile, actorId));
+    }, validate: (profile) => _requireOwnWorker(profile, actorId), activeCycleId: toCycleId);
     final confirmed = await ref.get(const GetOptions(source: Source.server));
     if (!confirmed.exists ||
         confirmed.data()?['groupId'] != toGroupId ||

@@ -9,6 +9,7 @@ import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../core/services/fast_smart_search.dart';
 import '../../core/services/search_page_loader.dart';
+import '../../core/services/simulation_seeder_service.dart';
 import '../../core/services/container_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -37,6 +38,7 @@ import 'global_search.dart';
 import 'ai_bot_screen.dart';
 import '../widgets/operations_overview.dart';
 import 'reports_center.dart';
+import 'simulation_preview_screen.dart';
 import 'user_management_settings.dart';
 import '../../core/constants/app_constants.dart';
 
@@ -425,6 +427,7 @@ class _GlobalSearchPageState extends State<GlobalSearchPage> {
   bool remoteLoading = false;
   bool _loadedOnce = false;
   bool _autoOpened = false;
+  final _deletedCycleIds = <String>{};
   String? remoteWarning;
   String categoryFilter = 'الكل';
   int _visibleLimit = 100;
@@ -482,7 +485,10 @@ class _GlobalSearchPageState extends State<GlobalSearchPage> {
   // Local operational records are filtered by the current role before indexing.
   // In particular, no cached data from another municipal/group scope is surfaced.
   bool _canSeeOperation(Map<String, dynamic> row) {
-    if (row['isDeleted'] == true) return false;
+    if (row['isDeleted'] == true ||
+        (row['_entity'] == 'cycle' && row['id'] == 'sim_cycle11_cycle_index')) {
+      return false;
+    }
     if (_actor.role == 'group_supervisor' || _actor.role == 'worker') {
       final groupId = (_actor.groupId ?? '').trim();
       return groupId.isNotEmpty && '${row['groupId'] ?? ''}' == groupId;
@@ -520,12 +526,26 @@ class _GlobalSearchPageState extends State<GlobalSearchPage> {
         _containerService.containers.map((item) => item.toMap()),
       );
     }
+    _refreshLocalSimulation();
+  }
+
+  void _refreshLocalSimulation() {
+    _index.replaceSource(
+      SimulationSeederService.localSearchCollection,
+      'دورة',
+      _actor.role == 'donor_manager' && _actor.can('cycle', 'view')
+          ? SimulationSeederService.searchCycles
+          : const [],
+    );
     _applyQuery();
   }
 
   void _applyQuery() {
     if (!mounted) return;
-    final found = _index.find(controller.text, limit: _index.recordCount);
+    final found = _index.find(controller.text, limit: _index.recordCount)
+        .where((record) => record.collection != 'work_cycles' ||
+            !_deletedCycleIds.contains(record.id))
+        .toList();
     setState(() => results = found);
     if (widget.openExactResult && !_autoOpened) {
       final expected = widget.initialQuery.trim();
@@ -555,8 +575,17 @@ class _GlobalSearchPageState extends State<GlobalSearchPage> {
     // Restrict remote cached records as well as server results. The offline
     // Firestore cache is shared by the installation, so role scoping matters.
     bool visibleRemote(String collection, Map<String, dynamic> record) {
-      if (record['isDeleted'] == true) return false;
-      if (collection == 'users') return true; // Users are scoped at query level.
+      if (record['isDeleted'] == true ||
+          (collection == 'work_cycles' && _deletedCycleIds.contains(record['id']))) {
+        return false;
+      }
+      if (collection == 'users') {
+        // Users are scoped at query level.
+        return record['status'] != 'pending_deletion';
+      }
+      if (collection == 'remote_operations' && record['id'] == 'sim_cycle11_cycle_index') {
+        return false; // The canonical work_cycles record owns the deletion action.
+      }
       if (_actor.role == 'municipality_coordinator' ||
           _actor.role == 'jsc_coordinator' ||
           _actor.role == 'group_supervisor' || _actor.role == 'worker') {
@@ -649,6 +678,12 @@ class _GlobalSearchPageState extends State<GlobalSearchPage> {
         equipment = equipment.where('municipalityCoordinatorId', isEqualTo: _actor.id);
       }
       add('equipment', 'معدة', equipment);
+      if (_actor.role != 'donor_manager') {
+        add('work_cycles', 'دورة', db.collection('work_cycles'));
+      }
+    }
+    if (_actor.role == 'donor_manager' &&
+        (_actor.can('cycle', 'view') || _actor.can('reports', 'view'))) {
       add('work_cycles', 'دورة', db.collection('work_cycles'));
     }
     if (_actor.can('dumpsite', 'view') &&
@@ -671,13 +706,25 @@ class _GlobalSearchPageState extends State<GlobalSearchPage> {
     });
   }
 
-  void _openRecord(FastSearchRecord result) {
-    Navigator.push(
+  Future<void> _openRecord(FastSearchRecord result) async {
+    final isLocal = result.collection == SimulationSeederService.localSearchCollection;
+    final cyclePage = isLocal || result.collection == 'work_cycles'
+        ? searchRecordManagementPage(_actor, result)
+        : null;
+    final deleted = await Navigator.push<bool>(
       context,
       MaterialPageRoute(
-        builder: (_) => _SearchRecordPage(record: result),
+        builder: (_) => cyclePage ?? _SearchRecordPage(record: result),
       ),
     );
+    if (!mounted) return;
+    if (isLocal) {
+      _refreshLocalSimulation();
+    } else if (deleted == true && cyclePage != null) {
+      _deletedCycleIds.add(result.id);
+      _applyQuery();
+      await _loadRemoteSources();
+    }
   }
 
   @override
@@ -854,7 +901,12 @@ Widget? searchRecordManagementPage(AppUser actor, FastSearchRecord record) {
       actor.can('operations', 'view')) {
     return EquipmentSearchScreen(focusRecordId: id, focusCollection: source);
   }
-  if (source == 'work_cycles' && actor.role == 'donor_manager' && actor.can('reports', 'view')) {
+  if (source == SimulationSeederService.localSearchCollection &&
+      actor.role == 'donor_manager' && actor.can('cycle', 'view')) {
+    return const SimulationPreviewScreen();
+  }
+  if (source == 'work_cycles' && actor.role == 'donor_manager' &&
+      (actor.can('cycle', 'view') || actor.can('reports', 'view'))) {
     return OperationsManagementScreen(initialTab: 0, focusRecordId: id);
   }
   if (source == 'operations' && record.category == 'نقلة' && actor.can('trips', 'view')) {

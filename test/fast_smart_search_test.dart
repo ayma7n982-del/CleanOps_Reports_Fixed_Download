@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:solid_waste_operations/core/services/fast_smart_search.dart';
+import 'package:solid_waste_operations/core/services/simulation_seeder_service.dart';
 
 void main() {
   group('FastSmartSearch Arabic offline index', () {
@@ -65,6 +66,33 @@ void main() {
       ]);
       expect(index.find('دير البلح'), isEmpty);
       expect(index.find('جديد').map((r) => r.id), contains('dump-2'));
+    });
+
+    test('finds the archived trial cycle by its trial label and Arabic number', () {
+      index.replaceSource('work_cycles', 'دورة', [
+        {
+          'id': 'sim_cycle_11_oct_2026',
+          'name': 'الدورة 11 - أكتوبر 2026',
+          'cycleNumber': 11,
+          'status': 'archived',
+        },
+        {'id': 'old-cycle', 'name': 'الدورة 12'},
+      ]);
+      expect(index.find('الدورة التجريبية ١١').single.id, 'sim_cycle_11_oct_2026');
+    });
+
+    test('local trial and its members disappear after deletion', () async {
+      addTearDown(SimulationSeederService.deleteSimulationData);
+      await SimulationSeederService.runCycle11Simulation();
+      const source = SimulationSeederService.localSearchCollection;
+      index.replaceSource(source, 'دورة', SimulationSeederService.searchCycles);
+      expect(index.find('الدورة التجريبية ١١').single.collection, source);
+      expect(SimulationSeederService.workers, hasLength(50));
+
+      await SimulationSeederService.deleteSimulationData();
+      index.replaceSource(source, 'دورة', SimulationSeederService.searchCycles);
+      expect(index.find('الدورة التجريبية ١١'), isEmpty);
+      expect(SimulationSeederService.workers, isEmpty);
     });
 
     test('does not show other collections unless actually supplied', () {
