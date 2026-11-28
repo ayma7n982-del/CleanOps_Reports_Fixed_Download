@@ -296,7 +296,7 @@ class _CyclesTabState extends State<_CyclesTab> with RecoverableForm<_CyclesTab>
       builder: (dialogContext) => AlertDialog(
         title: AppText(tr('تأكيد الحذف')),
         content: AppText(trial
-            ? 'سيُحذف تعريف الدورة التجريبية وتُعطَّل حسابات العمال والمشرفين المرتبطين بها وتُجدول للحذف النهائي. تبقى سجلات العمل والحضور والنقلات التاريخية.'
+            ? 'سيُحذف تعريف الدورة التجريبية وتُجدول ملفات العمال المرتبطين بها للحذف. يحتفظ المشرفون ومنسق البلدية بحساباتهم وصلاحياتهم. تبقى سجلات العمل والحضور والنقلات.'
             : 'سيُحذف تعريف الدورة نهائيًا. تبقى سجلات العمل والحضور والنقلات التاريخية. اختر الأرشفة للاحتفاظ بتعريف الدورة في السجل.'),
         actions: [
           TextButton(
@@ -315,12 +315,12 @@ class _CyclesTabState extends State<_CyclesTab> with RecoverableForm<_CyclesTab>
     try {
       final actor = context.read<AuthService>().currentUser!;
       final pending = await context.read<OperationsAdminService>().deleteWorkCycle(
-        id, actorId: actor.id, deleteTrialUsers: trial,
+        id, actorId: actor.id, deleteTrialWorkers: trial,
       );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: AppText(
           pending > 0
-              ? 'حُذفت الدورة وجُدول حذف $pending حسابًا مرتبطًا بها.'
+              ? 'حُذفت الدورة وجُدول حذف $pending من ملفات العمال المرتبطين بها.'
               : tr('تم الحذف بنجاح'),
         )));
         if (widget.focusRecordId != null) Navigator.pop(context, true);

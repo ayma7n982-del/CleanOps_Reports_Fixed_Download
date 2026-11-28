@@ -581,7 +581,8 @@ class _GlobalSearchPageState extends State<GlobalSearchPage> {
       }
       if (collection == 'users') {
         // Users are scoped at query level.
-        return record['status'] != 'pending_deletion';
+        return record['status'] != 'pending_deletion' &&
+            !SimulationSeederService.isTrialWorker(record);
       }
       if (collection == 'remote_operations' && record['id'] == 'sim_cycle11_cycle_index') {
         return false; // The canonical work_cycles record owns the deletion action.

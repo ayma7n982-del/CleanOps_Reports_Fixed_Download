@@ -30,6 +30,16 @@ class SimulationSeederService {
           .hasMatch('${data[field] ?? ''}'),
     );
   }
+  /// Trial workers are roster entries. Only the trial supervisors and
+  /// municipality coordinator belong in the sign-in account directory.
+  static bool isTrialWorker(Map<String, dynamic> user) {
+    return user['role'] == 'worker' &&
+        isTrialCycle('${user['cycleId'] ?? ''}', {
+          'isSimulation': user['isSimulation'],
+          'name': user['cycleName'],
+        });
+  }
+
   static List<Map<String, dynamic>> get municipalities => List<Map<String, dynamic>>.unmodifiable(_municipalities);
   static List<Map<String, dynamic>> get groups => List<Map<String, dynamic>>.unmodifiable(_groups);
   static List<Map<String, dynamic>> get workers => List<Map<String, dynamic>>.unmodifiable(_workers);

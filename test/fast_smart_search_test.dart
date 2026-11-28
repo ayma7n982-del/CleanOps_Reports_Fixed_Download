@@ -81,6 +81,22 @@ void main() {
       expect(index.find('الدورة التجريبية ١١').single.id, 'sim_cycle_11_oct_2026');
     });
 
+    test('only trial workers are excluded from the account directory', () {
+      const cycleId = 'sim_cycle_11_oct_2026';
+      expect(SimulationSeederService.isTrialWorker({
+        'cycleId': cycleId, 'role': 'worker',
+      }), isTrue);
+      expect(SimulationSeederService.isTrialWorker({
+        'cycleId': cycleId, 'role': 'group_supervisor',
+      }), isFalse);
+      expect(SimulationSeederService.isTrialWorker({
+        'cycleId': cycleId, 'role': 'municipality_coordinator',
+      }), isFalse);
+      expect(SimulationSeederService.isTrialWorker({
+        'cycleId': 'regular-cycle', 'role': 'worker',
+      }), isFalse);
+    });
+
     test('local trial and its members disappear after deletion', () async {
       addTearDown(SimulationSeederService.deleteSimulationData);
       await SimulationSeederService.runCycle11Simulation();
