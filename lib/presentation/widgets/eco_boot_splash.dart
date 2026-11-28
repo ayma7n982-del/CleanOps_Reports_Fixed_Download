@@ -5,24 +5,15 @@ import 'package:flutter/material.dart';
 /// Branded, responsive Flutter boot surface displayed after Android's native
 /// launch screen. Contains only visuals: no authentication or navigation logic.
 class EcoBootSplash extends StatelessWidget {
-  final double progress;
-  const EcoBootSplash({super.key, required this.progress});
+  const EcoBootSplash({super.key});
 
   @override
   Widget build(BuildContext context) {
     final reduceMotion = MediaQuery.disableAnimationsOf(context);
-    final t = reduceMotion ? 1.0 : progress.clamp(0.0, 1.0);
-    final pulse = reduceMotion ? .5 : (1 - math.cos(t * math.pi * 4)) / 2;
-    final floatOffset = reduceMotion ? 0.0 : math.sin(t * math.pi * 2) * 5;
     final width = MediaQuery.sizeOf(context).width;
     final height = MediaQuery.sizeOf(context).height;
     final compact = height < 660;
     final logoSize = (width * .33).clamp(104.0, 150.0);
-    final logoBoxSize = logoSize + 35;
-    // Keep branding visible even on the very first frame (progress == 0).
-    final fade = .85 + .15 * Curves.easeOutCubic.transform(t);
-    final scale = .90 + .10 * Curves.easeOutBack.transform(t);
-
     return DecoratedBox(
       decoration: const BoxDecoration(
         gradient: LinearGradient(
@@ -34,8 +25,8 @@ class EcoBootSplash extends StatelessWidget {
       child: Stack(
         fit: StackFit.expand,
         children: [
-          IgnorePointer(
-            child: CustomPaint(painter: _BootBackdrop(progress: t)),
+          const IgnorePointer(
+            child: RepaintBoundary(child: CustomPaint(painter: _BootBackdrop())),
           ),
           SafeArea(
             child: Column(
@@ -57,168 +48,72 @@ class EcoBootSplash extends StatelessWidget {
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Opacity(
-                              opacity: fade,
-                              child: Transform.translate(
-                                offset: Offset(0, -floatOffset),
-                                child: Transform.scale(
-                                  scale: scale,
-                                  child: Stack(
-                                    clipBehavior: Clip.none,
-                                    alignment: Alignment.center,
-                                    children: [
-                                      Container(
-                                        key: const ValueKey('boot-logo-glow'),
-                                        width: logoBoxSize + 48,
-                                        height: logoBoxSize + 48,
-                                        decoration: BoxDecoration(
-                                          shape: BoxShape.circle,
-                                          gradient: RadialGradient(
-                                            colors: [
-                                              const Color(
-                                                0xFF42CCA2,
-                                              ).withOpacity(.18 + pulse * .12),
-                                              const Color(0xFF73DDC3)
-                                                  .withOpacity(.08),
-                                              const Color(0xFF73DDC3)
-                                                  .withOpacity(0),
-                                            ],
-                                          ),
-                                          boxShadow: [
-                                            BoxShadow(
-                                              color: const Color(
-                                                0xFF21BA96,
-                                              ).withOpacity(.10 + pulse * .10),
-                                              blurRadius: 28 + pulse * 16,
-                                              spreadRadius: 2 + pulse * 6,
-                                            ),
-                                          ],
-                                          border: Border.all(
-                                            color: const Color(0xFFBDE9D8),
-                                            width: 1.5,
-                                          ),
-                                        ),
-                                      ),
-                                      Container(
-                                        width: logoBoxSize,
-                                        height: logoBoxSize,
-                                        decoration: BoxDecoration(
-                                          shape: BoxShape.circle,
-                                          color: const Color(0xFFDDF5E9),
-                                          border: Border.all(
-                                            color: const Color(0xFFC4EBD9),
-                                          ),
-                                        ),
-                                      ),
-                                      Container(
-                                        height: logoSize,
-                                        width: logoSize,
-                                        padding: const EdgeInsets.all(13),
-                                        decoration: BoxDecoration(
-                                          color: Colors.white,
-                                          borderRadius: BorderRadius.circular(
-                                            31,
-                                          ),
-                                          border: Border.all(
-                                            color: const Color(0xFFE5F3EB),
-                                          ),
-                                          boxShadow: const [
-                                            BoxShadow(
-                                              color: Color(0x28348F75),
-                                              blurRadius: 25,
-                                              offset: Offset(0, 12),
-                                            ),
-                                          ],
-                                        ),
-                                        child: Image.asset(
-                                          'assets/brand/cleanops_icon_new.png',
-                                          fit: BoxFit.contain,
-                                          filterQuality: FilterQuality.high,
-                                          errorBuilder: (_, __, ___) =>
-                                              const FittedBox(
-                                                fit: BoxFit.scaleDown,
-                                                child: Text(
-                                                  'CleanOps',
-                                                  style: TextStyle(
-                                                    fontWeight: FontWeight.w900,
-                                                    color: Color(0xFF087F6B),
-                                                  ),
-                                                ),
-                                              ),
-                                        ),
-                                      ),
-                                      PositionedDirectional(
-                                        top: 6 + floatOffset,
-                                        end: 0,
-                                        child: _BootBubble(
-                                          icon: Icons.recycling_rounded,
-                                          color: Color(0xFF088F75),
-                                        ),
-                                      ),
-                                      PositionedDirectional(
-                                        bottom: 2 + floatOffset,
-                                        start: 1,
-                                        child: _BootBubble(
-                                          icon: Icons.local_shipping_rounded,
-                                          color: Color(0xFF288DA7),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
+                            TweenAnimationBuilder<double>(
+                              key: const ValueKey('boot-logo-motion'),
+                              tween: Tween(begin: reduceMotion ? 0.0 : 8.0, end: 0.0),
+                              duration: reduceMotion
+                                  ? Duration.zero
+                                  : const Duration(milliseconds: 460),
+                              curve: Curves.easeOutCubic,
+                              builder: (context, offset, child) =>
+                                  Transform.translate(offset: Offset(0, offset), child: child),
+                              child: RepaintBoundary(child: _BootLogo(size: logoSize)),
                             ),
                             SizedBox(height: compact ? 18 : 27),
-                            Opacity(
-                              opacity: fade,
-                              child: Column(
-                                children: [
-                                  const Text(
-                                    'CleanOps',
-                                    textDirection: TextDirection.ltr,
-                                    style: TextStyle(
-                                      fontSize: 35,
-                                      height: 1.12,
-                                      fontWeight: FontWeight.w900,
-                                      letterSpacing: .1,
-                                      color: Color(0xFF104A40),
-                                    ),
+                            const Column(
+                              children: [
+                                Text(
+                                  'CleanOps',
+                                  textDirection: TextDirection.ltr,
+                                  style: TextStyle(
+                                    fontSize: 35,
+                                    height: 1.12,
+                                    fontWeight: FontWeight.w900,
+                                    letterSpacing: .1,
+                                    color: Color(0xFF104A40),
                                   ),
-                                  const SizedBox(height: 9),
-                                  const Text(
-                                    'منظومة ذكية لإدارة عمليات النظافة',
-                                    textAlign: TextAlign.center,
-                                    style: TextStyle(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.w900,
-                                      color: Color(0xFF154E43),
-                                    ),
+                                ),
+                                SizedBox(height: 9),
+                                Text(
+                                  'منظومة ذكية لإدارة عمليات النظافة',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w900,
+                                    color: Color(0xFF154E43),
                                   ),
-                                  const SizedBox(height: 5),
-                                  const Text(
-                                    'تنظيم أفضل • قرارات أذكى • بيئة أنظف',
-                                    textAlign: TextAlign.center,
-                                    style: TextStyle(
-                                      fontSize: 11.5,
-                                      fontWeight: FontWeight.w600,
-                                      color: Color(0xFF528278),
-                                    ),
+                                ),
+                                SizedBox(height: 5),
+                                Text(
+                                  'تنظيم أفضل • قرارات أذكى • بيئة أنظف',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    fontSize: 11.5,
+                                    fontWeight: FontWeight.w600,
+                                    color: Color(0xFF528278),
                                   ),
-                                ],
-                              ),
+                                ),
+                              ],
                             ),
                             SizedBox(height: compact ? 24 : 35),
                             SizedBox(
                               width: 205,
                               child: Column(
                                 children: [
-                                  ClipRRect(
-                                    borderRadius: BorderRadius.circular(20),
-                                    child: LinearProgressIndicator(
-                                      minHeight: 5,
-                                      value: t,
-                                      backgroundColor: const Color(0xFFC4E9D9),
-                                      color: const Color(0xFF0F9C7D),
+                                  RepaintBoundary(
+                                    child: ClipRRect(
+                                      borderRadius: BorderRadius.circular(20),
+                                      child: reduceMotion
+                                          ? const SizedBox(
+                                              height: 5,
+                                              width: double.infinity,
+                                              child: ColoredBox(color: Color(0xFF0F9C7D)),
+                                            )
+                                          : const LinearProgressIndicator(
+                                              minHeight: 5,
+                                              backgroundColor: Color(0xFFC4E9D9),
+                                              color: Color(0xFF0F9C7D),
+                                            ),
                                     ),
                                   ),
                                   const SizedBox(height: 9),
@@ -262,6 +157,87 @@ class EcoBootSplash extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _BootLogo extends StatelessWidget {
+  final double size;
+  const _BootLogo({required this.size});
+
+  @override
+  Widget build(BuildContext context) {
+    final ringSize = size + 35;
+    const padding = 13.0;
+    final decodeWidth = ((size - padding * 2) *
+            MediaQuery.devicePixelRatioOf(context))
+        .ceil();
+    return Stack(
+      alignment: Alignment.center,
+      children: [
+        Container(
+          width: ringSize + 48,
+          height: ringSize + 48,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            gradient: const RadialGradient(
+              colors: [Color(0x4842CCA2), Color(0x1473DDC3), Color(0x0073DDC3)],
+            ),
+            border: Border.all(color: const Color(0xFFBDE9D8), width: 1.5),
+          ),
+        ),
+        Container(
+          width: ringSize,
+          height: ringSize,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: const Color(0xFFDDF5E9),
+            border: Border.all(color: const Color(0xFFC4EBD9)),
+          ),
+        ),
+        Container(
+          width: size,
+          height: size,
+          padding: const EdgeInsets.all(padding),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(31),
+            border: Border.all(color: const Color(0xFFE5F3EB)),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x28348F75),
+                blurRadius: 25,
+                offset: Offset(0, 12),
+              ),
+            ],
+          ),
+          child: Image.asset(
+            'assets/brand/cleanops_icon_new.png',
+            cacheWidth: decodeWidth,
+            fit: BoxFit.contain,
+            errorBuilder: (_, __, ___) => const FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                'CleanOps',
+                style: TextStyle(
+                  fontWeight: FontWeight.w900,
+                  color: Color(0xFF087F6B),
+                ),
+              ),
+            ),
+          ),
+        ),
+        const PositionedDirectional(
+          top: 6,
+          end: 0,
+          child: _BootBubble(icon: Icons.recycling_rounded, color: Color(0xFF088F75)),
+        ),
+        const PositionedDirectional(
+          bottom: 2,
+          start: 1,
+          child: _BootBubble(icon: Icons.local_shipping_rounded, color: Color(0xFF288DA7)),
+        ),
+      ],
     );
   }
 }
@@ -331,10 +307,8 @@ class _BootCapabilities extends StatelessWidget {
   }
 }
 
-/// Lightweight orbiting highlights driven by the existing launch animation.
 class _BootBackdrop extends CustomPainter {
-  final double progress;
-  const _BootBackdrop({required this.progress});
+  const _BootBackdrop();
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -355,12 +329,12 @@ class _BootBackdrop extends CustomPainter {
       ..color = const Color(0x6653B89A);
     final center = Offset(size.width * .5, size.height * .37);
     for (var i = 0; i < 3; i++) {
-      final radius = size.width * (.26 + i * .12 + progress * .035);
+      final radius = size.width * (.28 + i * .12);
       canvas.drawCircle(center, radius, line);
     }
     final small = Paint()..color = const Color(0x6677C8A8);
     for (var i = 0; i < 12; i++) {
-      final radians = math.pi * 2 * i / 12 + progress * math.pi * .3;
+      final radians = math.pi * 2 * i / 12;
       final p =
           center +
           Offset(
@@ -372,6 +346,5 @@ class _BootBackdrop extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _BootBackdrop oldDelegate) =>
-      oldDelegate.progress != progress;
+  bool shouldRepaint(covariant _BootBackdrop oldDelegate) => false;
 }

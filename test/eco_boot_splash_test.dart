@@ -8,7 +8,6 @@ void main() {
   Future<void> pumpBoot(
     WidgetTester tester, {
     required Size size,
-    required double progress,
     bool reduceMotion = false,
     double textScale = 1,
   }) async {
@@ -25,19 +24,18 @@ void main() {
             ),
             child: Directionality(
               textDirection: TextDirection.rtl,
-              child: EcoBootSplash(progress: progress),
+              child: const EcoBootSplash(),
             ),
           ),
         ),
       ),
     );
-    await tester.pumpAndSettle();
   }
 
   testWidgets('branded launch stays readable on a small Samsung phone', (
     tester,
   ) async {
-    await pumpBoot(tester, size: const Size(320, 640), progress: .6);
+    await pumpBoot(tester, size: const Size(320, 640));
     expect(find.text('CleanOps'), findsOneWidget);
     expect(find.text('منظومة ذكية لإدارة عمليات النظافة'), findsOneWidget);
     expect(find.text('تهيئة مساحة العمل...'), findsOneWidget);
@@ -49,7 +47,7 @@ void main() {
   testWidgets('branded launch adapts on larger phones without overflow', (
     tester,
   ) async {
-    await pumpBoot(tester, size: const Size(430, 900), progress: 1);
+    await pumpBoot(tester, size: const Size(430, 900));
     expect(find.byType(EcoBootSplash), findsOneWidget);
     expect(find.byType(LinearProgressIndicator), findsOneWidget);
     expect(tester.takeException(), isNull);
@@ -58,60 +56,47 @@ void main() {
   testWidgets('boot screen renders before any login providers exist', (
     tester,
   ) async {
-    await pumpBoot(tester, size: const Size(360, 700), progress: 0);
+    await pumpBoot(tester, size: const Size(360, 700));
     expect(find.text('CleanOps'), findsOneWidget);
     final brand = tester.widget<Image>(find.byType(Image).first);
     expect(
-      (brand.image as AssetImage).assetName,
+      ((brand.image as ResizeImage).imageProvider as AssetImage).assetName,
       'assets/brand/cleanops_icon_new.png',
     );
-    final fade = tester.widgetList<Opacity>(find.byType(Opacity));
-    expect(fade.every((widget) => widget.opacity > 0), isTrue);
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets(
-    'logo lighting changes with launch progress and respects reduced motion',
-    (tester) async {
-      double glowBlur() =>
-          (tester
-                      .widget<Container>(
-                        find.byKey(const ValueKey('boot-logo-glow')),
-                      )
-                      .decoration
-                  as BoxDecoration)
-              .boxShadow!
-              .single
-              .blurRadius;
+  testWidgets('logo moves independently of the loading indicator', (tester) async {
+    await pumpBoot(tester, size: const Size(360, 700));
+    final logo = find.byType(Image);
+    final start = tester.getTopLeft(logo).dy;
+    await tester.pump(const Duration(milliseconds: 80));
+    final middle = tester.getTopLeft(logo).dy;
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(middle, lessThan(start));
+    expect(tester.getTopLeft(logo).dy, lessThan(middle));
+    final progress = tester.widget<LinearProgressIndicator>(
+      find.byType(LinearProgressIndicator),
+    );
+    expect(progress.value, isNull);
+    expect(tester.takeException(), isNull);
+  });
 
-      await pumpBoot(tester, size: const Size(360, 700), progress: 0);
-      final initialBlur = glowBlur();
-      await pumpBoot(tester, size: const Size(360, 700), progress: .25);
-      expect(glowBlur(), greaterThan(initialBlur));
-
-      await pumpBoot(
-        tester,
-        size: const Size(360, 700),
-        progress: 0,
-        reduceMotion: true,
-      );
-      final staticBlur = glowBlur();
-      await pumpBoot(
-        tester,
-        size: const Size(360, 700),
-        progress: .25,
-        reduceMotion: true,
-      );
-      expect(glowBlur(), staticBlur);
-      expect(tester.takeException(), isNull);
-    },
-  );
+  testWidgets('reduced motion keeps the logo and indicator static', (tester) async {
+    await pumpBoot(tester, size: const Size(360, 700), reduceMotion: true);
+    final logo = find.byType(Image);
+    final start = tester.getTopLeft(logo);
+    await tester.pump(const Duration(milliseconds: 250));
+    expect(tester.getTopLeft(logo), start);
+    expect(find.byType(LinearProgressIndicator), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets(
     'developer credit stays at the bottom with large text and landscape',
     (tester) async {
       for (final size in [const Size(320, 640), const Size(640, 320)]) {
-        await pumpBoot(tester, size: size, progress: .6, textScale: 2);
+        await pumpBoot(tester, size: size, textScale: 2);
         final credit = find.byKey(const ValueKey('boot-developer-credit'));
         final bounds = tester.getRect(credit);
         expect(bounds.bottom, lessThanOrEqualTo(size.height));
