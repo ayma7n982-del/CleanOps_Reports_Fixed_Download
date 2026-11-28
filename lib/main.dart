@@ -1,4 +1,5 @@
 import 'presentation/widgets/app_navigation_bar.dart';
+import 'presentation/widgets/change_password.dart';
 import 'presentation/screens/notifications_screen.dart';
 import 'presentation/notification_navigation.dart';
 import 'core/services/notification_target_policy.dart';
@@ -454,6 +455,7 @@ class AppDrawer extends StatelessWidget {
                 Navigator.push(context, MaterialPageRoute(builder: (_) => page));
               },
             ),
+            const ChangePasswordTile(),
             ListTile(
               leading: const Icon(Icons.logout, color: red),
               title: const AppText('تسجيل الخروج'),
@@ -1132,6 +1134,12 @@ class SettingsPage extends StatelessWidget{
     return ListView(
       padding:const EdgeInsets.all(16),
       children:[
+        const CardSection(
+          title: 'حسابي',
+          icon: Icon(Icons.manage_accounts_outlined, color: aiCyan),
+          child: ChangePasswordTile(),
+        ),
+        const SizedBox(height: 14),
         CardSection(
           title:'التخزين والصور',
           icon:const FeatureIcon('sync'),

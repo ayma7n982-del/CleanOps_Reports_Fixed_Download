@@ -215,6 +215,48 @@ class AuthService extends ChangeNotifier {
     }
   }
 
+  Future<String?> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    final auth = Firebase.apps.isEmpty ? null : FirebaseAuth.instance;
+    final account = auth?.currentUser;
+    if (account == null || currentUser?.id != account.uid) {
+      return 'سجّل الدخول عبر الإنترنت لتغيير كلمة المرور.';
+    }
+
+    final email = account.email;
+    if (email == null || !account.providerData.any(
+      (provider) => provider.providerId == EmailAuthProvider.PROVIDER_ID,
+    )) {
+      return 'هذا الحساب لا يستخدم تسجيل الدخول بكلمة مرور.';
+    }
+
+    try {
+      await account.reauthenticateWithCredential(
+        EmailAuthProvider.credential(email: email, password: currentPassword),
+      );
+      if (auth?.currentUser?.uid != account.uid || currentUser?.id != account.uid) {
+        return 'تغيّرت جلسة الدخول. افتح خيارات حسابك مرة أخرى.';
+      }
+      await account.updatePassword(newPassword);
+      return null;
+    } on FirebaseAuthException catch (e) {
+      return switch (e.code) {
+        'wrong-password' || 'invalid-credential' => 'كلمة المرور الحالية غير صحيحة.',
+        'weak-password' || 'password-does-not-meet-requirements' =>
+          'كلمة المرور الجديدة لا تستوفي شروط الأمان.',
+        'network-request-failed' => 'تعذر الاتصال. تحقق من الإنترنت وحاول مرة أخرى.',
+        'too-many-requests' => 'محاولات كثيرة. انتظر قليلًا وحاول مرة أخرى.',
+        'requires-recent-login' || 'user-token-expired' || 'invalid-user-token' =>
+          'سجّل الدخول مجددًا ثم حاول تغيير كلمة المرور.',
+        _ => 'تعذر تغيير كلمة المرور. حاول مرة أخرى.',
+      };
+    } catch (_) {
+      return 'تعذر تغيير كلمة المرور. حاول مرة أخرى.';
+    }
+  }
+
   Future<bool> requestPasswordReset(String username) async {
     loading = true;
     error = null;
