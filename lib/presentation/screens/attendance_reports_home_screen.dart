@@ -1,3 +1,5 @@
+import '../../core/services/report_distribution.dart';
+import '../../core/services/report_letterhead.dart';
 import '../widgets/app_navigation_bar.dart';
 import 'dart:ui' as ui;
 import 'dart:typed_data';
@@ -11,7 +13,7 @@ import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import '../../core/services/report_branding_store.dart';
 import '../../core/localization.dart';
 import '../../core/services/data_service.dart';
 import '../../core/services/auth_service.dart';
@@ -87,7 +89,7 @@ class _AttendanceReportsHomeScreenState extends State<AttendanceReportsHomeScree
     for (final person in roster) {
       final id = '${person['id'] ?? ''}';
       if (id.isEmpty || recordedIds.contains(id)) continue;
-      records.add({'workerId': id, 'workerName': person['name'] ?? person['username'] ?? id, 'workerRole': person['workerRole'] ?? person['role'] ?? 'worker', 'groupId': person['groupId'] ?? '', 'groupName': person['groupName'] ?? person['groupId'] ?? '', 'status': 'no_entry', 'ppeComplete': false, 'createdAt': selectedDate.toIso8601String(), 'isRosterOnly': true});
+      records.add({for (final key in ['cycleName','cycle','municipalityName','municipality','councilName']) key: person[key], 'workerId': id, 'workerName': person['name'] ?? person['username'] ?? id, 'workerRole': person['workerRole'] ?? person['role'] ?? 'worker', 'groupId': person['groupId'] ?? '', 'groupName': person['groupName'] ?? person['groupId'] ?? '', 'status': 'no_entry', 'ppeComplete': false, 'createdAt': selectedDate.toIso8601String(), 'isRosterOnly': true});
     }
     if (widget.leavesOnly) records.removeWhere((record) => !const ['leave', 'on_leave', 'إجازة', 'permission', 'إذن خاص'].contains(record['status']));
     records.sort((a,b) => '${a['workerName'] ?? ''}'.compareTo('${b['workerName'] ?? ''}'));
@@ -186,29 +188,32 @@ class _AttendanceReportsHomeScreenState extends State<AttendanceReportsHomeScree
     return role == 'donor_manager';
   }
 
-  Future<Uint8List> _pdfBytes(List<Map<String, dynamic>> records) async {
+  Future<Uint8List> _pdfBytes(List<Map<String, dynamic>> records, {bool leavesOnly = false}) async {
     final regular = pw.Font.ttf(await rootBundle.load('assets/fonts/NotoSansArabic-Regular.ttf'));
     final bold = pw.Font.ttf(await rootBundle.load('assets/fonts/NotoSansArabic-Bold.ttf'));
     final en = exportLanguage == 'en';
-    final projectLabel = en ? 'Project / cycle' : 'المشروع / الدورة';
     final rows = <pw.TableRow>[
-      pw.TableRow(children: [if (showGroups) _cell(en ? 'Group' : 'المجموعة', bold), _cell(en ? 'Worker / Supervisor' : 'العامل / المشرف', bold), _cell(en ? 'Role' : 'الصفة', bold), _cell(en ? 'Status' : 'الحالة', bold), _cell(en ? 'Clock-in' : 'وقت الحضور', bold), _cell(en ? 'Clock-out' : 'وقت الانصراف', bold), _cell(en ? 'PPE' : 'معدات الوقاية', bold)]),
+      pw.TableRow(repeat: true, children: [if (showGroups) _cell(en ? 'Group' : 'المجموعة', bold), _cell(en ? 'Worker / Supervisor' : 'العامل / المشرف', bold), _cell(en ? 'Role' : 'الصفة', bold), _cell(en ? 'Status' : 'الحالة', bold), _cell(en ? 'Clock-in' : 'وقت الحضور', bold), _cell(en ? 'Clock-out' : 'وقت الانصراف', bold), _cell(en ? 'PPE' : 'معدات الوقاية', bold)]),
       for (final r in records) pw.TableRow(children: [if (showGroups) _cell('${r['groupName'] ?? r['groupId'] ?? '—'}', regular), _cell('${r['workerName'] ?? r['workerId'] ?? '—'}', regular), _cell(_role('${r['workerRole'] ?? 'worker'}', en: en), regular), _cell(_status('${r['status'] ?? ''}', en: en), regular), _cell(_timeLabel(r['checkInAt'] ?? r['checkInTime']), regular), _cell(_timeLabel(r['checkOutAt'] ?? r['checkOutTime']), regular), _cell(r['ppeComplete'] == true ? (en ? 'Complete' : 'مكتملة') : '—', regular)]),
     ];
-    final prefs = await SharedPreferences.getInstance();
+    final municipalityName = reportField(records, ['municipalityName', 'municipality']);
+    final councilName = reportField(records, ['councilName']);
+    final projectName = reportField(records, ['cycleName', 'cycle']);
+    final prefs = await ReportBrandingStore.read(municipality: municipalityName,
+        council: councilName, project: projectName, allowLocalMunicipality: false, allowLocalCouncil: false);
     pw.ImageProvider? logo(String key) { final raw = prefs.getString(key); if (raw == null || raw.isEmpty) return null; try { return pw.MemoryImage(base64Decode(raw)); } catch (_) { return null; } }
     final municipalityLogo = logo('report_municipality_logo_base64');
     final councilLogo = logo('report_council_logo_base64');
     final unicefLogo = logo('report_unicef_logo_base64');
-    final municipalityName = prefs.getString('report_municipality_name') ?? '';
-    final councilName = prefs.getString('report_council_name') ?? '';
-    final projectName = prefs.getString('report_project_name') ?? '';
     final doc = pw.Document();
-    doc.addPage(pw.MultiPage(pageFormat: PdfPageFormat.a4.landscape, margin: const pw.EdgeInsets.all(28), textDirection: en ? pw.TextDirection.ltr : pw.TextDirection.rtl, theme: pw.ThemeData.withFont(base: regular, bold: bold), build: (_) => [
-      pw.Row(children: [if (municipalityLogo != null) pw.Container(width: 36,height:36,child:pw.Image(municipalityLogo)), if (councilLogo != null) pw.Padding(padding: const pw.EdgeInsets.only(left:4),child:pw.Container(width:36,height:36,child:pw.Image(councilLogo))), if (unicefLogo != null) pw.Padding(padding: const pw.EdgeInsets.only(left:4),child:pw.Container(width:36,height:36,child:pw.Image(unicefLogo))), pw.SizedBox(width:8), pw.Expanded(child:pw.Column(crossAxisAlignment:pw.CrossAxisAlignment.start,children:[if(municipalityName.isNotEmpty) pw.Text(municipalityName,style:pw.TextStyle(font:bold,fontSize:10)),if(councilName.isNotEmpty) pw.Text(councilName,style:pw.TextStyle(font:bold,fontSize:10)),if(projectName.isNotEmpty) pw.Text('$projectLabel: $projectName',style:pw.TextStyle(font:regular,fontSize:8)),pw.Text(en ? 'UNICEF' : 'اليونيسف (UNICEF)',style:pw.TextStyle(font:bold,fontSize:9))]))]),
+    doc.addPage(pw.MultiPage(pageFormat: PdfPageFormat.a4.landscape, margin: const pw.EdgeInsets.all(28), textDirection: en ? pw.TextDirection.ltr : pw.TextDirection.rtl, theme: pw.ThemeData.withFont(base: regular, bold: bold),
+      header: (_) => reportLetterhead(cycle: projectName, municipality: municipalityName, council: councilName, regular: regular, bold: bold, english: en, municipalityLogo: municipalityLogo, councilLogo: councilLogo, unicefLogo: unicefLogo),
+      build: (_) => [
       pw.SizedBox(height: 8),
-      pw.Text(en ? 'Detailed Attendance and Absence Report' : 'تقرير الحضور والغياب التفصيلي', style: pw.TextStyle(font: bold, fontSize: 16)),
+      pw.Text(leavesOnly ? (en ? 'Leave and Permission Register' : 'سجل الإجازات والأذونات') : (en ? 'Detailed Attendance and Absence Report' : 'تقرير الحضور والغياب التفصيلي'), style: pw.TextStyle(font: bold, fontSize: 16)),
       pw.SizedBox(height: 5), pw.Text('${en ? 'Date' : 'التاريخ'}: ${DateFormat('yyyy-MM-dd').format(selectedDate)}', style: pw.TextStyle(font: regular, fontSize: 9)),
+      distributionChart(en ? 'Distribution of displayed records' : 'توزيع حالات السجلات المعروضة',
+          reportCounts(records.map((r) => _status('${r['status'] ?? ''}', en: en))), regular, bold, english: en),
       pw.Container(
         padding: const pw.EdgeInsets.symmetric(vertical: 8, horizontal: 10),
         decoration: pw.BoxDecoration(color: PdfColors.blue50, borderRadius: pw.BorderRadius.circular(6)),
@@ -228,8 +233,8 @@ class _AttendanceReportsHomeScreenState extends State<AttendanceReportsHomeScree
     return Uint8List.fromList(await doc.save());
   }
   pw.Widget _cell(String text, pw.Font font) => pw.Padding(padding: const pw.EdgeInsets.all(5), child: pw.Text(text, style: pw.TextStyle(font: font, fontSize: 8)));
-  Future<void> _preview(List<Map<String, dynamic>> rows) async { setState(() => busy = true); try { final bytes = await _pdfBytes(rows); if (mounted) await Printing.layoutPdf(onLayout: (_) async => bytes); } catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: AppText('تعذرت المعاينة: $e'))); } finally { if (mounted) setState(() => busy = false); } }
-  Future<void> _export(List<Map<String, dynamic>> rows) async { setState(() => busy = true); try { final bytes = await _pdfBytes(rows); final path = await savePdfBytes(bytes, 'daily_attendance_${DateFormat('yyyyMMdd').format(selectedDate)}_$exportLanguage.pdf'); if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: AppText(path == null ? 'تعذر حفظ PDF' : 'تم إنشاء PDF: $path'))); } catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: AppText('تعذر التصدير: $e'))); } finally { if (mounted) setState(() => busy = false); } }
+  Future<void> _preview(List<Map<String, dynamic>> rows) async { setState(() => busy = true); try { final bytes = await _pdfBytes(rows, leavesOnly: widget.leavesOnly); if (mounted) await Printing.layoutPdf(onLayout: (_) async => bytes); } catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: AppText('تعذرت المعاينة: $e'))); } finally { if (mounted) setState(() => busy = false); } }
+  Future<void> _export(List<Map<String, dynamic>> rows) async { setState(() => busy = true); try { final bytes = await _pdfBytes(rows, leavesOnly: widget.leavesOnly); final path = await savePdfBytes(bytes, 'daily_attendance_${DateFormat('yyyyMMdd').format(selectedDate)}_$exportLanguage.pdf'); if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: AppText(path == null ? 'تعذر حفظ PDF' : 'تم إنشاء PDF: $path'))); } catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: AppText('تعذر التصدير: $e'))); } finally { if (mounted) setState(() => busy = false); } }
   Widget _kpi(String label, int value) => SizedBox(width: 105, child: Card(child: Padding(padding: const EdgeInsets.all(12), child: Column(children: [Text(label), Text('$value', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900))]))));
   String _role(String value, {bool en = false}) => switch (value) {'group_supervisor' => en ? 'Supervisor' : 'مشرف', 'worker_with_cart' => en ? 'Worker with cart' : 'عامل بكارة', 'worker' => en ? 'Worker' : 'عامل', _ => value};
   String _status(String value, {bool en = false}) {

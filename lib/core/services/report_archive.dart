@@ -57,6 +57,8 @@ class ReportArchive {
       'containersByGroup': SplayTreeMap<String, int>.from(s.containersByGroup),
       'municipalityNames': s.municipalityNames,
       'cycles': s.cycles,
+      'councilLabel': s.councilLabel,
+      'cycleLabel': s.cycleLabel,
       'selectedMunicipality': s.selectedMunicipality,
       'selectedGroup': s.selectedGroup,
       'selectedCycle': s.selectedCycle,
@@ -182,6 +184,8 @@ class ReportArchive {
       selectedMunicipality:
           (m['selectedMunicipality'] ?? row['municipality']) as String?,
       selectedGroup: (m['selectedGroup'] ?? row['group']) as String?,
+      councilLabel: '${m['councilLabel'] ?? row['councilName'] ?? ''}',
+      cycleLabel: '${m['cycleLabel'] ?? row['cycleName'] ?? ''}',
       selectedCycle: (m['selectedCycle'] ?? row['cycle']) as String?,
       reportType: (m['reportType'] ?? row['reportType']) as String?,
     );

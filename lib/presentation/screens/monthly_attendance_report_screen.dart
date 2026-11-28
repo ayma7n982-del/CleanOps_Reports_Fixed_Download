@@ -1,3 +1,5 @@
+import '../../core/services/report_distribution.dart';
+import '../../core/services/report_letterhead.dart';
 import '../widgets/app_navigation_bar.dart';
 import 'dart:typed_data';
 import 'dart:convert';
@@ -244,20 +246,19 @@ class _MonthlyAttendanceReportScreenState extends State<MonthlyAttendanceReportS
     final regular = pw.Font.ttf(await rootBundle.load('assets/fonts/NotoSansArabic-Regular.ttf'));
     final bold = pw.Font.ttf(await rootBundle.load('assets/fonts/NotoSansArabic-Bold.ttf'));
     final english = exportLanguage == 'en';
-    final projectLabel = english ? 'Project / cycle' : 'المشروع / الدورة';
     final headers = <pw.Widget>[
-      pw.Container(width: 90, padding: const pw.EdgeInsets.all(3), child: pw.Text(english ? 'Worker / Supervisor' : 'العامل / المشرف', style: pw.TextStyle(font: bold, fontSize: 6))),
-      for (var d = (periodMode == 'second' ? 16 : 1); d <= (periodMode == 'first' ? 15 : daysInMonth); d++) pw.Container(width: 22, padding: const pw.EdgeInsets.all(1), child: pw.Column(children: [pw.Text(_weekday(DateTime(month.year, month.month, d), !english), style: pw.TextStyle(font: regular, fontSize: 5)), pw.Text('$d', style: pw.TextStyle(font: bold, fontSize: 6))])),
+      pw.Container(width: 90, padding: const pw.EdgeInsets.all(3), child: pw.Text(english ? 'Worker / Supervisor' : 'العامل / المشرف', style: pw.TextStyle(font: bold, fontSize: 9))),
+      for (var d = (periodMode == 'second' ? 16 : 1); d <= (periodMode == 'first' ? 15 : daysInMonth); d++) pw.Container(width: 22, padding: const pw.EdgeInsets.all(1), child: pw.Column(children: [pw.Text(_weekday(DateTime(month.year, month.month, d), !english), style: pw.TextStyle(font: regular, fontSize: 7)), pw.Text('$d', style: pw.TextStyle(font: bold, fontSize: 9))])),
     ];
-    final rows = <pw.TableRow>[pw.TableRow(children: headers), for (final id in matrix.ids) pw.TableRow(children: [
-      pw.Container(width: 90, padding: const pw.EdgeInsets.all(3), child: pw.Text(matrix.labels[id]!, style: pw.TextStyle(font: regular, fontSize: 6))),
-      for (var d = (periodMode == 'second' ? 16 : 1); d <= (periodMode == 'first' ? 15 : daysInMonth); d++) pw.Container(width: 22, padding: const pw.EdgeInsets.all(2), alignment: pw.Alignment.center, child: pw.Text(_pdfMark(matrix.statuses['$id|$d'], english), style: pw.TextStyle(font: bold, fontSize: 6, color: _pdfColor(matrix.statuses['$id|$d'])))),
+    final rows = <pw.TableRow>[pw.TableRow(repeat: true, decoration: const pw.BoxDecoration(color: PdfColors.teal50), children: headers), for (final id in matrix.ids) pw.TableRow(children: [
+      pw.Container(width: 90, padding: const pw.EdgeInsets.all(3), child: pw.Text(matrix.labels[id]!, style: pw.TextStyle(font: regular, fontSize: 9))),
+      for (var d = (periodMode == 'second' ? 16 : 1); d <= (periodMode == 'first' ? 15 : daysInMonth); d++) pw.Container(width: 22, padding: const pw.EdgeInsets.all(3), alignment: pw.Alignment.center, child: pw.Text(_pdfMark(matrix.statuses['$id|$d'], english), style: pw.TextStyle(font: bold, fontSize: 9, color: _pdfColor(matrix.statuses['$id|$d'])))),
     ])];
     final municipalities = roster.map((row) => '${row['municipalityName'] ?? row['municipality'] ?? ''}'.trim())
         .where((value) => value.isNotEmpty).toSet();
     final councils = roster.map((row) => '${row['councilName'] ?? ''}'.trim())
         .where((value) => value.isNotEmpty).toSet();
-    final projects = roster.map((row) => '${row['cycleName'] ?? row['cycleId'] ?? ''}'.trim())
+    final projects = roster.map((row) => '${row['cycleName'] ?? row['cycle'] ?? ''}'.trim())
         .where((value) => value.isNotEmpty).toSet();
     final prefs = await ReportBrandingStore.read(
       municipality: municipalities.length == 1 ? municipalities.single : '',
@@ -269,19 +270,24 @@ class _MonthlyAttendanceReportScreenState extends State<MonthlyAttendanceReportS
     final municipalityLogo = logo('report_municipality_logo_base64');
     final councilLogo = logo('report_council_logo_base64');
     final unicefLogo = logo('report_unicef_logo_base64');
-    final municipalityName = prefs.getString('report_municipality_name') ?? '';
-    final councilName = prefs.getString('report_council_name') ?? '';
-    final projectName = prefs.getString('report_project_name') ?? '';
+    final municipalityName = reportNames(municipalities);
+    final councilName = reportNames(councils);
+    final projectName = reportNames(projects);
     final doc = pw.Document();
-    doc.addPage(pw.MultiPage(pageFormat: PdfPageFormat.a3.landscape, margin: const pw.EdgeInsets.all(22), textDirection: english ? pw.TextDirection.ltr : pw.TextDirection.rtl, theme: pw.ThemeData.withFont(base: regular, bold: bold), build: (_) => [
-      pw.Row(children: [if (municipalityLogo != null) pw.Container(width: 32,height:32,child:pw.Image(municipalityLogo)), if (councilLogo != null) pw.Padding(padding: const pw.EdgeInsets.only(left:3),child:pw.Container(width:32,height:32,child:pw.Image(councilLogo))), if (unicefLogo != null) pw.Padding(padding: const pw.EdgeInsets.only(left:3),child:pw.Container(width:32,height:32,child:pw.Image(unicefLogo))), pw.SizedBox(width:8), pw.Expanded(child:pw.Column(crossAxisAlignment:pw.CrossAxisAlignment.start,children:[if(municipalityName.isNotEmpty) pw.Text(municipalityName,style:pw.TextStyle(font:bold,fontSize:9)),if(councilName.isNotEmpty) pw.Text(councilName,style:pw.TextStyle(font:bold,fontSize:9)),if(projectName.isNotEmpty) pw.Text('$projectLabel: $projectName',style:pw.TextStyle(font:regular,fontSize:7)),pw.Text(english ? 'UNICEF' : 'اليونيسف (UNICEF)',style:pw.TextStyle(font:bold,fontSize:8))]))]),
+    doc.addPage(pw.MultiPage(pageFormat: PdfPageFormat.a3.landscape, margin: const pw.EdgeInsets.all(22), textDirection: english ? pw.TextDirection.ltr : pw.TextDirection.rtl, theme: pw.ThemeData.withFont(base: regular, bold: bold),
+      header: (_) => reportLetterhead(cycle: projectName, municipality: municipalityName, council: councilName, regular: regular, bold: bold, english: english, municipalityLogo: municipalityLogo, councilLogo: councilLogo, unicefLogo: unicefLogo),
+      build: (_) => [
       pw.SizedBox(height: 6),
       pw.Text(english ? (periodMode == 'month' ? 'Monthly Attendance Calendar' : 'Semi-Monthly Attendance Calendar') : (periodMode == 'month' ? 'التقرير الشهري التقويمي للحضور' : 'تقرير الحضور والغياب لنصف شهر'), style: pw.TextStyle(font: bold, fontSize: 14)),
       pw.SizedBox(height: 4),
       pw.Text('${_monthLabel(!english)} • ${periodMode == 'second' ? 16 : 1}–${periodMode == 'first' ? 15 : daysInMonth}', style: pw.TextStyle(font: regular, fontSize: 9)),
+      distributionChart(english ? 'Calendar marks by person-day' : 'توزيع علامات التقويم لكل فرد ويوم', reportCounts([
+        for (final id in matrix.ids) for (var d = (periodMode == 'second' ? 16 : 1); d <= (periodMode == 'first' ? 15 : daysInMonth); d++)
+          _pdfMark(matrix.statuses['$id|$d'], english),
+      ]), regular, bold, english: english),
       pw.SizedBox(height: 10),
-      pw.Directionality(textDirection: english ? pw.TextDirection.ltr : pw.TextDirection.rtl, child: pw.Table(border: pw.TableBorder.all(color: PdfColors.grey400, width: .35), columnWidths: {0: const pw.FixedColumnWidth(90), for (var d=1; d<= (periodMode == 'first' ? 15 : daysInMonth - (periodMode == 'second' ? 15 : 0)); d++) d: const pw.FixedColumnWidth(22)}, children: rows)),
-      pw.SizedBox(height: 8), pw.Text(english ? 'Present: ✓   Absent: ×   Excused: E   Unexcused: U   No entry: —' : 'حضور: ✓   غياب: ×   بعذر: م   دون عذر: غ   لا يوجد تسجيل: —', style: pw.TextStyle(font: regular, fontSize: 7)),
+      pw.Directionality(textDirection: english ? pw.TextDirection.ltr : pw.TextDirection.rtl, child: pw.Table(border: pw.TableBorder.all(color: PdfColors.grey400, width: .35), columnWidths: {0: const pw.FixedColumnWidth(120), for (var d=1; d<= (periodMode == 'first' ? 15 : daysInMonth - (periodMode == 'second' ? 15 : 0)); d++) d: const pw.FlexColumnWidth()}, children: rows)),
+      pw.SizedBox(height: 8), pw.Text(english ? 'P Present • A Absent • L Leave • T Late • D Duty • E Excused • U Unexcused • ! Conflict • ? Other • — No entry' : 'ح حضور • ب غياب • إ إجازة • ت تأخر • ك تكليف • م بعذر • غ دون عذر • ! تعارض • ؟ حالة أخرى • — دون تسجيل', style: pw.TextStyle(font: regular, fontSize: 7)),
     ]));
     return Uint8List.fromList(await doc.save());
   }
@@ -307,7 +313,16 @@ class _MonthlyAttendanceReportScreenState extends State<MonthlyAttendanceReportS
     const en = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
     return (arabic ? ar : en)[date.weekday - 1];
   }
-  String _pdfMark(String? s, bool english) { if (s == 'conflict') return '!'; if (s == 'present' || s == 'حضور') return '✓'; if (s == 'absent' || s == 'غياب') return '×'; if (s == 'excused_absence') return english ? 'E' : 'م'; if (s == 'unexcused_absence') return english ? 'U' : 'غ'; return '—'; }
+  String _pdfMark(String? status, bool english) => switch (status) {
+    'present' || 'حضور' => english ? 'P' : 'ح',
+    'absent' || 'غياب' => english ? 'A' : 'ب',
+    'leave' || 'on_leave' || 'إجازة' || 'permission' || 'إذن خاص' => english ? 'L' : 'إ',
+    'late' || 'متأخر' => english ? 'T' : 'ت',
+    'mission' || 'on_duty' || 'مهمة' => english ? 'D' : 'ك',
+    'excused_absence' => english ? 'E' : 'م',
+    'unexcused_absence' => english ? 'U' : 'غ',
+    'conflict' => '!', null || '' => '—', _ => english ? '?' : '؟',
+  };
   PdfColor _pdfColor(String? s) { if (s == 'present' || s == 'حضور') return PdfColors.green700; if (s == 'absent' || s == 'غياب' || s == 'excused_absence' || s == 'unexcused_absence') return PdfColors.red700; return PdfColors.grey600; }
 
   Widget _legend(String text, Color color) => Row(mainAxisSize: MainAxisSize.min, children: [Container(width: 10, height: 10, decoration: BoxDecoration(color: color, shape: BoxShape.circle)), const SizedBox(width: 4), Text(text, style: const TextStyle(fontSize: 11))]);

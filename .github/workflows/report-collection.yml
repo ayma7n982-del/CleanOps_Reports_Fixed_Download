@@ -1,0 +1,30 @@
+name: Export report collection
+on:
+  push:
+    branches: [reports/institutional-headers-20261125]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.8'
+          cache: true
+      - run: flutter pub get
+      - run: sudo apt-get update -qq && sudo apt-get install -y poppler-utils
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python3 -m pip install pypdf==5.9.0
+      - run: python3 tool/export_report_collection.py
+      - run: pdfinfo build/report-collection/all-reports.pdf
+      - uses: actions/upload-artifact@v4
+        with:
+          name: institutional-reports
+          path: build/report-collection/all-reports.pdf
+          if-no-files-found: error

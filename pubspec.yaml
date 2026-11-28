@@ -52,6 +52,7 @@ dev_dependencies:
 flutter:
   uses-material-design: true
   assets:
+    - assets/report_logos/
     - assets/app_icon.png
     - assets/app_icon_foreground.png
     - assets/brand/cleanops_logo_new.png
@@ -74,3 +75,4 @@ flutter_launcher_icons:
 dependency_overrides:
   record_linux: 1.2.1
   record_platform_interface: 1.2.0
+

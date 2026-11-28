@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'report_branding_store.dart';
+import 'report_letterhead.dart';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart' as f;
@@ -80,8 +83,23 @@ Future<Uint8List> buildDecisionPdf({required DecisionAnalytics data,
     SupplyChainAnalytics? supply}) async {
   final regular = pw.Font.ttf(await rootBundle.load('assets/fonts/NotoSansArabic-Regular.ttf'));
   final bold = pw.Font.ttf(await rootBundle.load('assets/fonts/NotoSansArabic-Bold.ttf'));
-  final doc = pw.Document(title: 'لوحة الإجراءات والقرارات الذكية',
-    author: coordinator, creator: 'CleanOps 4.9.5');
+  final title = const {
+    'operations': 'قرارات العمليات الميدانية', 'strategic': 'التخطيط الاستراتيجي',
+    'health': 'القرارات الصحية والبيئية', 'supply': 'تقرير سلسلة الإمداد',
+  }[section] ?? 'لوحة الإجراءات والقرارات الذكية';
+  final identityRecords = [for (final group in data.groups) ...[group.row, ...group.workers]];
+  final municipality = reportField(identityRecords, ['municipalityName', 'municipality']);
+  final council = reportField(identityRecords, ['councilName']);
+  final branding = await ReportBrandingStore.read(municipality: municipality, council: council,
+      allowLocalMunicipality: false, allowLocalCouncil: false);
+  pw.ImageProvider? logo(String name) {
+    try {
+      final value = branding.getString('report_${name}_logo_base64');
+      return value == null ? null : pw.MemoryImage(base64Decode(value));
+    } catch (_) { return null; }
+  }
+  final doc = pw.Document(title: title,
+    author: coordinator);
   final attendance = await _ringImage(data.attendanceRate,
     portions: data.workers == 0 ? [] : [data.present / data.workers,
       data.absent / data.workers, (data.workers - data.present - data.absent) / data.workers],
@@ -132,9 +150,7 @@ Future<Uint8List> buildDecisionPdf({required DecisionAnalytics data,
   final content = <pw.Widget>[
     pw.Container(padding: const pw.EdgeInsets.all(18), color: _navy,
       child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.stretch, children: [
-        text('CLEANOPS • DECISION INTELLIGENCE', size: 10, color: PdfColors.white),
-        pw.SizedBox(height: 8),
-        text('لوحة الإجراءات والقرارات الذكية', size: 21, strong: true, color: PdfColors.white),
+        text(title, size: 21, strong: true, color: PdfColors.white),
         pw.SizedBox(height: 8),
         text('المسؤول: $coordinator • الدورة: ${data.cycleName}', color: PdfColors.white),
         text('تاريخ التقرير: ${decisionReportDate(data.now)}\n'
@@ -163,7 +179,7 @@ Future<Uint8List> buildDecisionPdf({required DecisionAnalytics data,
       'المكبات مرجّحة بالسعات؛ علامة الخطر عند 85%.'),
   ];
   if (section == 'all' || section == 'operations') {
-    content.add(pw.NewPage());
+    content.add(pw.NewPage(freeSpace: 180));
     content.add(heading('1 • قرارات الميدان الفورية وكفاءة المجموعات'));
     content.add(note('الأخضر: المنجز • الأزرق: الهدف المسجّل. '
       'الأطنان من النقلات المكتملة فقط؛ يُذكر التقدير عند غياب الوزن الفعلي.'));
@@ -187,7 +203,7 @@ Future<Uint8List> buildDecisionPdf({required DecisionAnalytics data,
     if (data.groups.isEmpty) content.add(note('لا توجد مجموعات متاحة ضمن نطاق التقرير.'));
   }
   if (section == 'all' || section == 'strategic') {
-    content.add(pw.NewPage());
+    content.add(pw.NewPage(freeSpace: 180));
     content.add(heading('2 • التخطيط الاستراتيجي للدورة القادمة'));
     content.add(note('نافذة التحليل تبدأ ${decisionReportDate(data.historyStart, includeTime: false)}. '
       'التوصيات مشروطة بأدلة تاريخية، وتُحفظ مستقلة عن توزيع الدورة الحالية.'));
@@ -210,7 +226,7 @@ Future<Uint8List> buildDecisionPdf({required DecisionAnalytics data,
     }
   }
   if (section == 'all' || section == 'health') {
-    content.add(pw.NewPage());
+    content.add(pw.NewPage(freeSpace: 180));
     content.add(heading('3 • القرارات الصحية والبيئية'));
     content.add(note('خطر أعلى من 12 ساعة يُثبت فقط بوقت بدء امتلاء محفوظ. '
       'نسبة المرض تعتمد على الغياب المصنّف مرضيًا ولا تثبت خلو الباقين من المرض.'));
@@ -241,7 +257,7 @@ Future<Uint8List> buildDecisionPdf({required DecisionAnalytics data,
   }
   if (section == 'all' || section == 'supply') {
     final s = supply ?? SupplyChainAnalytics.from(data);
-    content.add(pw.NewPage());
+    content.add(pw.NewPage(freeSpace: 180));
     content.add(heading('تحليل سلسلة الإمداد • SUPPLY CHAIN'));
     content.add(note('${s.scope}\n${s.period} • أيام مكتملة حتى نهاية أمس\n'
       'الفترة السابقة مساوية: ${s.days} يومًا. الحالة الحالية للحاويات مستقلة عن الفترة.\n'
@@ -261,7 +277,7 @@ Future<Uint8List> buildDecisionPdf({required DecisionAnalytics data,
       headerStyle: pw.TextStyle(font: bold, fontSize: 9, color: PdfColors.white),
       headerDecoration: const pw.BoxDecoration(color: _navy),
       cellStyle: pw.TextStyle(font: regular, fontSize: 8), cellAlignment: pw.Alignment.center));
-    content.add(pw.NewPage());
+    content.add(pw.NewPage(freeSpace: 180));
     content.add(heading('المقارنات والتوزيعات • Comparisons'));
     // Keep each chart readable even with a large number of authorized groups.
     for (var offset = 0; offset < s.groups.length; offset += 8) {
@@ -313,8 +329,7 @@ Future<Uint8List> buildDecisionPdf({required DecisionAnalytics data,
   doc.addPage(pw.MultiPage(pageFormat: PdfPageFormat.a4, maxPages: 500,
     margin: const pw.EdgeInsets.all(28), textDirection: pw.TextDirection.rtl,
     theme: pw.ThemeData.withFont(base: regular, bold: bold),
-    header: (_) => pw.Padding(padding: const pw.EdgeInsets.only(bottom: 8),
-      child: text('CleanOps 4.9.5 | مركز القرار • $coordinator', size: 8, color: _teal)),
+    header: (_) => reportLetterhead(cycle: data.cycleId.isEmpty ? '' : data.cycleName, municipality: municipality, council: council, regular: regular, bold: bold, municipalityLogo: logo('municipality'), councilLogo: logo('council'), unicefLogo: logo('unicef')),
     footer: (c) => pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
       children: [text('قراءة تحليلية للسجلات المتاحة • $quality', size: 7),
         text('${c.pageNumber} / ${c.pagesCount}', size: 8)]),
@@ -329,7 +344,7 @@ Future<void> exportDecisionPdf({required DecisionAnalytics data,
     SupplyChainAnalytics? supply}) async {
   final bytes = await buildDecisionPdf(data: data, decisions: decisions,
     coordinator: coordinator, quality: quality, plans: plans, section: section, supply: supply);
-  await Printing.layoutPdf(name: 'CleanOps_Decisions_${section}_'
+  await Printing.layoutPdf(name: 'Decisions_${section}_'
     '${data.now.toIso8601String().substring(0, 10)}.pdf', onLayout: (_) async => bytes);
 }
 
