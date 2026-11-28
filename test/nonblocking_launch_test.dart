@@ -56,7 +56,7 @@ void main() {
         body: EcoBootSplash(),
       ),
     ));
-    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 500));
     expect(find.byType(EcoBootSplash), findsOneWidget);
     expect(find.text('CleanOps'), findsOneWidget);
     expect(tester.takeException(), isNull);
