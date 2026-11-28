@@ -16,7 +16,7 @@ class AppNavigationBar extends StatelessWidget implements PreferredSizeWidget {
   const AppNavigationBar({super.key, this.onHome});
 
   @override
-  Size get preferredSize => const Size.fromHeight(64);
+  Size get preferredSize => const Size.fromHeight(56);
 
   static void goHome(BuildContext context) {
     // Replace the whole route stack, including unnamed legacy workspace routes.
@@ -44,8 +44,8 @@ class AppNavigationBar extends StatelessWidget implements PreferredSizeWidget {
         onPressed: tap,
         style: TextButton.styleFrom(
           foregroundColor: aiNavigationColor,
-          minimumSize: const Size(48, 60),
-          padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 6),
+          minimumSize: const Size(48, 56),
+          padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
         ),
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           Badge(
@@ -53,7 +53,7 @@ class AppNavigationBar extends StatelessWidget implements PreferredSizeWidget {
             label: Text(unread > 99 ? '99+' : '$unread'),
             child: Icon(icon, size: 22),
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 2),
           Text(label, maxLines: 1, overflow: TextOverflow.ellipsis,
               style: const TextStyle(fontSize: 11)),
         ]),

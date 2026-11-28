@@ -864,15 +864,43 @@ class _Level1SupervisorState extends State<Level1SupervisorScreen> with Recovera
           subtitle: 'تُستعاد الحالات المسجلة لهذا اليوم والوردية. أكمل بقية العمال ثم افحص معدات الوقاية للحاضرين.',
         ),
         const SizedBox(height: 14),
-        Wrap(
-          spacing: 10,
-          runSpacing: 10,
-          children: [
-            SizedBox(width: 160, child: AiStatTile(title: 'النقلات', value: '$trips', subtitle: 'كارات أساسية', feature: 'trips')),
-            SizedBox(width: 160, child: AiStatTile(title: 'البديلة', value: '$alternativeTrips', subtitle: 'كارات بديلة', feature: 'operations')),
-            SizedBox(width: 160, child: AiStatTile(title: 'الحالة', value: emergencyLock ? 'متوقف' : 'جاهز', subtitle: emergencyLock ? 'بروتوكول طوارئ' : 'تشغيل طبيعي', feature: emergencyLock ? 'emergency' : 'attendance')),
-          ],
-        ),
+        LayoutBuilder(builder: (context, constraints) {
+          const gap = 10.0;
+          final width = constraints.maxWidth;
+          final minTileWidth = 11 * MediaQuery.textScalerOf(context).scale(12);
+          final columns = width >= 3 * minTileWidth + 2 * gap
+              ? 3
+              : width >= 2 * minTileWidth + gap ? 2 : 1;
+          final tileWidth = (width - gap * (columns - 1)) / columns;
+          return Wrap(
+            spacing: gap,
+            runSpacing: gap,
+            children: [
+              SizedBox(width: tileWidth, child: AiStatTile(
+                title: 'النقلات', value: '$trips', subtitle: 'كارات أساسية', feature: 'trips',
+              )),
+              SizedBox(width: tileWidth, child: AiStatTile(
+                title: 'البديلة', value: '$alternativeTrips', subtitle: 'كارات بديلة', feature: 'operations',
+              )),
+              SizedBox(width: columns == 2 ? width : tileWidth, child: AiGlassCard(
+                child: Row(children: [
+                  AiFeatureIcon(emergencyLock ? 'emergency' : 'attendance', size: 18),
+                  const SizedBox(width: 8),
+                  Expanded(child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const AppText('الحالة', style: TextStyle(fontSize: 11, color: cleanOpsMuted)),
+                      AppText(emergencyLock ? 'متوقف' : 'جاهز',
+                        style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
+                      AppText(emergencyLock ? 'بروتوكول طوارئ' : 'تشغيل طبيعي',
+                        style: const TextStyle(fontSize: 11, color: cleanOpsMuted)),
+                    ],
+                  )),
+                ]),
+              )),
+            ],
+          );
+        }),
         const SizedBox(height: 14),
         SupervisorCardSection(
           title: 'الإعدادات والبيانات الأساسية',
