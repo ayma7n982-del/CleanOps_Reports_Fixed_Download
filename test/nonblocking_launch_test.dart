@@ -8,7 +8,7 @@ void main() {
   test('Flutter splash renders before Firebase and remote service initialization', () {
     final source = File('lib/main.dart').readAsStringSync();
     final firstFrame = source.indexOf('runApp(const MaterialApp(');
-    final firebase = source.indexOf('await StartupDiagnostics.initializeFirebase();');
+    final firebase = source.indexOf('final firebaseStartup = StartupDiagnostics.initializeFirebase();');
     final fullApp = source.indexOf('child: const EnterpriseApp(),');
     final resumed = source.indexOf('unawaited(_completeOnlineStartup(auth, data, config));');
     expect(firstFrame, greaterThan(0));
@@ -53,7 +53,7 @@ void main() {
     await tester.pumpWidget(const MaterialApp(
       home: Scaffold(
         backgroundColor: Color(0xFFF8FCFA),
-        body: EcoBootSplash(progress: .65),
+        body: EcoBootSplash(),
       ),
     ));
     await tester.pumpAndSettle();

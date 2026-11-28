@@ -101,44 +101,6 @@ class FeatureIconPainter extends CustomPainter {
   @override bool shouldRepaint(covariant CustomPainter oldDelegate)=>false;
 }
 
-class SplashScreen extends StatefulWidget {
-  const SplashScreen({super.key});
-  @override State<SplashScreen> createState()=>_SplashScreenState();
-}
-
-class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderStateMixin {
-  late AnimationController controller;
-
-  @override
-  void initState(){
-    super.initState();
-    controller=AnimationController(vsync:this,duration:const Duration(milliseconds:2200))..forward();
-    Future.delayed(const Duration(milliseconds: 2450), () {
-      if (!mounted) return;
-      final auth = context.read<AuthService>();
-      final user = auth.currentUser;
-      final destination = user == null
-          ? const EnterpriseLoginScreen()
-          : (user.role == 'donor_manager' && !(context.read<SetupState>().complete)
-              ? const SetupWizardPage()
-              : const AppShell());
-      Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => destination));
-    });
-  }
-
-  @override
-  void dispose(){controller.dispose();super.dispose();}
-
-  @override
-  Widget build(BuildContext context) => Scaffold(
-    backgroundColor: const Color(0xFFF8FCFA),
-    body: AnimatedBuilder(
-      animation: controller,
-      builder: (context, _) => EcoBootSplash(progress: controller.value),
-    ),
-  );
-}
-
 class SetupWizardPage extends StatefulWidget {
   const SetupWizardPage({super.key});
   @override State<SetupWizardPage> createState()=>_SetupWizardState();
@@ -1506,12 +1468,12 @@ Future<void> main() async {
     debugShowCheckedModeBanner: false,
     home: Scaffold(
       backgroundColor: Color(0xFFF8FCFA),
-      body: EcoBootSplash(progress: .65),
+      body: EcoBootSplash(),
     ),
   ));
   // Submit the branded first frame before native/local initialization work.
   await WidgetsBinding.instance.endOfFrame;
-  await StartupDiagnostics.initializeFirebase();
+  final firebaseStartup = StartupDiagnostics.initializeFirebase();
 
   late final Box localBox;
   try {
@@ -1533,6 +1495,7 @@ Future<void> main() async {
   }
 
   try {
+    await firebaseStartup;
     final store = LocalStore(localBox);
     final auth = AuthService(store);
     final config = ConfigService(store);
@@ -1615,10 +1578,10 @@ Future<void> main() async {
         child: const EnterpriseApp(),
       ),
     );
-    // All remote reads and uploads continue with the app already responsive.
-    // They are the same operations previously awaited above runApp, with
-    // errors contained so offline startup and automatic sync keep working.
-    unawaited(_completeOnlineStartup(auth, data, config));
+    // Let the destination draw before starting background synchronization.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(_completeOnlineStartup(auth, data, config));
+    });
   } catch (e, stack) {
     debugPrint('Unexpected startup failure: $e');
     debugPrintStack(stackTrace: stack);
@@ -1632,6 +1595,15 @@ class EnterpriseApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final locale = context.watch<LocaleController>().locale;
+    final user = context.read<AuthService>().currentUser;
+    final Widget home;
+    if (user == null) {
+      home = const EnterpriseLoginScreen();
+    } else if (user.role == 'donor_manager' && !context.read<SetupState>().complete) {
+      home = const SetupWizardPage();
+    } else {
+      home = const AppShell();
+    }
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: I18n.tr('منظومة عمليات جمع النفايات الصلبة', locale.languageCode),
@@ -1791,7 +1763,7 @@ class EnterpriseApp extends StatelessWidget {
         ),
         drawerTheme: const DrawerThemeData(backgroundColor: Color(0xFFF7FBF8), scrimColor: Color(0x66073C35), elevation: 18),
       ),
-      home: const SplashScreen(),
+      home: home,
     );
   }
 }
