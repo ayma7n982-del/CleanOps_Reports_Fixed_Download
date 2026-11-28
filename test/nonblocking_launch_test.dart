@@ -8,14 +8,18 @@ void main() {
   test('Flutter splash renders before Firebase and remote service initialization', () {
     final source = File('lib/main.dart').readAsStringSync();
     final firstFrame = source.indexOf('runApp(const MaterialApp(');
-    final firebase = source.indexOf('await StartupDiagnostics.initializeFirebase();');
+    final firebase = source.indexOf('StartupDiagnostics.initializeFirebase();');
+    final painted = source.indexOf('await WidgetsBinding.instance.endOfFrame;');
     final fullApp = source.indexOf('child: const EnterpriseApp(),');
     final resumed = source.indexOf('unawaited(_completeOnlineStartup(auth, data, config));');
     expect(firstFrame, greaterThan(0));
-    expect(firebase, greaterThan(firstFrame));
+    expect(painted, greaterThan(firstFrame));
+    expect(firebase, greaterThan(painted));
     expect(fullApp, greaterThan(firebase));
     expect(resumed, greaterThan(fullApp));
     expect(source, contains('config.seedFor(auth.currentUser!.role)'));
+    expect(source, isNot(contains('home: const SplashScreen()')));
+    expect(source, isNot(contains('Duration(milliseconds: 2450)')));
   });
 
   test('remote operations no longer block the full app first frame', () {
@@ -53,10 +57,9 @@ void main() {
     await tester.pumpWidget(const MaterialApp(
       home: Scaffold(
         backgroundColor: Color(0xFFF8FCFA),
-        body: EcoBootSplash(progress: .65),
+        body: EcoBootSplash(),
       ),
     ));
-    await tester.pumpAndSettle();
     expect(find.byType(EcoBootSplash), findsOneWidget);
     expect(find.text('CleanOps'), findsOneWidget);
     expect(tester.takeException(), isNull);

@@ -69,6 +69,7 @@ void main() {
   testWidgets('logo moves independently of the loading indicator', (tester) async {
     await pumpBoot(tester, size: const Size(360, 700));
     final logo = find.byType(Image);
+    await tester.pump();
     final start = tester.getTopLeft(logo).dy;
     await tester.pump(const Duration(milliseconds: 80));
     final middle = tester.getTopLeft(logo).dy;
